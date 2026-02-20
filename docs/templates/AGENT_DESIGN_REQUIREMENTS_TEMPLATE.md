@@ -1,6 +1,6 @@
-# Prompt Requirements Document (Template)
+# Agent Design Requirements (Template)
 
-This is an AI-first companion to a traditional PRD. It is designed to:
+This is an AI-first companion to the Product Design Requirements. It is designed to:
 
 - stay close to implementation reality,
 - be easy for humans to skim,
