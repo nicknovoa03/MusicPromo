@@ -1,0 +1,419 @@
+# Product Design Requirements — MusicPromo
+
+## Doc Metadata
+
+- Product name: MusicPromo
+- Doc owner: Nick
+- Stakeholders: Nick (sole developer / product owner)
+- Last updated (YYYY-MM-DD): 2026-02-20
+- Version: 1.0 (initial intake)
+- Links: GitHub repo at `/home/nick/MusicPromo`
+
+## 1) Product Summary
+
+- **One-liner:** A dead-simple mobile tool that turns a photo and audio clip into a short promo video for social media.
+- **Problem statement:** Musicians and creators waste hours cobbling together tools like CapCut, Photoshop, and random websites to make simple promotional videos for their music. The process is slow, fragmented, and requires skills most artists don't have or want to learn.
+- **Target users (v1):**
+  - **Indie Artist / Creator** — Independent musician or content creator who self-promotes on Instagram, TikTok, and other social platforms. Creates promos every release or weekly. Currently hacks it together with CapCut or similar tools.
+- **Target users (future):**
+  - **Small Label / Publisher** — Record label or publishing company creating promo for a roster of artists. Deferred to post-v1.
+- **Core job-to-be-done (JTBD):** "When I release music and want to promote it on social media, I want to quickly generate a short promo video from a photo and audio clip, so I can share it without learning video editing or spending an hour in CapCut."
+- **What is "success" for v1:**
+  - **North star:** Number of videos exported/downloaded
+  - **Input metrics:** Create flow starts, photo selections, audio selections, preview views
+  - **Guardrails:** Video generation time under 60 seconds, app crash rate ~0%
+
+## 2) Goals, Non-Goals, and Principles
+
+- **Goals (v1):**
+  - User can create a promo video from a photo + audio clip in under a minute
+  - Export to camera roll or share directly to Instagram/TikTok
+  - Save project history for revisiting and re-exporting
+  - Guest mode for frictionless first use
+  - Push notifications for engagement
+- **Non-goals (v1):**
+  - Not a music distribution platform
+  - Not a social network
+  - Not a DAW or music creation tool
+  - Not an analytics dashboard
+  - Not a full-featured video editor
+  - No SoundCloud or streaming service integration
+  - No multi-user / label accounts
+  - No template marketplace
+  - No monetization / subscriptions
+- **Product principles:**
+  1. **Stupidly simple** — two inputs, one output, no learning curve
+  2. **Fast** — seconds, not an hour
+  3. **Modern & artistic** — feels good to use, reflects the creative audience
+  4. **No hoops** — basic sign-in or guest mode, no strings attached
+  5. **Mobile-first** — phone app for creators on the go
+
+## 3) Platform, Tech, and Operational Constraints
+
+- **Platforms:**
+  - iOS: Yes (via Expo EAS Build)
+  - Android: Yes (via Expo EAS Build)
+  - Web: No (not for v1)
+- **Authentication:**
+  - Provider: Clerk (supports sign-in + anonymous/guest sessions)
+  - Required identity fields: Email (via Clerk)
+- **Backend:**
+  - Data store: Convex (existing boilerplate in repo)
+  - Realtime needs: Minimal — project metadata CRUD, user profile
+  - File/media storage: On-device only (no cloud file storage for v1)
+- **Environments:**
+  - Local: Expo Dev Client
+  - Staging: N/A for POC
+  - Production: Expo EAS Build → App Store + Google Play
+- **Safety rails:**
+  - Destructive ops gating: Soft-delete for account deletion
+  - Admin tooling needs: None for v1 (Convex dashboard for manual operations)
+- **Accessibility:**
+  - WCAG target: N/A (not web)
+  - Screen reader expectations: TBD (not a v1 priority for POC)
+- **Privacy/security/compliance:**
+  - PII handled: Email only (via Clerk)
+  - Data retention: Indefinite (soft-delete on account deletion)
+  - Age gating / COPPA / GDPR: Not handled in v1 (minimal PII)
+
+## 4) Information Architecture and Navigation
+
+*Pending — user is researching UI patterns via [Mobbin](https://mobbin.com/discover/apps/ios/latest?via=chris-raroque).*
+
+- **Global navigation pattern:** Bottom tab bar or hamburger menu — TBD
+- **Core sections:** Create, Projects, Profile
+- **Global primary action:** Create (the main thing the app does)
+- **App-level screens (confirmed, layout TBD):**
+  - Sign In / Guest entry
+  - Onboarding (first-time, brief walkthrough)
+  - Create (photo + audio + trim + preview + export)
+  - Projects / History (past projects, re-export, share)
+  - Profile / Settings (name, avatar, preferences, sign-out, delete account)
+  - Notifications (push + possibly in-app)
+  - Post-Export Success (save / share / done)
+
+## 5) Core Entities (Conceptual Data Model)
+
+### User Profile
+- Owner: Self
+- Visibility: Private
+- Key fields: `clerkId`, `name`, `email`, `avatarUrl`, `subscriptionTier`, `preferences` (defaultAspectRatio, defaultVideoLength), `createdAt`
+- Relationships: Has many Projects, has many Push Tokens
+- Typical queries: Get profile by clerkId
+- Permissions: User reads/updates own profile only
+
+### Project
+- Owner: User
+- Visibility: Private
+- Key fields: `userId`, `title` (optional), `templateId`, `aspectRatio`, `videoLength`, `photoUri` (local), `audioUri` (local), `exportedVideoUri` (local), `status` (draft/exported), `createdAt`, `updatedAt`
+- Relationships: Belongs to User, references Template
+- Typical queries: List projects by userId sorted by recent, get project by ID
+- Permissions: User CRUDs own projects only
+
+### Template
+- Owner: System
+- Visibility: Public (read-only for users)
+- Key fields: `id`, `name`, `description`, `previewImageUrl`, `type` (e.g., "spinning-cd"), `config` (speed, animation params)
+- Relationships: Referenced by Projects
+- Typical queries: List all templates
+- Permissions: Read-only for users, admin-managed
+- v1: Single entry — "Spinning CD"
+
+### Push Token
+- Owner: User (per device)
+- Visibility: Private
+- Key fields: `userId`, `expoPushToken`, `platform` (ios/android), `createdAt`, `updatedAt`
+- Relationships: Belongs to User
+- Typical queries: Get tokens by userId
+- Permissions: System reads, user's device writes
+
+### Notification
+- Owner: System/Admin
+- Visibility: Per-user
+- Key fields: `id`, `userId`, `type` (reminder/new-template/export-complete/announcement), `title`, `body`, `read`, `trigger` (automated/manual), `sentAt`
+- Relationships: Belongs to User
+- Typical queries: List notifications by userId, unread count
+- Permissions: User reads own, system/admin writes
+
+## 6) Feature Requirements (By Epic)
+
+### Epic: Authentication & Guest Mode
+
+- **User problem:** User wants to use the app immediately without friction.
+- **Primary user story:** As a creator, I can sign in with Clerk or continue as a guest so I can start making videos immediately.
+- **Secondary stories:**
+  - Guest can upgrade to a full account later (session merge)
+  - Signed-in user can sign out and return to guest/sign-in state
+- **Scope (v1):** Clerk sign-in (email/social) + anonymous guest mode
+- **Non-goals:** No OAuth customization, no multi-factor auth
+- **Key screens/components:** Sign-in screen, "Continue as Guest" button
+- **Backend/data needs:** Convex User Profile created on first sign-in
+- **Permissions/abuse risks:** Guest mode could be used to avoid tracking — acceptable for POC
+- **Analytics/events:** `sign_in_completed`, `guest_mode_started`
+- **Acceptance criteria:**
+  - User can sign in with Clerk and land on the main app
+  - User can tap "Continue as Guest" and access create flow
+  - Guest session can be upgraded to authenticated
+- **States:**
+  - Loading: Clerk loading spinner
+  - Empty: N/A
+  - Error: "Sign-in failed, please try again"
+  - Signed-out: Shows sign-in + guest option
+
+### Epic: Create Promo Video
+
+- **User problem:** User wants to create a promo video from a photo and audio clip quickly.
+- **Primary user story:** As a creator, I can select a photo and audio clip, choose an aspect ratio, trim the audio, preview the result, and export a video — all in under a minute.
+- **Secondary stories:**
+  - I can swap the photo without losing my audio selection (and vice versa)
+  - I can choose between 9:16 (vertical) and 1:1 (square) aspect ratios
+  - I can trim my audio to select which section plays
+- **Scope (v1):** Single template (Spinning CD), on-device rendering, MP4 export
+- **Non-goals:** Multiple templates, AI generation, cloud rendering
+- **Key screens/components:** Create screen (photo picker, audio picker, audio trimmer, aspect ratio selector, preview player, export button)
+- **Backend/data needs:** Project metadata saved to Convex after export
+- **Permissions/abuse risks:** Minimal — user's own content
+- **Analytics/events:** `create_started`, `photo_selected`, `audio_selected`, `preview_viewed`, `video_exported`
+- **Acceptance criteria:**
+  - User can select a photo from camera roll
+  - User can select an audio file (MP3, WAV, M4A) from device
+  - User can trim audio to select playback section
+  - User can choose aspect ratio (9:16 or 1:1)
+  - User sees a preview of the spinning CD video with their photo and audio
+  - User can swap photo or audio without losing other selections
+  - Video renders on-device and completes in under 60 seconds
+  - Rendering continues when app is backgrounded
+- **States:**
+  - Loading: Rendering progress indicator during export
+  - Empty: Create screen with prompts to add photo and audio
+  - Error: "Rendering failed — please try again" with retry button
+  - Edge cases: Not enough storage, unsupported file format (file picker filters these)
+
+### Epic: Save & Share
+
+- **User problem:** User wants to save the video and share it to social media instantly.
+- **Primary user story:** As a creator, after exporting I can save to my camera roll or share directly to Instagram or TikTok.
+- **Scope (v1):** Save to camera roll, native share intents to Instagram and TikTok
+- **Non-goals:** Direct API posting, scheduling, cross-posting to multiple platforms simultaneously
+- **Key screens/components:** Post-export success screen with action buttons
+- **Backend/data needs:** None (all local/native)
+- **Analytics/events:** `video_saved_to_camera_roll`, `share_tapped_instagram`, `share_tapped_tiktok`
+- **Acceptance criteria:**
+  - After export, user sees success screen with Save / Instagram / TikTok / Done buttons
+  - "Save to Camera Roll" saves the MP4 to device gallery
+  - "Share to Instagram" opens Instagram via native share intent (Instagram's own Story/Post/Reel picker)
+  - "Share to TikTok" opens TikTok via native share intent
+  - "Done" returns to projects or home
+- **States:**
+  - Loading: N/A (instant actions)
+  - Empty: N/A
+  - Error: "Failed to save — not enough storage" or "Instagram not installed"
+
+### Epic: Project History
+
+- **User problem:** User wants to revisit past projects, re-export, or share again.
+- **Primary user story:** As a creator, I can see my past projects and re-open them to re-export or change settings.
+- **Scope (v1):** List past projects, open to view/edit, re-export with changed settings
+- **Non-goals:** Cloud file backup, project duplication/remix
+- **Key screens/components:** Projects screen (list/grid of past projects), project detail view
+- **Backend/data needs:** Convex query for user's projects sorted by recent
+- **Analytics/events:** `project_reopened`
+- **Acceptance criteria:**
+  - User sees a list of past projects with metadata (date, aspect ratio, template)
+  - User can tap a project to re-open it
+  - User can change settings (aspect ratio, video length) and re-export
+  - If original files were deleted from device, show "Files not found" error gracefully
+- **States:**
+  - Loading: Skeleton/spinner while fetching from Convex
+  - Empty: "No projects yet — create your first promo!"
+  - Error: "Couldn't load projects" + retry
+  - File-not-found: "Original files no longer on this device"
+
+### Epic: Push Notifications
+
+- **User problem:** User forgets about the app or misses new features.
+- **Primary user story:** As a creator, I receive push notifications for reminders, new templates, export completion, and announcements.
+- **Scope (v1):** Expo Push Notifications, all four notification types (reminder, new-template, export-complete, announcement), both automated and manual triggers
+- **Non-goals:** In-app notification center (TBD based on Mobbin), notification preferences/opt-out
+- **Key screens/components:** Push notification permission prompt, notification entity in Convex
+- **Backend/data needs:** Push Token entity in Convex, Notification entity, Expo push notification service
+- **Analytics/events:** `notification_received`, `notification_tapped`
+- **Acceptance criteria:**
+  - App requests push notification permission on first launch
+  - Expo push token is stored in Convex
+  - User receives push notifications for all four types
+  - Tapping a notification opens the app to home
+- **States:**
+  - Permission denied: App works normally, no notifications sent
+  - Notification delivery failure: Silent fail, logged for debugging
+
+### Epic: Profile & Settings
+
+- **User problem:** User wants to manage their account and preferences.
+- **Primary user story:** As a creator, I can view my profile, set default preferences, and manage my account.
+- **Scope (v1):** Profile display (name, avatar), default aspect ratio, default video length, sign out, account deletion
+- **Non-goals:** Profile editing beyond basics, subscription management, notification preferences
+- **Key screens/components:** Profile/Settings screen
+- **Backend/data needs:** User Profile read/update in Convex
+- **Acceptance criteria:**
+  - User can view their name, email, avatar
+  - User can set default aspect ratio (9:16 or 1:1)
+  - User can set default video length
+  - User can sign out
+  - User can delete their account (soft-delete in Convex)
+- **States:**
+  - Loading: Spinner while fetching profile
+  - Error: "Couldn't load profile" + retry
+
+### Epic: Onboarding
+
+- **User problem:** First-time user doesn't know how the app works.
+- **Primary user story:** As a new user, I see a brief walkthrough explaining the app so I know what to do.
+- **Scope (v1):** 1-3 onboarding screens shown once after first sign-in/guest entry
+- **Non-goals:** Interactive tutorial, skip-and-never-show-again logic for POC
+- **Key screens/components:** Onboarding screen(s) — design TBD (Mobbin research)
+- **Analytics/events:** `onboarding_completed`
+- **Acceptance criteria:**
+  - First-time user sees onboarding after sign-in or guest entry
+  - User can progress through and complete onboarding
+  - After onboarding, user lands on create or home screen
+
+## 7) Screen Requirements (Design Spec)
+
+*Detailed screen specs pending Mobbin research. Confirmed screens:*
+
+- Sign In / Guest Entry
+- Onboarding (1-3 screens)
+- Create (main tool)
+- Post-Export Success
+- Projects / History
+- Profile / Settings
+- Notification display (push, possibly in-app — TBD)
+
+## 8) Interaction Flows
+
+### Flow 1: First-Time User → First Video
+1. Open app
+2. Sign in with Clerk OR tap "Continue as Guest"
+3. See onboarding walkthrough (1-3 screens)
+4. Land on create screen
+5. Pick photo from camera roll
+6. Pick audio file from device
+7. Trim audio to select playback section
+8. Choose aspect ratio (9:16 or 1:1)
+9. Preview spinning CD video
+10. Tap Export
+11. Video renders on-device (progress indicator)
+12. Success screen: Save to Camera Roll / Share to Instagram / Share to TikTok / Done
+
+### Flow 2: Returning User → Re-Export
+1. Open app (already signed in)
+2. Navigate to Projects
+3. Tap a past project
+4. Change aspect ratio or video length if desired
+5. Tap Re-Export
+6. Video renders → success screen → save/share
+
+### Flow 3: Notification → App
+1. Receive push notification
+2. Tap notification
+3. App opens to home screen
+
+## 9) Visual Design Requirements (Mini Design System)
+
+*Pending Mobbin research. Known direction:*
+
+- **Brand adjectives:** Modern, artistic, fun, easy, simple
+- **Color tokens:** TBD
+- **Typography:** TBD
+- **Components:** TBD
+- **Motion:** TBD
+- **Inspiration source:** [Mobbin](https://mobbin.com/discover/apps/ios/latest?via=chris-raroque)
+
+## 10) Content Design
+
+*Pending Mobbin research.*
+
+- **Tone:** TBD (leaning casual and encouraging based on product principles)
+- **Voice do/don't:** TBD
+- **Key empty state copy:** TBD (e.g., "No projects yet — create your first promo!")
+- **Error message guidelines:** Fail gracefully, clear actionable messages
+
+## 11) Instrumentation and Analytics
+
+- **Provider:** PostHog (React Native SDK)
+- **Event taxonomy:**
+  - Core funnel: `app_opened`, `sign_in_completed`, `guest_mode_started`, `onboarding_completed`
+  - Create funnel: `create_started`, `photo_selected`, `audio_selected`, `preview_viewed`, `video_exported`
+  - Distribution: `video_saved_to_camera_roll`, `share_tapped_instagram`, `share_tapped_tiktok`
+  - Retention: `project_reopened`
+  - Notifications: `notification_received`, `notification_tapped`
+- **Logging for debugging:** Expo default logging + Convex function logs
+- **A/B testing needs:** None for v1
+
+## 12) Performance and Quality Bars
+
+- **Cold start target:** Under 3 seconds
+- **Time to first content:** Near-instant (local UI)
+- **Video preview render:** Near-instant (on-device)
+- **Video export render:** Under 60 seconds
+- **Scrolling/jank budget:** Standard React Native performance
+- **Media guidelines:**
+  - Supported audio: MP3, WAV, M4A
+  - Video output: MP4
+  - Aspect ratios: 9:16 (vertical), 1:1 (square)
+- **Offline / poor network:** Requires internet for auth and Convex sync. Local rendering works regardless. Queued Convex writes on reconnect (may cut if complex).
+- **Rate limits / spam prevention:** Not needed for v1
+
+## 13) Risks and Open Questions
+
+### Known Risks
+1. On-device rendering too slow on older phones — test early, fallback quality setting
+2. Expo + FFmpeg compatibility issues — spike early in Phase 0
+3. Audio trimming UX is tricky — keep simple, iterate later
+4. Apple App Store review delays — submit early, expect 1-2 cycles
+5. Clerk anonymous-to-authenticated session merge edge cases — test thoroughly
+
+### Open Questions
+- Navigation pattern (tabs vs hamburger) — after Mobbin research
+- Create screen flow/layout — after Mobbin research
+- Visual design system — after Mobbin research
+- Onboarding design — after Mobbin research
+- Tone of voice — after Mobbin research
+- User Profile exact fields — before Phase 2
+- Notification content strategy — before Phase 2
+
+## 14) Phasing and Milestones
+
+### Phase 0: Bootstrap
+- Expo project setup (building on existing repo boilerplate)
+- Clerk auth integration
+- Convex backend setup (existing boilerplate)
+- Basic navigation shell
+- PostHog integration
+
+### Phase 1: MVP Core
+- Create flow (photo picker, audio picker, audio trim)
+- Spinning CD video template (on-device rendering)
+- Aspect ratio selection (9:16 / 1:1)
+- Preview and export
+- Save to camera roll
+- Native share (Instagram / TikTok)
+- Project history (save, revisit, re-export)
+- Guest mode
+
+### Phase 2: Polish
+- Onboarding screens
+- Profile and settings screen
+- Push notifications
+- Edge case handling (offline queue, error states, file-not-found)
+- Account deletion
+
+### Deferred (Post-v1)
+- SoundCloud URL audio extraction
+- Additional video templates and styles
+- AI-generated templates (Sora, etc.)
+- Label/agency multi-user accounts
+- Template marketplace
+- Offline rendering with queued analytics
+- Subscription tiers and monetization
