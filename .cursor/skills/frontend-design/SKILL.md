@@ -11,8 +11,8 @@ Design and implement screens, components, and navigation for a React Native + Ex
 
 Before designing any UI, read the relevant project docs:
 
-1. [Product Design Requirements](docs/example/PRODUCT_DESIGN_REQUIREMENTS.md) — screen specs, entities, flows, visual design tokens
-2. [Agent Design Requirements](docs/example/AGENT_DESIGN_REQUIREMENTS.md) — constraints, invariants, system map
+1. [Product Design Requirements](docs/requirements/PRODUCT_DESIGN_REQUIREMENTS.md) — screen specs, entities, flows, visual design tokens
+2. [Agent Design Requirements](docs/requirements/AGENT_DESIGN_REQUIREMENTS.md) — constraints, invariants, system map
 
 If these don't exist yet, prompt the user to run the **requirements-intake** skill first.
 

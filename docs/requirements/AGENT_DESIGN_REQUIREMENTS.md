@@ -7,7 +7,7 @@
 - Owners: Nick
 - Date: 2026-02-20
 - Version: 1.0 (initial intake)
-- Links: PRD at `docs/example/PRODUCT_DESIGN_REQUIREMENTS.md`
+- Links: PRD at `docs/requirements/PRODUCT_DESIGN_REQUIREMENTS.md`
 
 ## 1) Guideline (Shared AI-Human Understanding)
 
@@ -77,7 +77,7 @@
 ### 2.1 Context Packaging Rules
 
 - **Always include:**
-  - The relevant PRD section (`docs/example/PRODUCT_DESIGN_REQUIREMENTS.md`)
+  - The relevant PRD section (`docs/requirements/PRODUCT_DESIGN_REQUIREMENTS.md`)
   - The Convex schema and relevant function files
   - The screen/component being worked on
   - Acceptance criteria for the feature being implemented
@@ -163,10 +163,44 @@
 ```
 Project: MusicPromo
 Stack: React Native + Expo, Clerk, Convex, PostHog
-PRD: docs/example/PRODUCT_DESIGN_REQUIREMENTS.md
-Agent Design: docs/example/AGENT_DESIGN_REQUIREMENTS.md
+PRD: docs/requirements/PRODUCT_DESIGN_REQUIREMENTS.md
+Agent Design: docs/requirements/AGENT_DESIGN_REQUIREMENTS.md
 Current phase: [Phase 0/1/2]
-Focus: [feature or task]
+Focus: [epic name]
+```
+
+**Phase → Epic → Focus mapping:**
+
+```
+Phase 0 — Bootstrap
+  └── Epic: Authentication & Guest Mode
+
+Phase 1 — MVP Core
+  ├── Epic: Create Promo Video
+  ├── Epic: Save & Share
+  └── Epic: Project History
+
+Phase 2 — Polish
+  ├── Epic: Push Notifications
+  ├── Epic: Profile & Settings
+  └── Epic: Onboarding
+```
+
+Work through epics within a phase, then move to the next phase. Update "Current phase" and "Focus" as you go. Examples:
+
+```
+Current phase: Phase 0
+Focus: Authentication & Guest Mode
+```
+
+```
+Current phase: Phase 1
+Focus: Create Promo Video
+```
+
+```
+Current phase: Phase 2
+Focus: Push Notifications
 ```
 
 ## 3) Guardrails (AI-Assisted Reviews and Quality Gates)

@@ -29,8 +29,8 @@ Context I will provide:
 - Any hard constraints (platform, timeline, tech, budget).
 
 Deliverables:
-1) A filled-out Markdown doc using the template sections from `docs/templates/PRODUCT_DESIGN_REQUIREMENTS_TEMPLATE.md`.
-2) A filled-out Agent Design Requirements doc using `docs/templates/AGENT_DESIGN_REQUIREMENTS_TEMPLATE.md` (Guideline/Guidance/Guardrails), including a small "prompt pack" we can reuse for implementation, debugging, and reviews.
+1) A filled-out Markdown doc using the template sections from `docs/requirements/templates/PRODUCT_DESIGN_REQUIREMENTS_TEMPLATE.md`.
+2) A filled-out Agent Design Requirements doc using `docs/requirements/templates/AGENT_DESIGN_REQUIREMENTS_TEMPLATE.md` (Guideline/Guidance/Guardrails), including a small "prompt pack" we can reuse for implementation, debugging, and reviews.
 3) A compact JSON summary with:
    - `name`, `one_liner`, `platforms`, `personas`, `north_star`
    - `entities` (list)
