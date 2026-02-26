@@ -25,7 +25,13 @@ export default function ProfileScreen() {
       {
         text: "Sign Out",
         style: "destructive",
-        onPress: () => signOut(),
+        onPress: async () => {
+          try {
+            await signOut();
+          } catch {
+            Alert.alert("Error", "Failed to sign out. Please try again.");
+          }
+        },
       },
     ]);
   };

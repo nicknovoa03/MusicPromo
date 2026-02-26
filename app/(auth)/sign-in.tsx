@@ -31,9 +31,14 @@ export default function SignInScreen() {
         const { createdSessionId, setActive: ssoSetActive } =
           await startSSOFlow({ strategy });
 
-        if (createdSessionId) {
-          await ssoSetActive!({ session: createdSessionId });
+        if (createdSessionId && ssoSetActive) {
+          await ssoSetActive({ session: createdSessionId });
           posthog?.capture("sign_in_completed", { provider });
+        } else if (createdSessionId) {
+          Alert.alert(
+            "Sign-in error",
+            "Session was created but could not be activated. Please try again."
+          );
         }
       } catch (err: unknown) {
         const message =
@@ -54,8 +59,8 @@ export default function SignInScreen() {
         strategy: "ticket",
         ticket: "__clerk_anonymous",
       });
-      if (createdSessionId) {
-        await setActive!({ session: createdSessionId });
+      if (createdSessionId && setActive) {
+        await setActive({ session: createdSessionId });
         posthog?.capture("guest_mode_started");
       }
     } catch {

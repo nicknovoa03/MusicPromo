@@ -6,13 +6,14 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "lint": "npx tsc --noEmit"
+    "lint": "npx tsc --noEmit",
+    "lint:convex": "npx tsc --noEmit -p convex/tsconfig.json",
+    "lint:all": "npx tsc --noEmit && npx tsc --noEmit -p convex/tsconfig.json"
   },
   "dependencies": {
     "@clerk/clerk-expo": "^2.19.27",
     "@expo/vector-icons": "^15.1.1",
     "@react-native-async-storage/async-storage": "2.2.0",
-    "babel-preset-expo": "~54.0.10",
     "convex": "^1.32.0",
     "expo": "~54.0.33",
     "expo-application": "~7.0.8",
@@ -41,7 +42,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.1.10",
-    "@types/react-native": "^0.73.0",
+    "babel-preset-expo": "~54.0.10",
     "typescript": "^5.8.3"
   },
   "private": true

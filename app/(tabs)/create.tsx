@@ -17,8 +17,10 @@ export default function CreateScreen() {
               styles.mediaButton,
               pressed && styles.mediaButtonPressed,
             ]}
+            disabled
             accessibilityLabel="Select a photo"
             accessibilityRole="button"
+            accessibilityState={{ disabled: true }}
           >
             <View style={styles.mediaIconContainer}>
               <Ionicons
@@ -38,8 +40,10 @@ export default function CreateScreen() {
               styles.mediaButton,
               pressed && styles.mediaButtonPressed,
             ]}
+            disabled
             accessibilityLabel="Select an audio file"
             accessibilityRole="button"
+            accessibilityState={{ disabled: true }}
           >
             <View style={styles.mediaIconContainer}>
               <Ionicons

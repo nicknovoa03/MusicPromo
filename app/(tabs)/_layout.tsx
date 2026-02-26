@@ -16,9 +16,15 @@ export default function TabsLayout() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      getOrCreateUser().catch(() => {});
+      getOrCreateUser().catch((error) => {
+        console.warn("Failed to bootstrap user:", error);
+      });
     }
   }, [isAuthenticated]);
+
+  useEffect(() => {
+    posthog?.capture("app_opened");
+  }, []);
 
   useEffect(() => {
     if (user) {
@@ -27,7 +33,6 @@ export default function TabsLayout() {
         name: user.fullName ?? "",
       });
     }
-    posthog?.capture("app_opened");
   }, [user]);
 
   return (
