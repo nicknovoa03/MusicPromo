@@ -15,6 +15,7 @@ import { usePostHog } from "posthog-react-native";
 import { useMutation } from "convex/react";
 import Constants from "expo-constants";
 import { api } from "../../convex/_generated/api";
+import type { Id } from "../../convex/_generated/dataModel";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
 import type { EventName } from "@/lib/analytics";
 
@@ -24,6 +25,7 @@ function isExpoGo(): boolean {
 
 type RenderVideoModule = typeof import("@/lib/renderVideo");
 let renderModule: RenderVideoModule | null = null;
+const PREVIEW_SIZE = 220;
 
 async function getRenderModule(): Promise<RenderVideoModule> {
   if (isExpoGo()) {
@@ -52,6 +54,18 @@ function firstParam(param: string | string[] | undefined) {
   return Array.isArray(param) ? param[0] : param;
 }
 
+function normalizeTrimBounds(start: number, end: number): [number, number] {
+  const safeStart = Number.isFinite(start) ? Math.max(0, start) : 0;
+  const safeEnd =
+    Number.isFinite(end) && end > safeStart ? end : safeStart + 30;
+  return [safeStart, safeEnd];
+}
+
+function asProjectId(value: string | undefined): Id<"projects"> | null {
+  if (!value) return null;
+  return value as Id<"projects">;
+}
+
 export default function RenderingScreen() {
   const router = useRouter();
   const posthog = usePostHog();
@@ -71,7 +85,7 @@ export default function RenderingScreen() {
   const [progress, setProgress] = useState(0);
   const [renderState, setRenderState] = useState<RenderState>("rendering");
   const [errorMessage, setErrorMessage] = useState("");
-  const projectIdRef = useRef<string | null>(null);
+  const projectIdRef = useRef<Id<"projects"> | null>(null);
   const animatedProgress = useRef(new Animated.Value(0)).current;
   const hasStarted = useRef(false);
   const isScreenActiveRef = useRef(true);
@@ -97,16 +111,13 @@ export default function RenderingScreen() {
     hasStarted.current = true;
     isCanceledRef.current = false;
 
-    const existingProjectId = firstParam(params.projectId);
+    const existingProjectId = asProjectId(firstParam(params.projectId));
     const title = firstParam(params.title);
     const photoUri = firstParam(params.photoUri) ?? "";
     const audioUri = firstParam(params.audioUri) ?? "";
     const parsedTrimStart = Number(firstParam(params.trimStart));
     const parsedTrimEnd = Number(firstParam(params.trimEnd));
-    const trimStart = Number.isFinite(parsedTrimStart) ? parsedTrimStart : 0;
-    const trimEnd = Number.isFinite(parsedTrimEnd)
-      ? parsedTrimEnd
-      : trimStart + 30;
+    const [trimStart, trimEnd] = normalizeTrimBounds(parsedTrimStart, parsedTrimEnd);
     const aspectRatio =
       firstParam(params.aspectRatio) === "1:1" ? "1:1" : "9:16";
 
@@ -127,7 +138,7 @@ export default function RenderingScreen() {
           trimEnd,
           templateId: "spinning-cd",
         });
-        projectIdRef.current = projectId as string;
+        projectIdRef.current = projectId;
       } catch {
         // Non-fatal — project metadata save failure shouldn't block render
       }
@@ -160,7 +171,7 @@ export default function RenderingScreen() {
       if (projectIdRef.current) {
         try {
           await updateProject({
-            projectId: projectIdRef.current as never,
+            projectId: projectIdRef.current,
             templateId: "spinning-cd",
             aspectRatio,
             photoUri,
@@ -238,7 +249,8 @@ export default function RenderingScreen() {
 
   const gradientBorderWidth = animatedProgress.interpolate({
     inputRange: [0, 100],
-    outputRange: ["0%", "100%"],
+    outputRange: [0, PREVIEW_SIZE],
+    extrapolate: "clamp",
   });
 
   return (
@@ -294,9 +306,9 @@ export default function RenderingScreen() {
                 />
               </View>
               <View style={styles.previewInner}>
-                {params.photoUri ? (
+                {firstParam(params.photoUri) ? (
                   <Image
-                    source={{ uri: params.photoUri }}
+                    source={{ uri: firstParam(params.photoUri) }}
                     style={styles.previewImage}
                     resizeMode="cover"
                     accessibilityLabel="Video preview"
@@ -358,8 +370,8 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xl,
   },
   previewWrapper: {
-    width: 220,
-    height: 220,
+    width: PREVIEW_SIZE,
+    height: PREVIEW_SIZE,
     borderRadius: radius.lg + 4,
     padding: 3,
     overflow: "hidden",

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -18,6 +18,7 @@ import { api } from "../../convex/_generated/api";
 import type { Doc } from "../../convex/_generated/dataModel";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
 import type { EventName } from "@/lib/analytics";
+import { fileNameFromUri } from "@/lib/uri";
 
 type Project = Doc<"projects">;
 
@@ -30,10 +31,7 @@ function formatDate(timestamp: number) {
 }
 
 function mediaNameFromUri(uri?: string) {
-  if (!uri) return "";
-  const withoutQuery = uri.split("?")[0] ?? uri;
-  const rawName = withoutQuery.split("/").pop() ?? "";
-  return decodeURIComponent(rawName);
+  return fileNameFromUri(uri);
 }
 
 export default function HomeScreen() {
@@ -41,14 +39,7 @@ export default function HomeScreen() {
   const convex = useConvex();
   const posthog = usePostHog();
   const projectsQuery = useQuery(api.projects.listByUser);
-  const [projects, setProjects] = useState<Project[] | undefined>(undefined);
   const [refreshing, setRefreshing] = useState(false);
-
-  useEffect(() => {
-    if (projectsQuery !== undefined) {
-      setProjects(projectsQuery);
-    }
-  }, [projectsQuery]);
 
   const track = useCallback(
     (event: EventName, props?: Record<string, string>) => {
@@ -60,8 +51,7 @@ export default function HomeScreen() {
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      const latestProjects = await convex.query(api.projects.listByUser, {});
-      setProjects(latestProjects);
+      await convex.query(api.projects.listByUser, {});
     } finally {
       setRefreshing(false);
     }
@@ -89,8 +79,8 @@ export default function HomeScreen() {
     [router, track],
   );
 
-  const stableProjects = useMemo(() => projects ?? [], [projects]);
-  const isLoading = projectsQuery === undefined && projects === undefined;
+  const stableProjects = useMemo(() => projectsQuery ?? [], [projectsQuery]);
+  const isLoading = projectsQuery === undefined;
   const hasProjects = stableProjects.length > 0;
 
   const renderProjectCard = useCallback(

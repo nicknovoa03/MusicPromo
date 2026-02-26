@@ -1,6 +1,6 @@
 # Phase 0: Bootstrap
 
-```
+```text
 Project: MusicPromo
 Stack: React Native + Expo, Clerk, Convex, PostHog
 PRD: docs/requirements/PRODUCT_DESIGN_REQUIREMENTS.md
@@ -46,6 +46,8 @@ New dependencies needed:
 Environment variables (in .env):
 - EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY
 
+Security note: keep `.env` in `.gitignore`, commit a `.env.example` file with placeholder values, rotate keys when exposed, and prefer least-privilege secrets management for production.
+
 Reference: docs/design-inspiration/sign-in/note.txt (text notes — use Meta's Edits app as visual reference)
 
 ## Step 3 — Convex Backend
@@ -83,15 +85,17 @@ New dependencies needed:
 Build the bottom tab bar with 3 tabs:
 - app/(tabs)/_layout.tsx — tab navigator configuration
 - app/(tabs)/index.tsx — Home tab (placeholder for now, will become project history in Phase 1c)
-- app/(tabs)/create.tsx — Create tab (redirects to picker screen)
+- app/(tabs)/create.tsx — Create tab (immediately routes to /create/picker when tapped)
 - app/(tabs)/profile.tsx — Profile tab (placeholder, will be built out in Phase 2)
 
 Light theme for the tab bar. Icons from @expo/vector-icons (Ionicons).
 
-Create the create flow stack (empty screens for now):
+Create the create flow stack (empty screens for now). This stack is nested under the tab experience, not presented as a separate modal:
 - app/create/_layout.tsx — Stack navigator for the create flow
 - app/create/picker.tsx — placeholder
 - app/create/editor.tsx — placeholder
+
+Navigation behavior note: tabs -> nested create stack -> back returns to the tabs context.
 
 ## Step 6 — Design Tokens
 

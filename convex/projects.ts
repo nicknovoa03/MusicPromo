@@ -132,11 +132,10 @@ export const listByUser = query({
 
     if (!user) return [];
 
-    const projects = await ctx.db
+    return await ctx.db
       .query("projects")
-      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .withIndex("by_user_updated", (q) => q.eq("userId", user._id))
+      .order("desc")
       .collect();
-
-    return projects.sort((a, b) => b.updatedAt - a.updatedAt);
   },
 });

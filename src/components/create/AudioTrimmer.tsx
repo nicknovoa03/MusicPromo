@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback, useEffect } from "react";
+import { useRef, useState, useCallback, useEffect, useMemo } from "react";
 import {
   View,
   StyleSheet,
@@ -38,10 +38,15 @@ export function AudioTrimmer({
   const [layoutReady, setLayoutReady] = useState(false);
   const latestTrimRef = useRef({ startSec, endSec });
   const gestureStartRef = useRef({ startSec, endSec });
+  const onTrimChangeRef = useRef(onTrimChange);
 
   useEffect(() => {
     latestTrimRef.current = { startSec, endSec };
   }, [startSec, endSec]);
+
+  useEffect(() => {
+    onTrimChangeRef.current = onTrimChange;
+  }, [onTrimChange]);
 
   const onLayout = useCallback((e: LayoutChangeEvent) => {
     containerWidth.current = e.nativeEvent.layout.width;
@@ -100,10 +105,10 @@ export function AudioTrimmer({
         const { startSec: baseStart, endSec: baseEnd } = gestureStartRef.current;
         if (anchor === "start") {
           const [ns, ne] = clampTrim(baseStart + deltaSec, baseEnd, "start");
-          onTrimChange(ns, ne);
+          onTrimChangeRef.current(ns, ne);
         } else {
           const [ns, ne] = clampTrim(baseStart, baseEnd + deltaSec, "end");
-          onTrimChange(ns, ne);
+          onTrimChangeRef.current(ns, ne);
         }
       },
     });
@@ -114,6 +119,14 @@ export function AudioTrimmer({
   const trimmedDuration = endSec - startSec;
   const leftOffset = secToX(startSec);
   const selectedWidth = secToX(endSec) - leftOffset;
+  const waveHeights = useMemo(
+    () =>
+      Array.from(
+        { length: 30 },
+        (_, i) => 6 + Math.sin(i * 0.8) * 10 + Math.random() * 6,
+      ),
+    [durationSec],
+  );
 
   return (
     <View style={styles.wrapper}>
@@ -143,14 +156,12 @@ export function AudioTrimmer({
               </View>
 
               <View style={styles.waveformPlaceholder}>
-                {Array.from({ length: 30 }).map((_, i) => (
+                {waveHeights.map((height, i) => (
                   <View
                     key={i}
                     style={[
                       styles.waveBar,
-                      {
-                        height: 6 + Math.sin(i * 0.8) * 10 + Math.random() * 6,
-                      },
+                      { height },
                     ]}
                   />
                 ))}

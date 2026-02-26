@@ -12,7 +12,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { usePostHog } from "posthog-react-native";
-import * as FileSystem from "expo-file-system/legacy";
+import * as FileSystem from "expo-file-system";
+import { Audio } from "expo-av";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
 import { AudioTrimmer } from "@/components/create/AudioTrimmer";
 import {
@@ -20,10 +21,11 @@ import {
   type AspectRatio,
 } from "@/components/create/AspectRatioToggle";
 import type { EventName } from "@/lib/analytics";
+import { fileNameFromUri } from "@/lib/uri";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const PREVIEW_PADDING = spacing.xl * 2;
-const PLACEHOLDER_DURATION = 180;
+const FALLBACK_AUDIO_DURATION = 180;
 
 type MissingFilesState = {
   photo: boolean;
@@ -48,13 +50,6 @@ function parseAspectRatioParam(
   return firstParam(value) === "1:1" ? "1:1" : "9:16";
 }
 
-function fileNameFromUri(uri?: string) {
-  if (!uri) return "";
-  const withoutQuery = uri.split("?")[0] ?? uri;
-  const fileName = withoutQuery.split("/").pop() ?? "";
-  return decodeURIComponent(fileName);
-}
-
 async function isMissingFile(uri?: string) {
   if (!uri) return true;
   if (!uri.startsWith("file://")) return false;
@@ -65,6 +60,61 @@ async function isMissingFile(uri?: string) {
   } catch {
     return true;
   }
+}
+
+async function getAudioDurationSec(uri: string): Promise<number | null> {
+  let sound: Audio.Sound | null = null;
+  try {
+    const created = await Audio.Sound.createAsync(
+      { uri },
+      { shouldPlay: false },
+      undefined,
+      false,
+    );
+    sound = created.sound;
+    const status = await sound.getStatusAsync();
+    if (status.isLoaded && status.durationMillis) {
+      return status.durationMillis / 1000;
+    }
+    return null;
+  } catch {
+    return null;
+  } finally {
+    await sound?.unloadAsync();
+  }
+}
+
+function clampTrimRange(
+  start: number,
+  end: number,
+  durationSec: number,
+  minDuration: number,
+  maxDuration: number,
+): [number, number] {
+  const total = Number.isFinite(durationSec) ? Math.max(durationSec, 1) : 1;
+  const safeMin = Math.max(1, Math.min(minDuration, total));
+  const safeMax = Math.max(safeMin, Math.min(maxDuration, total));
+
+  let nextStart = Math.max(0, Math.min(start, total));
+  let nextEnd = Math.max(0, Math.min(end, total));
+
+  if (nextEnd <= nextStart) {
+    nextEnd = Math.min(nextStart + safeMin, total);
+  }
+
+  let span = nextEnd - nextStart;
+  if (span < safeMin) {
+    nextEnd = Math.min(nextStart + safeMin, total);
+    nextStart = Math.max(0, nextEnd - safeMin);
+    span = nextEnd - nextStart;
+  }
+
+  if (span > safeMax) {
+    nextEnd = Math.min(nextStart + safeMax, total);
+    nextStart = Math.max(0, nextEnd - safeMax);
+  }
+
+  return [nextStart, nextEnd];
 }
 
 export default function EditorScreen() {
@@ -100,6 +150,7 @@ export default function EditorScreen() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [trimStart, setTrimStart] = useState(initialTrimStart);
   const [trimEnd, setTrimEnd] = useState(initialTrimEnd);
+  const [audioDurationSec, setAudioDurationSec] = useState(FALLBACK_AUDIO_DURATION);
   const [missingFiles, setMissingFiles] = useState<MissingFilesState>({
     photo: false,
     audio: false,
@@ -143,6 +194,52 @@ export default function EditorScreen() {
     };
   }, [photoUri, audioUri]);
 
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function loadAudioDuration() {
+      if (!audioUri || missingFiles.audio) {
+        if (!isCancelled) setAudioDurationSec(FALLBACK_AUDIO_DURATION);
+        return;
+      }
+
+      const durationSec = await getAudioDurationSec(audioUri);
+      if (!isCancelled) {
+        setAudioDurationSec(
+          durationSec && Number.isFinite(durationSec) && durationSec > 0
+            ? durationSec
+            : FALLBACK_AUDIO_DURATION,
+        );
+      }
+    }
+
+    loadAudioDuration();
+    return () => {
+      isCancelled = true;
+    };
+  }, [audioUri, missingFiles.audio]);
+
+  const minTrimDuration = Math.min(15, Math.max(audioDurationSec, 1));
+  const maxTrimDuration = Math.min(60, Math.max(audioDurationSec, minTrimDuration));
+
+  useEffect(() => {
+    const [nextStart, nextEnd] = clampTrimRange(
+      trimStart,
+      trimEnd,
+      audioDurationSec,
+      minTrimDuration,
+      maxTrimDuration,
+    );
+    if (nextStart !== trimStart) setTrimStart(nextStart);
+    if (nextEnd !== trimEnd) setTrimEnd(nextEnd);
+  }, [
+    audioDurationSec,
+    minTrimDuration,
+    maxTrimDuration,
+    trimStart,
+    trimEnd,
+  ]);
+
   const previewAspect = aspectRatio === "9:16" ? 9 / 16 : 1;
   const previewWidth = Math.min(
     SCREEN_WIDTH - PREVIEW_PADDING,
@@ -151,11 +248,19 @@ export default function EditorScreen() {
   const previewHeight = previewWidth / previewAspect;
 
   const handleTrimChange = useCallback((start: number, end: number) => {
-    setTrimStart(start);
-    setTrimEnd(end);
-  }, []);
+    const [nextStart, nextEnd] = clampTrimRange(
+      start,
+      end,
+      audioDurationSec,
+      minTrimDuration,
+      maxTrimDuration,
+    );
+    setTrimStart(nextStart);
+    setTrimEnd(nextEnd);
+  }, [audioDurationSec, minTrimDuration, maxTrimDuration]);
 
   const handlePlayPause = useCallback(() => {
+    // TODO(phase-2): replace this placeholder with real audio preview playback state.
     setIsPlaying((prev) => !prev);
   }, []);
 
@@ -202,6 +307,13 @@ export default function EditorScreen() {
     if (!canExport) {
       return;
     }
+    const [safeTrimStart, safeTrimEnd] = clampTrimRange(
+      trimStart,
+      trimEnd,
+      audioDurationSec,
+      minTrimDuration,
+      maxTrimDuration,
+    );
 
     router.push({
       pathname: "/create/rendering",
@@ -210,8 +322,8 @@ export default function EditorScreen() {
         title: projectTitle,
         photoUri,
         audioUri,
-        trimStart: String(trimStart),
-        trimEnd: String(trimEnd),
+        trimStart: String(safeTrimStart),
+        trimEnd: String(safeTrimEnd),
         aspectRatio,
       },
     });
@@ -224,6 +336,9 @@ export default function EditorScreen() {
     audioUri,
     trimStart,
     trimEnd,
+    audioDurationSec,
+    minTrimDuration,
+    maxTrimDuration,
     aspectRatio,
   ]);
 
@@ -335,6 +450,7 @@ export default function EditorScreen() {
         </Pressable>
 
         <Text style={styles.timestamp}>
+          {/* TODO(phase-2): sync this timestamp to real audio playback position. */}
           0:00 / {Math.floor(trimmedDuration / 60)}:
           {String(Math.floor(trimmedDuration % 60)).padStart(2, "0")}
         </Text>
@@ -389,12 +505,12 @@ export default function EditorScreen() {
       <View style={styles.trimmerSection}>
         <Text style={styles.sectionLabel}>Trim Audio</Text>
         <AudioTrimmer
-          durationSec={PLACEHOLDER_DURATION}
+          durationSec={audioDurationSec}
           startSec={trimStart}
           endSec={trimEnd}
           onTrimChange={handleTrimChange}
-          minDuration={15}
-          maxDuration={60}
+          minDuration={minTrimDuration}
+          maxDuration={maxTrimDuration}
         />
       </View>
     </SafeAreaView>

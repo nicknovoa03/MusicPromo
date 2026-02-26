@@ -12,8 +12,8 @@ export function TrimHandle({ side }: TrimHandleProps) {
         styles.handle,
         side === "left" ? styles.handleLeft : styles.handleRight,
       ]}
-      accessibilityLabel={`${side} trim handle`}
-      accessibilityRole="adjustable"
+      accessible={false}
+      importantForAccessibility="no-hide-descendants"
     >
       <View style={styles.grip} />
     </View>

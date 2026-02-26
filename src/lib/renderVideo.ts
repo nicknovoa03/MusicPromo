@@ -19,6 +19,7 @@ type FFmpegSession = import("ffmpeg-kit-react-native").FFmpegSession;
 type Statistics = import("ffmpeg-kit-react-native").Statistics;
 let ffmpegModule: FFmpegKitModule | null = null;
 let activeRenderSessionId: number | null = null;
+let activeRenderToken: symbol | null = null;
 
 async function getFFmpegKit(): Promise<FFmpegKitModule> {
   if (isExpoGo()) {
@@ -47,18 +48,24 @@ const OUTPUT_DIMENSIONS = {
 const FPS = 30;
 const SPIN_SPEED = "2*PI*t/4"; // full rotation every 4 seconds
 
+function quoteFfmpegArg(value: string): string {
+  return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+}
+
 export async function cancelCurrentRender() {
   try {
     const { FFmpegKit } = await getFFmpegKit();
-    if (activeRenderSessionId !== null) {
-      await FFmpegKit.cancel(activeRenderSessionId);
+    if (activeRenderSessionId === null) {
+      activeRenderToken = null;
+      return;
     } else {
-      await FFmpegKit.cancel();
+      await FFmpegKit.cancel(activeRenderSessionId);
     }
   } catch {
     // Ignore cancellation failures.
   } finally {
     activeRenderSessionId = null;
+    activeRenderToken = null;
   }
 }
 
@@ -68,9 +75,26 @@ export async function renderSpinningCdVideo(
   const { photoUri, audioUri, trimStart, trimEnd, aspectRatio, onProgress } =
     options;
 
+  if (!Number.isFinite(trimStart) || !Number.isFinite(trimEnd)) {
+    throw new Error("Invalid trim range.");
+  }
+
+  const trimStartSec = Math.max(0, trimStart);
+  const trimEndSec = trimEnd;
+  if (trimEndSec <= trimStartSec) {
+    throw new Error("Invalid trim range.");
+  }
+
   const { width, height } = OUTPUT_DIMENSIONS[aspectRatio];
-  const duration = trimEnd - trimStart;
-  const totalFrames = duration * FPS;
+  const duration = Math.max(trimEndSec - trimStartSec, 1 / FPS);
+  const totalFrames = Math.max(Math.round(duration * FPS), 1);
+
+  if (activeRenderToken !== null) {
+    throw new Error("A video render is already in progress.");
+  }
+
+  const renderToken = Symbol("render");
+  activeRenderToken = renderToken;
 
   const cdSize = Math.round(Math.min(width, height) * 0.45);
   const cdRadius = Math.round(cdSize / 2);
@@ -123,13 +147,13 @@ export async function renderSpinningCdVideo(
     "-loop",
     "1",
     "-i",
-    `"${photoUri}"`,
+    quoteFfmpegArg(photoUri),
     "-ss",
-    String(trimStart),
+    String(trimStartSec),
     "-t",
     String(duration),
     "-i",
-    `"${audioUri}"`,
+    quoteFfmpegArg(audioUri),
     "-filter_complex",
     `"${filterComplex}"`,
     "-map",
@@ -149,22 +173,36 @@ export async function renderSpinningCdVideo(
     "-t",
     String(duration),
     "-shortest",
-    `"${outputPath}"`,
+    quoteFfmpegArg(outputPath),
   ].join(" ");
 
-  const { FFmpegKit, ReturnCode } = await getFFmpegKit();
-
   let statisticsCallback: ((stats: Statistics) => void) | undefined;
+  let sessionId: number | null = null;
 
   if (onProgress) {
     statisticsCallback = (stats: Statistics) => {
+      if (
+        sessionId === null ||
+        activeRenderToken !== renderToken ||
+        activeRenderSessionId !== sessionId
+      ) {
+        return;
+      }
       const frame = stats.getVideoFrameNumber();
-      const percent = Math.min(Math.round((frame / totalFrames) * 100), 99);
+      if (!Number.isFinite(frame) || totalFrames <= 0) {
+        return;
+      }
+      const percent = Math.max(
+        0,
+        Math.min(Math.round((frame / totalFrames) * 100), 99),
+      );
       onProgress(percent);
     };
   }
 
   try {
+    const { FFmpegKit, ReturnCode } = await getFFmpegKit();
+
     let resolveCompletedSession: ((session: FFmpegSession) => void) | undefined;
     const completedSessionPromise = new Promise<FFmpegSession>((resolve) => {
       resolveCompletedSession = resolve;
@@ -178,7 +216,13 @@ export async function renderSpinningCdVideo(
       undefined,
       statisticsCallback,
     );
-    activeRenderSessionId = session.getSessionId();
+    sessionId = session.getSessionId();
+    activeRenderSessionId = sessionId;
+
+    if (activeRenderToken !== renderToken) {
+      await FFmpegKit.cancel(sessionId);
+      throw new Error("Rendering was canceled.");
+    }
 
     const completedSession = await completedSessionPromise;
     const returnCode = await completedSession.getReturnCode();
@@ -193,10 +237,14 @@ export async function renderSpinningCdVideo(
     }
 
     const logs = await completedSession.getLogsAsString();
-    throw new Error(
-      `FFmpeg rendering failed (code ${returnCode}): ${logs.slice(-500)}`,
-    );
+    if (__DEV__) {
+      console.error("[renderSpinningCdVideo] FFmpeg failure:", logs);
+    }
+    throw new Error(`FFmpeg rendering failed (code ${returnCode}).`);
   } finally {
-    activeRenderSessionId = null;
+    if (activeRenderToken === renderToken) {
+      activeRenderSessionId = null;
+      activeRenderToken = null;
+    }
   }
 }

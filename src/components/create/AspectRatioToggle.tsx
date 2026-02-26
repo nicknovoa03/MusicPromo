@@ -72,14 +72,14 @@ const styles = StyleSheet.create({
     height: 12,
   },
   previewActive: {
-    borderColor: "#FFFFFF",
+    borderColor: colors.dark.text,
   },
   label: {
     ...typography.caption,
     color: colors.dark.textSecondary,
   },
   labelActive: {
-    color: "#FFFFFF",
+    color: colors.dark.text,
     fontWeight: "600",
   },
 });

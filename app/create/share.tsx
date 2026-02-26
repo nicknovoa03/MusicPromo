@@ -32,7 +32,9 @@ export default function ShareScreen() {
   const posterUri = firstParam(params.posterUri) ?? "";
 
   const [savedToRoll, setSavedToRoll] = useState(false);
-  const [saveError, setSaveError] = useState(false);
+  const [saveError, setSaveError] = useState<"permission" | "failed" | null>(
+    null,
+  );
 
   const track = useCallback(
     (event: EventName, props?: Record<string, string>) => {
@@ -47,21 +49,26 @@ export default function ShareScreen() {
       try {
         const { status } = await MediaLibrary.requestPermissionsAsync();
         if (status !== "granted") {
-          setSaveError(true);
+          setSaveError("permission");
           return;
         }
         await MediaLibrary.saveToLibraryAsync(videoUri);
         setSavedToRoll(true);
+        setSaveError(null);
         track("video_saved_to_camera_roll");
       } catch {
-        setSaveError(true);
+        setSaveError("failed");
       }
     }
     saveVideo();
   }, [videoUri, track]);
 
-  const handleShareInstagram = useCallback(async () => {
-    track("share_tapped_instagram");
+  const handleShare = useCallback(async (platform: "instagram" | "tiktok") => {
+    track(
+      platform === "instagram"
+        ? "share_tapped_instagram"
+        : "share_tapped_tiktok",
+    );
     try {
       const isAvailable = await Sharing.isAvailableAsync();
       if (!isAvailable) {
@@ -77,22 +84,13 @@ export default function ShareScreen() {
     }
   }, [videoUri, track]);
 
-  const handleShareTikTok = useCallback(async () => {
-    track("share_tapped_tiktok");
-    try {
-      const isAvailable = await Sharing.isAvailableAsync();
-      if (!isAvailable) {
-        Alert.alert("Sharing not available", "Sharing is not supported on this device.");
-        return;
-      }
-      await Sharing.shareAsync(videoUri, {
-        mimeType: "video/mp4",
-        UTI: "public.movie",
-      });
-    } catch {
-      Alert.alert("Share failed", "Could not open sharing. Please try again.");
-    }
-  }, [videoUri, track]);
+  const handleShareInstagram = useCallback(() => {
+    void handleShare("instagram");
+  }, [handleShare]);
+
+  const handleShareTikTok = useCallback(() => {
+    void handleShare("tiktok");
+  }, [handleShare]);
 
   const handleDone = useCallback(() => {
     router.dismissAll();
@@ -131,7 +129,19 @@ export default function ShareScreen() {
             </Text>
           </View>
         )}
-        {saveError && (
+        {saveError === "permission" && (
+          <View style={styles.savedBadge}>
+            <Ionicons
+              name="alert-circle"
+              size={18}
+              color={colors.accent.warning}
+            />
+            <Text style={styles.savedText}>
+              Permission denied. Grant Photos access in Settings.
+            </Text>
+          </View>
+        )}
+        {saveError === "failed" && (
           <View style={styles.savedBadge}>
             <Ionicons
               name="alert-circle"

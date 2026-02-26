@@ -3,10 +3,14 @@
  * Run this from a dev button or console to verify ffmpeg-kit works
  * with Expo SDK 54 / RN 0.81 / New Architecture.
  *
- * Delete this file after the spike succeeds.
+ * TODO(gh-issue): move/delete this spike before production release.
  */
 import { Paths, File } from "expo-file-system";
 import { FFmpegKit, ReturnCode } from "ffmpeg-kit-react-native";
+
+function quoteFfmpegArg(value: string): string {
+  return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+}
 
 export async function runFfmpegSpike(
   imageUri: string,
@@ -19,9 +23,9 @@ export async function runFfmpegSpike(
     "-loop",
     "1",
     "-i",
-    imageUri,
+    quoteFfmpegArg(imageUri),
     "-i",
-    audioUri,
+    quoteFfmpegArg(audioUri),
     "-c:v",
     "mpeg4",
     "-b:v",
@@ -35,7 +39,7 @@ export async function runFfmpegSpike(
     "-pix_fmt",
     "yuv420p",
     "-shortest",
-    outputPath,
+    quoteFfmpegArg(outputPath),
   ].join(" ");
 
   console.log("[FFmpeg Spike] Running command:", cmd);

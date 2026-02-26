@@ -33,7 +33,9 @@ export default defineSchema({
     status: v.union(v.literal("draft"), v.literal("exported")),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index("by_user", ["userId"]),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_updated", ["userId", "updatedAt"]),
 
   templates: defineTable({
     name: v.string(),

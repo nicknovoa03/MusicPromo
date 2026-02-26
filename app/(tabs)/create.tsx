@@ -1,6 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useCallback } from "react";
 import { View, StyleSheet, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import { usePostHog } from "posthog-react-native";
 import { colors } from "@/constants/tokens";
 import type { EventName } from "@/lib/analytics";
@@ -8,14 +9,13 @@ import type { EventName } from "@/lib/analytics";
 export default function CreateScreen() {
   const router = useRouter();
   const posthog = usePostHog();
-  const didNavigate = useRef(false);
 
-  useEffect(() => {
-    if (didNavigate.current) return;
-    didNavigate.current = true;
-    posthog?.capture("create_started" satisfies EventName);
-    router.push("/create/picker" as const);
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      posthog?.capture("create_started" satisfies EventName);
+      router.replace("/create/picker" as const);
+    }, [posthog, router]),
+  );
 
   return (
     <View style={styles.container}>
