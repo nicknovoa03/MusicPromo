@@ -6,8 +6,11 @@ const createTokenCache = (): TokenCache => ({
     try {
       const item = await SecureStore.getItemAsync(key);
       return item;
-    } catch {
-      await SecureStore.deleteItemAsync(key);
+    } catch (error) {
+      console.warn(`Failed to retrieve token for key "${key}":`, error);
+      try {
+        await SecureStore.deleteItemAsync(key);
+      } catch {}
       return null;
     }
   },

@@ -7,7 +7,10 @@ import { StatusBar } from "expo-status-bar";
 import { tokenCache } from "@/lib/clerk";
 import { convex } from "@/lib/convex";
 
-const clerkPublishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!;
+const clerkPublishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
+if (!clerkPublishableKey) {
+  throw new Error("Missing EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY");
+}
 const posthogApiKey = process.env.EXPO_PUBLIC_POSTHOG_API_KEY;
 const posthogHost = process.env.EXPO_PUBLIC_POSTHOG_HOST;
 
