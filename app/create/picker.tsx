@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
@@ -26,15 +26,39 @@ interface MediaSelection {
   audioName: string | null;
 }
 
+function firstParam(param: string | string[] | undefined) {
+  return Array.isArray(param) ? param[0] : param;
+}
+
 export default function PickerScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{
+    projectId?: string;
+    title?: string;
+    photoUri?: string;
+    photoName?: string;
+    audioUri?: string;
+    audioName?: string;
+    aspectRatio?: "9:16" | "1:1";
+    trimStart?: string;
+    trimEnd?: string;
+    initialTab?: Tab;
+  }>();
   const posthog = usePostHog();
-  const [activeTab, setActiveTab] = useState<Tab>("photo");
+  const projectId = firstParam(params.projectId);
+  const title = firstParam(params.title);
+  const aspectRatio = firstParam(params.aspectRatio);
+  const trimStart = firstParam(params.trimStart);
+  const trimEnd = firstParam(params.trimEnd);
+  const initialTab =
+    firstParam(params.initialTab) === "audio" ? "audio" : "photo";
+
+  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
   const [media, setMedia] = useState<MediaSelection>({
-    photoUri: null,
-    photoName: null,
-    audioUri: null,
-    audioName: null,
+    photoUri: firstParam(params.photoUri) || null,
+    photoName: firstParam(params.photoName) || null,
+    audioUri: firstParam(params.audioUri) || null,
+    audioName: firstParam(params.audioName) || null,
   });
   const [loading, setLoading] = useState(false);
 
@@ -115,17 +139,34 @@ export default function PickerScreen() {
     }
 
     if (media.photoUri && media.audioUri) {
+      const nextParams: Record<string, string> = {
+        photoUri: media.photoUri,
+        photoName: media.photoName ?? "Photo",
+        audioUri: media.audioUri,
+        audioName: media.audioName ?? "Audio",
+      };
+
+      if (projectId) nextParams.projectId = projectId;
+      if (title) nextParams.title = title;
+      if (aspectRatio) nextParams.aspectRatio = aspectRatio;
+      if (trimStart) nextParams.trimStart = trimStart;
+      if (trimEnd) nextParams.trimEnd = trimEnd;
+
       router.push({
         pathname: "/create/editor" as const,
-        params: {
-          photoUri: media.photoUri,
-          photoName: media.photoName ?? "Photo",
-          audioUri: media.audioUri,
-          audioName: media.audioName ?? "Audio",
-        },
+        params: nextParams,
       });
     }
-  }, [activeTab, media, router]);
+  }, [
+    activeTab,
+    media,
+    router,
+    projectId,
+    title,
+    aspectRatio,
+    trimStart,
+    trimEnd,
+  ]);
 
   const canAdd = activeTab === "photo" ? !!media.photoUri : !!media.audioUri;
   const bothSelected = !!media.photoUri && !!media.audioUri;

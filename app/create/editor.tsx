@@ -6,15 +6,15 @@ import {
   Pressable,
   Image,
   Dimensions,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { usePostHog } from "posthog-react-native";
+import * as FileSystem from "expo-file-system/legacy";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
-import {
-  AudioTrimmer,
-} from "@/components/create/AudioTrimmer";
+import { AudioTrimmer } from "@/components/create/AudioTrimmer";
 import {
   AspectRatioToggle,
   type AspectRatio,
@@ -23,23 +23,88 @@ import type { EventName } from "@/lib/analytics";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const PREVIEW_PADDING = spacing.xl * 2;
-
 const PLACEHOLDER_DURATION = 180;
+
+type MissingFilesState = {
+  photo: boolean;
+  audio: boolean;
+};
+
+function firstParam(param: string | string[] | undefined) {
+  return Array.isArray(param) ? param[0] : param;
+}
+
+function parseNumberParam(
+  value: string | string[] | undefined,
+  fallback: number,
+) {
+  const parsed = Number(firstParam(value));
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function parseAspectRatioParam(
+  value: string | string[] | undefined,
+): AspectRatio {
+  return firstParam(value) === "1:1" ? "1:1" : "9:16";
+}
+
+function fileNameFromUri(uri?: string) {
+  if (!uri) return "";
+  const withoutQuery = uri.split("?")[0] ?? uri;
+  const fileName = withoutQuery.split("/").pop() ?? "";
+  return decodeURIComponent(fileName);
+}
+
+async function isMissingFile(uri?: string) {
+  if (!uri) return true;
+  if (!uri.startsWith("file://")) return false;
+
+  try {
+    const info = await FileSystem.getInfoAsync(uri);
+    return !info.exists;
+  } catch {
+    return true;
+  }
+}
 
 export default function EditorScreen() {
   const router = useRouter();
   const posthog = usePostHog();
   const params = useLocalSearchParams<{
-    photoUri: string;
-    photoName: string;
-    audioUri: string;
-    audioName: string;
+    projectId?: string;
+    title?: string;
+    photoUri?: string;
+    photoName?: string;
+    audioUri?: string;
+    audioName?: string;
+    aspectRatio?: AspectRatio;
+    trimStart?: string;
+    trimEnd?: string;
   }>();
 
-  const [aspectRatio, setAspectRatio] = useState<AspectRatio>("9:16");
+  const projectId = firstParam(params.projectId);
+  const projectTitle = firstParam(params.title)?.trim() || "New Project";
+  const photoUri = firstParam(params.photoUri) ?? "";
+  const audioUri = firstParam(params.audioUri) ?? "";
+  const photoName = firstParam(params.photoName) || fileNameFromUri(photoUri) || "Photo";
+  const audioName = firstParam(params.audioName) || fileNameFromUri(audioUri) || "Audio";
+  const initialAspectRatio = parseAspectRatioParam(params.aspectRatio);
+  const initialTrimStart = parseNumberParam(params.trimStart, 0);
+  const initialTrimEndRaw = parseNumberParam(params.trimEnd, 30);
+  const initialTrimEnd =
+    initialTrimEndRaw > initialTrimStart
+      ? initialTrimEndRaw
+      : initialTrimStart + 30;
+
+  const [aspectRatio, setAspectRatio] = useState<AspectRatio>(initialAspectRatio);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [trimStart, setTrimStart] = useState(0);
-  const [trimEnd, setTrimEnd] = useState(30);
+  const [trimStart, setTrimStart] = useState(initialTrimStart);
+  const [trimEnd, setTrimEnd] = useState(initialTrimEnd);
+  const [missingFiles, setMissingFiles] = useState<MissingFilesState>({
+    photo: false,
+    audio: false,
+  });
+  const [isCheckingFiles, setIsCheckingFiles] = useState(true);
 
   const track = useCallback(
     (event: EventName, props?: Record<string, string>) => {
@@ -50,10 +115,33 @@ export default function EditorScreen() {
 
   useEffect(() => {
     track("preview_viewed", {
-      hasPhoto: String(!!params.photoUri),
-      hasAudio: String(!!params.audioUri),
+      hasPhoto: String(!!photoUri),
+      hasAudio: String(!!audioUri),
+      reopened: String(!!projectId),
     });
-  }, []);
+  }, [audioUri, photoUri, projectId, track]);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function checkFiles() {
+      setIsCheckingFiles(true);
+      const [photoMissing, audioMissing] = await Promise.all([
+        isMissingFile(photoUri),
+        isMissingFile(audioUri),
+      ]);
+
+      if (!isCancelled) {
+        setMissingFiles({ photo: photoMissing, audio: audioMissing });
+        setIsCheckingFiles(false);
+      }
+    }
+
+    checkFiles();
+    return () => {
+      isCancelled = true;
+    };
+  }, [photoUri, audioUri]);
 
   const previewAspect = aspectRatio === "9:16" ? 9 / 16 : 1;
   const previewWidth = Math.min(
@@ -71,32 +159,88 @@ export default function EditorScreen() {
     setIsPlaying((prev) => !prev);
   }, []);
 
-  const handleSwapPhoto = useCallback(() => {
-    router.back();
-  }, [router]);
+  const handleSwapMedia = useCallback(
+    (initialTab: "photo" | "audio") => {
+      router.push({
+        pathname: "/create/picker",
+        params: {
+          projectId: projectId ?? "",
+          title: projectTitle,
+          photoUri,
+          photoName,
+          audioUri,
+          audioName,
+          aspectRatio,
+          trimStart: String(trimStart),
+          trimEnd: String(trimEnd),
+          initialTab,
+        },
+      });
+    },
+    [
+      router,
+      projectId,
+      projectTitle,
+      photoUri,
+      photoName,
+      audioUri,
+      audioName,
+      aspectRatio,
+      trimStart,
+      trimEnd,
+    ],
+  );
 
-  const handleSwapAudio = useCallback(() => {
-    router.back();
-  }, [router]);
+  const canExport =
+    !!photoUri &&
+    !!audioUri &&
+    !missingFiles.photo &&
+    !missingFiles.audio &&
+    !isCheckingFiles;
 
   const handleExport = useCallback(() => {
+    if (!canExport) {
+      return;
+    }
+
     router.push({
       pathname: "/create/rendering",
       params: {
-        photoUri: params.photoUri,
-        audioUri: params.audioUri,
+        projectId: projectId ?? "",
+        title: projectTitle,
+        photoUri,
+        audioUri,
         trimStart: String(trimStart),
         trimEnd: String(trimEnd),
         aspectRatio,
       },
     });
-  }, [router, params.photoUri, params.audioUri, trimStart, trimEnd, aspectRatio]);
+  }, [
+    canExport,
+    router,
+    projectId,
+    projectTitle,
+    photoUri,
+    audioUri,
+    trimStart,
+    trimEnd,
+    aspectRatio,
+  ]);
 
-  const trimmedDuration = trimEnd - trimStart;
+  const trimmedDuration = Math.max(0, trimEnd - trimStart);
+  const showMissingNotice = !isCheckingFiles && (missingFiles.photo || missingFiles.audio);
+
+  let missingMessage = "The original files may have been moved or deleted. Replace missing files to continue.";
+  if (missingFiles.photo && !missingFiles.audio) {
+    missingMessage =
+      "The original photo is no longer available on this device. Replace it to continue.";
+  } else if (!missingFiles.photo && missingFiles.audio) {
+    missingMessage =
+      "The original audio file is no longer available on this device. Replace it to continue.";
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
-      {/* Header */}
       <View style={styles.header}>
         <Pressable
           onPress={() => router.back()}
@@ -108,23 +252,43 @@ export default function EditorScreen() {
         </Pressable>
 
         <Text style={styles.headerTitle} numberOfLines={1}>
-          New Project
+          {projectTitle}
         </Text>
 
         <Pressable
           onPress={handleExport}
           style={({ pressed }) => [
             styles.exportButton,
-            pressed && styles.exportButtonPressed,
+            !canExport && styles.exportButtonDisabled,
+            pressed && canExport && styles.exportButtonPressed,
           ]}
+          disabled={!canExport}
           accessibilityLabel="Export video"
           accessibilityRole="button"
+          accessibilityState={{ disabled: !canExport }}
         >
-          <Text style={styles.exportText}>Export</Text>
+          {isCheckingFiles ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+            <Text style={styles.exportText}>Export</Text>
+          )}
         </Pressable>
       </View>
 
-      {/* Preview area */}
+      {showMissingNotice && (
+        <View style={styles.missingNotice}>
+          <Ionicons
+            name="warning-outline"
+            size={18}
+            color={colors.accent.warning}
+          />
+          <View style={styles.missingNoticeTextWrap}>
+            <Text style={styles.missingNoticeTitle}>Files not found</Text>
+            <Text style={styles.missingNoticeText}>{missingMessage}</Text>
+          </View>
+        </View>
+      )}
+
       <View style={styles.previewContainer}>
         <View
           style={[
@@ -132,9 +296,9 @@ export default function EditorScreen() {
             { width: previewWidth, height: previewHeight },
           ]}
         >
-          {params.photoUri ? (
+          {photoUri && !missingFiles.photo ? (
             <Image
-              source={{ uri: params.photoUri }}
+              source={{ uri: photoUri }}
               style={styles.previewImage}
               resizeMode="cover"
               accessibilityLabel="Photo preview"
@@ -147,7 +311,6 @@ export default function EditorScreen() {
             />
           )}
 
-          {/* Spinning CD overlay placeholder */}
           <View style={styles.cdOverlay}>
             <View style={styles.cdRing}>
               <View style={styles.cdCenter} />
@@ -157,7 +320,6 @@ export default function EditorScreen() {
         </View>
       </View>
 
-      {/* Playback controls */}
       <View style={styles.controls}>
         <Pressable
           onPress={handlePlayPause}
@@ -180,21 +342,20 @@ export default function EditorScreen() {
         <AspectRatioToggle value={aspectRatio} onChange={setAspectRatio} />
       </View>
 
-      {/* Media chips — allow swapping */}
       <View style={styles.mediaChips}>
         <Pressable
-          style={styles.chip}
-          onPress={handleSwapPhoto}
-          accessibilityLabel={`Photo: ${params.photoName}. Tap to change.`}
+          style={[styles.chip, missingFiles.photo && styles.chipMissing]}
+          onPress={() => handleSwapMedia("photo")}
+          accessibilityLabel={`Photo: ${photoName}. Tap to change.`}
           accessibilityRole="button"
         >
           <Ionicons
-            name="image"
+            name={missingFiles.photo ? "warning" : "image"}
             size={16}
-            color={colors.accent.primary}
+            color={missingFiles.photo ? colors.accent.warning : colors.accent.primary}
           />
           <Text style={styles.chipText} numberOfLines={1}>
-            {params.photoName ?? "Photo"}
+            {photoName}
           </Text>
           <Ionicons
             name="swap-horizontal"
@@ -204,18 +365,18 @@ export default function EditorScreen() {
         </Pressable>
 
         <Pressable
-          style={styles.chip}
-          onPress={handleSwapAudio}
-          accessibilityLabel={`Audio: ${params.audioName}. Tap to change.`}
+          style={[styles.chip, missingFiles.audio && styles.chipMissing]}
+          onPress={() => handleSwapMedia("audio")}
+          accessibilityLabel={`Audio: ${audioName}. Tap to change.`}
           accessibilityRole="button"
         >
           <Ionicons
-            name="musical-note"
+            name={missingFiles.audio ? "warning" : "musical-note"}
             size={16}
-            color={colors.accent.primary}
+            color={missingFiles.audio ? colors.accent.warning : colors.accent.primary}
           />
           <Text style={styles.chipText} numberOfLines={1}>
-            {params.audioName ?? "Audio"}
+            {audioName}
           </Text>
           <Ionicons
             name="swap-horizontal"
@@ -225,7 +386,6 @@ export default function EditorScreen() {
         </Pressable>
       </View>
 
-      {/* Audio trimmer */}
       <View style={styles.trimmerSection}>
         <Text style={styles.sectionLabel}>Trim Audio</Text>
         <AudioTrimmer
@@ -270,10 +430,16 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.sm,
   },
   exportButton: {
+    minWidth: 84,
+    alignItems: "center",
+    justifyContent: "center",
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
     borderRadius: radius.full,
     backgroundColor: colors.accent.primary,
+  },
+  exportButtonDisabled: {
+    opacity: 0.45,
   },
   exportButtonPressed: {
     opacity: 0.8,
@@ -283,6 +449,34 @@ const styles = StyleSheet.create({
     ...typography.caption,
     fontWeight: "700",
     color: "#FFFFFF",
+  },
+  missingNotice: {
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: "rgba(255,149,0,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(255,149,0,0.35)",
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.sm,
+  },
+  missingNoticeTextWrap: {
+    flex: 1,
+    gap: 2,
+  },
+  missingNoticeTitle: {
+    ...typography.caption,
+    color: colors.accent.warning,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  missingNoticeText: {
+    ...typography.caption,
+    color: colors.dark.textSecondary,
+    lineHeight: 18,
   },
   previewContainer: {
     flex: 1,
@@ -360,6 +554,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     borderRadius: radius.full,
     backgroundColor: colors.dark.surface,
+  },
+  chipMissing: {
+    borderWidth: 1,
+    borderColor: "rgba(255,149,0,0.5)",
   },
   chipText: {
     ...typography.caption,

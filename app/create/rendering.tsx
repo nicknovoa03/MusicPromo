@@ -20,10 +20,16 @@ import type { EventName } from "@/lib/analytics";
 
 type RenderState = "rendering" | "complete" | "error";
 
+function firstParam(param: string | string[] | undefined) {
+  return Array.isArray(param) ? param[0] : param;
+}
+
 export default function RenderingScreen() {
   const router = useRouter();
   const posthog = usePostHog();
   const params = useLocalSearchParams<{
+    projectId?: string;
+    title?: string;
     photoUri: string;
     audioUri: string;
     trimStart: string;
@@ -33,6 +39,7 @@ export default function RenderingScreen() {
 
   const createProject = useMutation(api.projects.create);
   const markExported = useMutation(api.projects.markExported);
+  const updateProject = useMutation(api.projects.update);
 
   const [progress, setProgress] = useState(0);
   const [renderState, setRenderState] = useState<RenderState>("rendering");
@@ -52,30 +59,43 @@ export default function RenderingScreen() {
     if (hasStarted.current) return;
     hasStarted.current = true;
 
-    track("video_export_started", { aspectRatio: params.aspectRatio });
+    const existingProjectId = firstParam(params.projectId);
+    const title = firstParam(params.title);
+    const photoUri = firstParam(params.photoUri) ?? "";
+    const audioUri = firstParam(params.audioUri) ?? "";
+    const trimStart = Number(firstParam(params.trimStart));
+    const trimEnd = Number(firstParam(params.trimEnd));
+    const aspectRatio =
+      firstParam(params.aspectRatio) === "1:1" ? "1:1" : "9:16";
 
-    try {
-      const projectId = await createProject({
-        title: "New Project",
-        aspectRatio: (params.aspectRatio as "9:16" | "1:1") ?? "9:16",
-        photoUri: params.photoUri,
-        audioUri: params.audioUri,
-        trimStart: Number(params.trimStart),
-        trimEnd: Number(params.trimEnd),
-        templateId: "spinning-cd",
-      });
-      projectIdRef.current = projectId as string;
-    } catch {
-      // Non-fatal — project metadata save failure shouldn't block render
+    track("video_export_started", { aspectRatio });
+
+    if (existingProjectId) {
+      projectIdRef.current = existingProjectId;
+    } else {
+      try {
+        const projectId = await createProject({
+          title: title?.trim() || "New Project",
+          aspectRatio,
+          photoUri,
+          audioUri,
+          trimStart,
+          trimEnd,
+          templateId: "spinning-cd",
+        });
+        projectIdRef.current = projectId as string;
+      } catch {
+        // Non-fatal — project metadata save failure shouldn't block render
+      }
     }
 
     try {
       const videoUri = await renderSpinningCdVideo({
-        photoUri: params.photoUri,
-        audioUri: params.audioUri,
-        trimStart: Number(params.trimStart),
-        trimEnd: Number(params.trimEnd),
-        aspectRatio: (params.aspectRatio as "9:16" | "1:1") ?? "9:16",
+        photoUri,
+        audioUri,
+        trimStart,
+        trimEnd,
+        aspectRatio,
         onProgress: (percent) => {
           setProgress(percent);
           Animated.timing(animatedProgress, {
@@ -92,10 +112,24 @@ export default function RenderingScreen() {
 
       if (projectIdRef.current) {
         try {
-          await markExported({
-            projectId: projectIdRef.current as never,
-            exportedVideoUri: videoUri,
-          });
+          if (existingProjectId) {
+            await updateProject({
+              projectId: projectIdRef.current as never,
+              templateId: "spinning-cd",
+              aspectRatio,
+              photoUri,
+              audioUri,
+              trimStart,
+              trimEnd,
+              exportedVideoUri: videoUri,
+              status: "exported",
+            });
+          } else {
+            await markExported({
+              projectId: projectIdRef.current as never,
+              exportedVideoUri: videoUri,
+            });
+          }
         } catch {
           // Non-fatal
         }
@@ -116,6 +150,7 @@ export default function RenderingScreen() {
     params,
     createProject,
     markExported,
+    updateProject,
     track,
     router,
     animatedProgress,

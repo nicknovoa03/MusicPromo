@@ -79,6 +79,9 @@
 - 2026-02-25: **ffmpeg-kit-react-native + @config-plugins v11 for video rendering** → Single FFmpeg command handles spinning CD rotation, audio trimming, and MP4 encoding. Original ffmpeg-kit was retired/archived Jan-Apr 2025 but the Expo config plugin v11 (June 2025) bundles working binaries for SDK 53+. Alternatives evaluated and rejected: react-native-skia-video (beta, no audio support), expo-image-sequence-encoder (no audio muxing), @sheehanmunim/react-native-ffmpeg (wraps same retired lib, less transparent). If ffmpeg-kit fails at runtime, fallback is expo-image-sequence-encoder for frames + native audio mux module.
 - 2026-02-25: **No expo-task-manager for background rendering** → FFmpeg-kit runs on a native thread that survives JS backgrounding. expo-task-manager is designed for periodic short tasks (location, fetch), not long-running processes. "Please don't close the app" messaging is sufficient. OS will only kill the process if the user force-quits.
 - 2026-02-25: **expo-sharing for Instagram/TikTok share** → Uses the native share sheet which routes to the correct app. Direct API posting rejected (TOS complexity, requires app review from platforms).
+- 2026-02-26: **Project History uses a 2-column FlatList with reactive `listByUser` + pull-to-refresh** → Meets v1 UX quickly while keeping data fresh. Cursor pagination is intentionally deferred with a TODO for when list size grows.
+- 2026-02-26: **Re-export updates existing project records instead of creating duplicates** → Added `projects.update` mutation for ownership-checked patching of media/settings/export metadata on re-export.
+- 2026-02-26: **Editor validates local file URIs before export** → Uses `expo-file-system/legacy` `getInfoAsync` to detect deleted/moved media and shows a non-destructive "Files not found" path to swap missing media.
 
 ## 2) Guidance (Methodology for Evolving Prompts)
 

@@ -1,10 +1,4 @@
 import { Paths } from "expo-file-system";
-import {
-  FFmpegKit,
-  FFmpegKitConfig,
-  ReturnCode,
-  Statistics,
-} from "ffmpeg-kit-react-native";
 
 export interface RenderOptions {
   photoUri: string;
@@ -13,6 +7,22 @@ export interface RenderOptions {
   trimEnd: number;
   aspectRatio: "9:16" | "1:1";
   onProgress?: (percent: number) => void;
+}
+
+type FFmpegKitModule = typeof import("ffmpeg-kit-react-native");
+let ffmpegModule: FFmpegKitModule | null = null;
+
+async function getFFmpegKit(): Promise<FFmpegKitModule> {
+  if (!ffmpegModule) {
+    try {
+      ffmpegModule = await import("ffmpeg-kit-react-native");
+    } catch {
+      throw new Error(
+        "FFmpeg-kit is not available. Video rendering requires a development build — it cannot run in Expo Go.",
+      );
+    }
+  }
+  return ffmpegModule;
 }
 
 const OUTPUT_DIMENSIONS = {
@@ -112,6 +122,12 @@ export async function renderSpinningCdVideo(
     "-shortest",
     `"${outputPath}"`,
   ].join(" ");
+
+  const { FFmpegKit, FFmpegKitConfig, ReturnCode } = await getFFmpegKit();
+
+  type Statistics = Parameters<
+    Parameters<typeof FFmpegKitConfig.enableStatisticsCallback>[0]
+  >[0];
 
   let statisticsCallback: ((stats: Statistics) => void) | undefined;
 
