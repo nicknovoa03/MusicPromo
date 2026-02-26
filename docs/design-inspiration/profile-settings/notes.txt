@@ -1,0 +1,1 @@
+Something simple here as well for the profile: a user should be able to update their name and their profile picture. For right now, those two things really.

@@ -1,0 +1,1 @@
+Okay, for the onboarding it should be pretty simple. It's just going to be a login screen, and I want to make sure it has login with Apple, Google, and just those two for right now. It makes it easy for everybody, and I wanted to make it look really good.

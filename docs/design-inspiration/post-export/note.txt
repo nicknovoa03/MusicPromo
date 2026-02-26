@@ -1,0 +1,1 @@
+Post export is simple: just a quick screen giving a visualization of how far along the media is into exporting, rendering, or whatever the stage is, and then after that has the screen for exporting to camera roll or Instagram or whatever other application.
