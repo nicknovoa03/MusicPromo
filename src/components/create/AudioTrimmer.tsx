@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 import {
   View,
   StyleSheet,
@@ -36,6 +36,12 @@ export function AudioTrimmer({
 }: AudioTrimmerProps) {
   const containerWidth = useRef(0);
   const [layoutReady, setLayoutReady] = useState(false);
+  const latestTrimRef = useRef({ startSec, endSec });
+  const gestureStartRef = useRef({ startSec, endSec });
+
+  useEffect(() => {
+    latestTrimRef.current = { startSec, endSec };
+  }, [startSec, endSec]);
 
   const onLayout = useCallback((e: LayoutChangeEvent) => {
     containerWidth.current = e.nativeEvent.layout.width;
@@ -55,7 +61,7 @@ export function AudioTrimmer({
   ): [number, number] => {
     let s = Math.max(0, Math.min(newStart, durationSec));
     let e = Math.max(0, Math.min(newEnd, durationSec));
-    const span = e - s;
+    let span = e - s;
     if (span < minDuration) {
       if (anchor === "start") {
         e = Math.min(s + minDuration, durationSec);
@@ -65,6 +71,7 @@ export function AudioTrimmer({
         e = s + minDuration;
       }
     }
+    span = e - s;
     if (span > maxDuration) {
       if (anchor === "start") {
         e = s + maxDuration;
@@ -79,16 +86,23 @@ export function AudioTrimmer({
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => {
+        gestureStartRef.current = {
+          startSec: latestTrimRef.current.startSec,
+          endSec: latestTrimRef.current.endSec,
+        };
+      },
       onPanResponderMove: (
         _: GestureResponderEvent,
         gs: PanResponderGestureState,
       ) => {
         const deltaSec = xToSec(gs.dx);
+        const { startSec: baseStart, endSec: baseEnd } = gestureStartRef.current;
         if (anchor === "start") {
-          const [ns, ne] = clampTrim(startSec + deltaSec, endSec, "start");
+          const [ns, ne] = clampTrim(baseStart + deltaSec, baseEnd, "start");
           onTrimChange(ns, ne);
         } else {
-          const [ns, ne] = clampTrim(startSec, endSec + deltaSec, "end");
+          const [ns, ne] = clampTrim(baseStart, baseEnd + deltaSec, "end");
           onTrimChange(ns, ne);
         }
       },

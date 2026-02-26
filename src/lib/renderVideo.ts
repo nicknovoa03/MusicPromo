@@ -1,4 +1,9 @@
 import { Paths } from "expo-file-system";
+import Constants from "expo-constants";
+
+function isExpoGo(): boolean {
+  return Constants.appOwnership === "expo";
+}
 
 export interface RenderOptions {
   photoUri: string;
@@ -10,15 +15,24 @@ export interface RenderOptions {
 }
 
 type FFmpegKitModule = typeof import("ffmpeg-kit-react-native");
+type FFmpegSession = import("ffmpeg-kit-react-native").FFmpegSession;
+type Statistics = import("ffmpeg-kit-react-native").Statistics;
 let ffmpegModule: FFmpegKitModule | null = null;
+let activeRenderSessionId: number | null = null;
 
 async function getFFmpegKit(): Promise<FFmpegKitModule> {
+  if (isExpoGo()) {
+    throw new Error(
+      "Video rendering requires a development build. It cannot run in Expo Go.\n\nRun 'npx expo run:android' or 'npx expo run:ios' to test rendering.",
+    );
+  }
+
   if (!ffmpegModule) {
     try {
       ffmpegModule = await import("ffmpeg-kit-react-native");
-    } catch {
+    } catch (e) {
       throw new Error(
-        "FFmpeg-kit is not available. Video rendering requires a development build — it cannot run in Expo Go.",
+        `FFmpeg-kit failed to load: ${e instanceof Error ? e.message : "Unknown error"}`,
       );
     }
   }
@@ -32,6 +46,21 @@ const OUTPUT_DIMENSIONS = {
 
 const FPS = 30;
 const SPIN_SPEED = "2*PI*t/4"; // full rotation every 4 seconds
+
+export async function cancelCurrentRender() {
+  try {
+    const { FFmpegKit } = await getFFmpegKit();
+    if (activeRenderSessionId !== null) {
+      await FFmpegKit.cancel(activeRenderSessionId);
+    } else {
+      await FFmpegKit.cancel();
+    }
+  } catch {
+    // Ignore cancellation failures.
+  } finally {
+    activeRenderSessionId = null;
+  }
+}
 
 export async function renderSpinningCdVideo(
   options: RenderOptions,
@@ -123,11 +152,7 @@ export async function renderSpinningCdVideo(
     `"${outputPath}"`,
   ].join(" ");
 
-  const { FFmpegKit, FFmpegKitConfig, ReturnCode } = await getFFmpegKit();
-
-  type Statistics = Parameters<
-    Parameters<typeof FFmpegKitConfig.enableStatisticsCallback>[0]
-  >[0];
+  const { FFmpegKit, ReturnCode } = await getFFmpegKit();
 
   let statisticsCallback: ((stats: Statistics) => void) | undefined;
 
@@ -139,26 +164,39 @@ export async function renderSpinningCdVideo(
     };
   }
 
-  if (statisticsCallback) {
-    FFmpegKitConfig.enableStatisticsCallback(statisticsCallback);
-  }
-
   try {
-    const session = await FFmpegKit.execute(command);
-    const returnCode = await session.getReturnCode();
+    let resolveCompletedSession: ((session: FFmpegSession) => void) | undefined;
+    const completedSessionPromise = new Promise<FFmpegSession>((resolve) => {
+      resolveCompletedSession = resolve;
+    });
+
+    const session = await FFmpegKit.executeAsync(
+      command,
+      (completedSession) => {
+        resolveCompletedSession?.(completedSession);
+      },
+      undefined,
+      statisticsCallback,
+    );
+    activeRenderSessionId = session.getSessionId();
+
+    const completedSession = await completedSessionPromise;
+    const returnCode = await completedSession.getReturnCode();
 
     if (ReturnCode.isSuccess(returnCode)) {
       onProgress?.(100);
       return outputPath;
     }
 
-    const logs = await session.getLogsAsString();
+    if (ReturnCode.isCancel(returnCode)) {
+      throw new Error("Rendering was canceled.");
+    }
+
+    const logs = await completedSession.getLogsAsString();
     throw new Error(
       `FFmpeg rendering failed (code ${returnCode}): ${logs.slice(-500)}`,
     );
   } finally {
-    if (statisticsCallback) {
-      FFmpegKitConfig.enableStatisticsCallback(undefined as never);
-    }
+    activeRenderSessionId = null;
   }
 }

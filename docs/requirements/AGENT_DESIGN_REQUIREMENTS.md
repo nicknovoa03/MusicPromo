@@ -267,6 +267,26 @@ Focus: Push Notifications
     10. Delete account from profile
   - Expected results: All steps complete without crashes, errors are graceful
 
+#### Phase 1 Render Flow Regression Checklist (Manual)
+
+- Preconditions:
+  - Use a development build (`expo run:ios` or `expo run:android`), not Expo Go
+  - Use one valid local photo and one valid local audio file
+- Checklist:
+  1. Start export, then tap `Cancel` while progress is moving.
+  2. Confirm the app returns to the editor and does **not** auto-navigate to Share later.
+  3. Trigger a render failure (for example, remove/replace the selected media so export fails), then tap `Try Again`.
+  4. Confirm retry starts a new render and completes successfully.
+  5. Open Home, verify only one project entry exists for that export attempt (no duplicate draft projects from retry).
+  6. Re-open that project, adjust trim and/or aspect ratio, export again, and confirm the same project updates.
+  7. On Share, confirm camera-roll save still works and the preview uses the selected photo cover (not a broken video thumbnail).
+  8. Tap `Done` and confirm navigation returns cleanly to Home without stale create-flow screens.
+- Expected results:
+  - Cancel stops rendering behavior and prevents late Share navigation
+  - Retry does not create duplicate draft projects
+  - Re-export updates existing project metadata
+  - Share flow remains functional (save + share intents + clean navigation)
+
 ### 3.4 Drift Controls
 
 - **Stop conditions:**

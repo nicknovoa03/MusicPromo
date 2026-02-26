@@ -13,10 +13,38 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { usePostHog } from "posthog-react-native";
 import { useMutation } from "convex/react";
+import Constants from "expo-constants";
 import { api } from "../../convex/_generated/api";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
-import { renderSpinningCdVideo } from "@/lib/renderVideo";
 import type { EventName } from "@/lib/analytics";
+
+function isExpoGo(): boolean {
+  return Constants.appOwnership === "expo";
+}
+
+type RenderVideoModule = typeof import("@/lib/renderVideo");
+let renderModule: RenderVideoModule | null = null;
+
+async function getRenderModule(): Promise<RenderVideoModule> {
+  if (isExpoGo()) {
+    throw new Error(
+      "Video rendering requires a development build.\n\nIt cannot run in Expo Go. Run 'npx expo run:android' or 'npx expo run:ios' to test.",
+    );
+  }
+  if (!renderModule) {
+    renderModule = await import("@/lib/renderVideo");
+  }
+  return renderModule;
+}
+
+async function cancelCurrentRender(): Promise<void> {
+  if (isExpoGo() || !renderModule) return;
+  try {
+    await renderModule.cancelCurrentRender();
+  } catch {
+    // Ignore
+  }
+}
 
 type RenderState = "rendering" | "complete" | "error";
 
@@ -38,7 +66,6 @@ export default function RenderingScreen() {
   }>();
 
   const createProject = useMutation(api.projects.create);
-  const markExported = useMutation(api.projects.markExported);
   const updateProject = useMutation(api.projects.update);
 
   const [progress, setProgress] = useState(0);
@@ -47,6 +74,8 @@ export default function RenderingScreen() {
   const projectIdRef = useRef<string | null>(null);
   const animatedProgress = useRef(new Animated.Value(0)).current;
   const hasStarted = useRef(false);
+  const isScreenActiveRef = useRef(true);
+  const isCanceledRef = useRef(false);
 
   const track = useCallback(
     (event: EventName, props?: Record<string, string>) => {
@@ -55,24 +84,39 @@ export default function RenderingScreen() {
     [posthog],
   );
 
+  useEffect(() => {
+    return () => {
+      isScreenActiveRef.current = false;
+      isCanceledRef.current = true;
+      void cancelCurrentRender();
+    };
+  }, []);
+
   const startRender = useCallback(async () => {
     if (hasStarted.current) return;
     hasStarted.current = true;
+    isCanceledRef.current = false;
 
     const existingProjectId = firstParam(params.projectId);
     const title = firstParam(params.title);
     const photoUri = firstParam(params.photoUri) ?? "";
     const audioUri = firstParam(params.audioUri) ?? "";
-    const trimStart = Number(firstParam(params.trimStart));
-    const trimEnd = Number(firstParam(params.trimEnd));
+    const parsedTrimStart = Number(firstParam(params.trimStart));
+    const parsedTrimEnd = Number(firstParam(params.trimEnd));
+    const trimStart = Number.isFinite(parsedTrimStart) ? parsedTrimStart : 0;
+    const trimEnd = Number.isFinite(parsedTrimEnd)
+      ? parsedTrimEnd
+      : trimStart + 30;
     const aspectRatio =
       firstParam(params.aspectRatio) === "1:1" ? "1:1" : "9:16";
 
     track("video_export_started", { aspectRatio });
 
-    if (existingProjectId) {
+    if (!projectIdRef.current && existingProjectId) {
       projectIdRef.current = existingProjectId;
-    } else {
+    }
+
+    if (!projectIdRef.current) {
       try {
         const projectId = await createProject({
           title: title?.trim() || "New Project",
@@ -90,6 +134,7 @@ export default function RenderingScreen() {
     }
 
     try {
+      const { renderSpinningCdVideo } = await getRenderModule();
       const videoUri = await renderSpinningCdVideo({
         photoUri,
         audioUri,
@@ -106,50 +151,54 @@ export default function RenderingScreen() {
         },
       });
 
+      if (!isScreenActiveRef.current || isCanceledRef.current) return;
+
       setProgress(100);
       setRenderState("complete");
       track("video_exported");
 
       if (projectIdRef.current) {
         try {
-          if (existingProjectId) {
-            await updateProject({
-              projectId: projectIdRef.current as never,
-              templateId: "spinning-cd",
-              aspectRatio,
-              photoUri,
-              audioUri,
-              trimStart,
-              trimEnd,
-              exportedVideoUri: videoUri,
-              status: "exported",
-            });
-          } else {
-            await markExported({
-              projectId: projectIdRef.current as never,
-              exportedVideoUri: videoUri,
-            });
-          }
+          await updateProject({
+            projectId: projectIdRef.current as never,
+            templateId: "spinning-cd",
+            aspectRatio,
+            photoUri,
+            audioUri,
+            trimStart,
+            trimEnd,
+            exportedVideoUri: videoUri,
+            status: "exported",
+          });
         } catch {
           // Non-fatal
         }
       }
 
+      if (!isScreenActiveRef.current || isCanceledRef.current) return;
+
       router.replace({
         pathname: "/create/share",
-        params: { videoUri, projectId: projectIdRef.current ?? "" },
+        params: {
+          videoUri,
+          projectId: projectIdRef.current ?? "",
+          posterUri: photoUri,
+        },
       });
     } catch (err) {
+      if (!isScreenActiveRef.current || isCanceledRef.current) return;
+
       const reason =
         err instanceof Error ? err.message : "Unknown rendering error";
       setRenderState("error");
       setErrorMessage(reason);
-      track("video_export_failed", { error: reason.slice(0, 200) });
+      if (!reason.toLowerCase().includes("canceled")) {
+        track("video_export_failed", { error: reason.slice(0, 200) });
+      }
     }
   }, [
     params,
     createProject,
-    markExported,
     updateProject,
     track,
     router,
@@ -169,7 +218,11 @@ export default function RenderingScreen() {
         {
           text: "Cancel",
           style: "destructive",
-          onPress: () => router.back(),
+          onPress: () => {
+            isCanceledRef.current = true;
+            void cancelCurrentRender();
+            router.back();
+          },
         },
       ],
     );

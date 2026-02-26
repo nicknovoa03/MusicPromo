@@ -16,13 +16,20 @@ import * as MediaLibrary from "expo-media-library";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
 import type { EventName } from "@/lib/analytics";
 
+function firstParam(param: string | string[] | undefined) {
+  return Array.isArray(param) ? param[0] : param;
+}
+
 export default function ShareScreen() {
   const router = useRouter();
   const posthog = usePostHog();
   const params = useLocalSearchParams<{
     videoUri: string;
     projectId: string;
+    posterUri?: string;
   }>();
+  const videoUri = firstParam(params.videoUri) ?? "";
+  const posterUri = firstParam(params.posterUri) ?? "";
 
   const [savedToRoll, setSavedToRoll] = useState(false);
   const [saveError, setSaveError] = useState(false);
@@ -36,14 +43,14 @@ export default function ShareScreen() {
 
   useEffect(() => {
     async function saveVideo() {
-      if (!params.videoUri) return;
+      if (!videoUri) return;
       try {
         const { status } = await MediaLibrary.requestPermissionsAsync();
         if (status !== "granted") {
           setSaveError(true);
           return;
         }
-        await MediaLibrary.saveToLibraryAsync(params.videoUri);
+        await MediaLibrary.saveToLibraryAsync(videoUri);
         setSavedToRoll(true);
         track("video_saved_to_camera_roll");
       } catch {
@@ -51,7 +58,7 @@ export default function ShareScreen() {
       }
     }
     saveVideo();
-  }, [params.videoUri, track]);
+  }, [videoUri, track]);
 
   const handleShareInstagram = useCallback(async () => {
     track("share_tapped_instagram");
@@ -61,14 +68,14 @@ export default function ShareScreen() {
         Alert.alert("Sharing not available", "Sharing is not supported on this device.");
         return;
       }
-      await Sharing.shareAsync(params.videoUri, {
+      await Sharing.shareAsync(videoUri, {
         mimeType: "video/mp4",
         UTI: "public.movie",
       });
     } catch {
       Alert.alert("Share failed", "Could not open sharing. Please try again.");
     }
-  }, [params.videoUri, track]);
+  }, [videoUri, track]);
 
   const handleShareTikTok = useCallback(async () => {
     track("share_tapped_tiktok");
@@ -78,14 +85,14 @@ export default function ShareScreen() {
         Alert.alert("Sharing not available", "Sharing is not supported on this device.");
         return;
       }
-      await Sharing.shareAsync(params.videoUri, {
+      await Sharing.shareAsync(videoUri, {
         mimeType: "video/mp4",
         UTI: "public.movie",
       });
     } catch {
       Alert.alert("Share failed", "Could not open sharing. Please try again.");
     }
-  }, [params.videoUri, track]);
+  }, [videoUri, track]);
 
   const handleDone = useCallback(() => {
     router.dismissAll();
@@ -139,12 +146,12 @@ export default function ShareScreen() {
 
         {/* Video preview */}
         <View style={styles.previewContainer}>
-          {params.videoUri ? (
+          {posterUri ? (
             <Image
-              source={{ uri: params.videoUri }}
+              source={{ uri: posterUri }}
               style={styles.previewImage}
               resizeMode="cover"
-              accessibilityLabel="Exported video thumbnail"
+              accessibilityLabel="Exported video cover image"
             />
           ) : (
             <Ionicons
