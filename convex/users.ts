@@ -68,7 +68,7 @@ export const updateProfile = mutation({
     if (args.name !== undefined) updates.name = args.name;
     if (args.avatarUrl !== undefined) updates.avatarUrl = args.avatarUrl;
     if (args.preferences !== undefined) {
-      updates.preferences = { ...user.preferences, ...args.preferences };
+      updates.preferences = { ...(user.preferences ?? {}), ...args.preferences };
     }
 
     await ctx.db.patch(user._id, updates);

@@ -34,6 +34,11 @@ export default function SignInScreen() {
         if (createdSessionId && ssoSetActive) {
           await ssoSetActive({ session: createdSessionId });
           posthog?.capture("sign_in_completed", { provider });
+        } else if (createdSessionId) {
+          Alert.alert(
+            "Sign-in error",
+            "Session was created but could not be activated. Please try again."
+          );
         }
       } catch (err: unknown) {
         const message =
