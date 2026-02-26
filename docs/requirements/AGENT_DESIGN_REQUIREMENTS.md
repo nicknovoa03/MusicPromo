@@ -82,6 +82,8 @@
 - 2026-02-26: **Project History uses a 2-column FlatList with reactive `listByUser` + pull-to-refresh** → Meets v1 UX quickly while keeping data fresh. Cursor pagination is intentionally deferred with a TODO for when list size grows.
 - 2026-02-26: **Re-export updates existing project records instead of creating duplicates** → Added `projects.update` mutation for ownership-checked patching of media/settings/export metadata on re-export.
 - 2026-02-26: **Editor validates local file URIs before export** → Uses `expo-file-system/legacy` `getInfoAsync` to detect deleted/moved media and shows a non-destructive "Files not found" path to swap missing media.
+- 2026-02-26: **Push registration runs post-auth in tabs bootstrap and degrades gracefully** → App requests notification permission once after auth, registers Expo token in Convex (`pushTokens.upsertForCurrentUser`), and continues core create/export flows when permission or token registration fails.
+- 2026-02-26: **Push delivery uses Expo Push API via Convex action with persisted notification records** → Added `pushNotifications.sendTestPush` for QA and `notifications.createInternal` for durable per-user notification records (`reminder`, `new-template`, `export-complete`, `announcement`) even when delivery fails.
 
 ## 2) Guidance (Methodology for Evolving Prompts)
 

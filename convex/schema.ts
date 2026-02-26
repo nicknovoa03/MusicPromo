@@ -37,6 +37,29 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_user_updated", ["userId", "updatedAt"]),
 
+  pushTokens: defineTable({
+    userId: v.id("users"),
+    expoPushToken: v.string(),
+    platform: v.union(v.literal("ios"), v.literal("android")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_user_and_token", ["userId", "expoPushToken"]),
+
+  notifications: defineTable({
+    userId: v.id("users"),
+    type: v.union(
+      v.literal("reminder"),
+      v.literal("new-template"),
+      v.literal("export-complete"),
+      v.literal("announcement")
+    ),
+    title: v.string(),
+    body: v.string(),
+    read: v.boolean(),
+    trigger: v.union(v.literal("automated"), v.literal("manual")),
+    sentAt: v.number(),
+  }).index("by_user_and_sent_at", ["userId", "sentAt"]),
+
   templates: defineTable({
     name: v.string(),
     description: v.string(),

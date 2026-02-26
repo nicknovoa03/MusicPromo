@@ -8,7 +8,10 @@
  * @module
  */
 
+import type * as notifications from "../notifications.js";
 import type * as projects from "../projects.js";
+import type * as pushNotifications from "../pushNotifications.js";
+import type * as pushTokens from "../pushTokens.js";
 import type * as users from "../users.js";
 
 import type {
@@ -18,7 +21,10 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  notifications: typeof notifications;
   projects: typeof projects;
+  pushNotifications: typeof pushNotifications;
+  pushTokens: typeof pushTokens;
   users: typeof users;
 }>;
 

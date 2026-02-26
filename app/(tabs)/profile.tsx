@@ -1,15 +1,17 @@
 import { View, Text, StyleSheet, Pressable, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth, useUser } from "@clerk/clerk-expo";
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "../../convex/_generated/api";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
+import { getExpoPushTokenAsync } from "@/lib/notifications";
 
 export default function ProfileScreen() {
   const { signOut } = useAuth();
   const { user: clerkUser } = useUser();
   const convexUser = useQuery(api.users.current);
+  const removePushToken = useMutation(api.pushTokens.removeForCurrentUser);
 
   const displayName =
     convexUser?.name ?? clerkUser?.fullName ?? "Guest";
@@ -26,6 +28,17 @@ export default function ProfileScreen() {
         text: "Sign Out",
         style: "destructive",
         onPress: async () => {
+          try {
+            const expoPushToken = await getExpoPushTokenAsync({
+              requestPermission: false,
+            });
+            if (expoPushToken) {
+              await removePushToken({ expoPushToken });
+            }
+          } catch (error) {
+            console.warn("Failed to remove push token on sign out:", error);
+          }
+
           try {
             await signOut();
           } catch {

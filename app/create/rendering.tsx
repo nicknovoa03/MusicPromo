@@ -12,7 +12,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { usePostHog } from "posthog-react-native";
-import { useMutation } from "convex/react";
+import { useConvexAuth, useMutation } from "convex/react";
 import Constants from "expo-constants";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
@@ -79,6 +79,7 @@ export default function RenderingScreen() {
     aspectRatio: string;
   }>();
 
+  const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
   const createProject = useMutation(api.projects.create);
   const updateProject = useMutation(api.projects.update);
 
@@ -127,21 +128,29 @@ export default function RenderingScreen() {
       projectIdRef.current = existingProjectId;
     }
 
-    if (!projectIdRef.current) {
-      try {
-        const projectId = await createProject({
-          title: title?.trim() || "New Project",
-          aspectRatio,
-          photoUri,
-          audioUri,
-          trimStart,
-          trimEnd,
-          templateId: "spinning-cd",
-        });
-        projectIdRef.current = projectId;
-      } catch {
-        // Non-fatal — project metadata save failure shouldn't block render
-      }
+    if (!projectIdRef.current && isAuthenticated) {
+      const tryCreate = async (retries = 1): Promise<void> => {
+        try {
+          const projectId = await createProject({
+            title: title?.trim() || "New Project",
+            aspectRatio,
+            photoUri,
+            audioUri,
+            trimStart,
+            trimEnd,
+            templateId: "spinning-cd",
+          });
+          projectIdRef.current = projectId;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "";
+          if (msg.includes("Unauthenticated") && retries > 0) {
+            await new Promise((r) => setTimeout(r, 800));
+            return tryCreate(retries - 1);
+          }
+          // Non-fatal — project metadata save failure shouldn't block render
+        }
+      };
+      await tryCreate();
     }
 
     try {
@@ -209,6 +218,7 @@ export default function RenderingScreen() {
     }
   }, [
     params,
+    isAuthenticated,
     createProject,
     updateProject,
     track,
@@ -217,8 +227,9 @@ export default function RenderingScreen() {
   ]);
 
   useEffect(() => {
+    if (isAuthLoading) return;
     startRender();
-  }, [startRender]);
+  }, [startRender, isAuthLoading]);
 
   const handleCancel = useCallback(() => {
     Alert.alert(
