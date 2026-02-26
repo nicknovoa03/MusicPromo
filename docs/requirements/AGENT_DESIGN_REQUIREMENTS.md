@@ -76,6 +76,12 @@
 - 2026-02-20: **Bottom tab bar with 3 tabs (Home, Create, Profile)** → Simple, standard mobile pattern → Hamburger menu rejected (less discoverable)
 - 2026-02-20: **2-screen create flow (Picker → Editor)** → Separates media selection from editing, cleaner UX → Single screen rejected (too cramped)
 - 2026-02-20: **Spotify-style profile/settings** → Clean list-based settings, prominent avatar → Custom design rejected (unnecessary for POC)
+- 2026-02-25: **ffmpeg-kit-react-native + @config-plugins v11 for video rendering** → Single FFmpeg command handles spinning CD rotation, audio trimming, and MP4 encoding. Original ffmpeg-kit was retired/archived Jan-Apr 2025 but the Expo config plugin v11 (June 2025) bundles working binaries for SDK 53+. Alternatives evaluated and rejected: react-native-skia-video (beta, no audio support), expo-image-sequence-encoder (no audio muxing), @sheehanmunim/react-native-ffmpeg (wraps same retired lib, less transparent). If ffmpeg-kit fails at runtime, fallback is expo-image-sequence-encoder for frames + native audio mux module.
+- 2026-02-25: **No expo-task-manager for background rendering** → FFmpeg-kit runs on a native thread that may survive JS backgrounding. expo-task-manager is designed for periodic short tasks (location, fetch), not long-running processes. Background rendering is best-effort only because iOS/Android can still terminate backgrounded apps under resource or policy constraints, so users should keep the app foregrounded for long renders.
+- 2026-02-25: **expo-sharing for Instagram/TikTok share** → Uses the native share sheet which routes to the correct app. Direct API posting rejected (TOS complexity, requires app review from platforms).
+- 2026-02-26: **Project History uses a 2-column FlatList with reactive `listByUser` + pull-to-refresh** → Meets v1 UX quickly while keeping data fresh. Cursor pagination is intentionally deferred with a TODO for when list size grows.
+- 2026-02-26: **Re-export updates existing project records instead of creating duplicates** → Added `projects.update` mutation for ownership-checked patching of media/settings/export metadata on re-export.
+- 2026-02-26: **Editor validates local file URIs before export** → Uses `expo-file-system/legacy` `getInfoAsync` to detect deleted/moved media and shows a non-destructive "Files not found" path to swap missing media.
 
 ## 2) Guidance (Methodology for Evolving Prompts)
 
@@ -260,6 +266,26 @@ Focus: Push Notifications
     9. Sign out → continue as guest → create video
     10. Delete account from profile
   - Expected results: All steps complete without crashes, errors are graceful
+
+#### Phase 1 Render Flow Regression Checklist (Manual)
+
+- Preconditions:
+  - Use a development build (`expo run:ios` or `expo run:android`), not Expo Go
+  - Use one valid local photo and one valid local audio file
+- Checklist:
+  1. Start export, then tap `Cancel` while progress is moving.
+  2. Confirm the app returns to the editor and does **not** auto-navigate to Share later.
+  3. Trigger a render failure (for example, remove/replace the selected media so export fails), then tap `Try Again`.
+  4. Confirm retry starts a new render and completes successfully.
+  5. Open Home, verify only one project entry exists for that export attempt (no duplicate draft projects from retry).
+  6. Re-open that project, adjust trim and/or aspect ratio, export again, and confirm the same project updates.
+  7. On Share, confirm camera-roll save still works and the preview uses the selected photo cover (not a broken video thumbnail).
+  8. Tap `Done` and confirm navigation returns cleanly to Home without stale create-flow screens.
+- Expected results:
+  - Cancel stops rendering behavior and prevents late Share navigation
+  - Retry does not create duplicate draft projects
+  - Re-export updates existing project metadata
+  - Share flow remains functional (save + share intents + clean navigation)
 
 ### 3.4 Drift Controls
 
