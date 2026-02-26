@@ -1,0 +1,313 @@
+import { useState, useEffect, useCallback } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  Pressable,
+  Image,
+  Alert,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useRouter, useLocalSearchParams } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import { usePostHog } from "posthog-react-native";
+import * as Sharing from "expo-sharing";
+import * as MediaLibrary from "expo-media-library";
+import { colors, typography, spacing, radius } from "@/constants/tokens";
+import type { EventName } from "@/lib/analytics";
+
+export default function ShareScreen() {
+  const router = useRouter();
+  const posthog = usePostHog();
+  const params = useLocalSearchParams<{
+    videoUri: string;
+    projectId: string;
+  }>();
+
+  const [savedToRoll, setSavedToRoll] = useState(false);
+  const [saveError, setSaveError] = useState(false);
+
+  const track = useCallback(
+    (event: EventName, props?: Record<string, string>) => {
+      posthog?.capture(event, props);
+    },
+    [posthog],
+  );
+
+  useEffect(() => {
+    async function saveVideo() {
+      if (!params.videoUri) return;
+      try {
+        const { status } = await MediaLibrary.requestPermissionsAsync();
+        if (status !== "granted") {
+          setSaveError(true);
+          return;
+        }
+        await MediaLibrary.saveToLibraryAsync(params.videoUri);
+        setSavedToRoll(true);
+        track("video_saved_to_camera_roll");
+      } catch {
+        setSaveError(true);
+      }
+    }
+    saveVideo();
+  }, [params.videoUri, track]);
+
+  const handleShareInstagram = useCallback(async () => {
+    track("share_tapped_instagram");
+    try {
+      const isAvailable = await Sharing.isAvailableAsync();
+      if (!isAvailable) {
+        Alert.alert("Sharing not available", "Sharing is not supported on this device.");
+        return;
+      }
+      await Sharing.shareAsync(params.videoUri, {
+        mimeType: "video/mp4",
+        UTI: "public.movie",
+      });
+    } catch {
+      Alert.alert("Share failed", "Could not open sharing. Please try again.");
+    }
+  }, [params.videoUri, track]);
+
+  const handleShareTikTok = useCallback(async () => {
+    track("share_tapped_tiktok");
+    try {
+      const isAvailable = await Sharing.isAvailableAsync();
+      if (!isAvailable) {
+        Alert.alert("Sharing not available", "Sharing is not supported on this device.");
+        return;
+      }
+      await Sharing.shareAsync(params.videoUri, {
+        mimeType: "video/mp4",
+        UTI: "public.movie",
+      });
+    } catch {
+      Alert.alert("Share failed", "Could not open sharing. Please try again.");
+    }
+  }, [params.videoUri, track]);
+
+  const handleDone = useCallback(() => {
+    router.dismissAll();
+    router.replace("/");
+  }, [router]);
+
+  return (
+    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
+      {/* Header */}
+      <View style={styles.header}>
+        <Pressable
+          onPress={handleDone}
+          style={styles.headerButton}
+          accessibilityLabel="Close and return home"
+          accessibilityRole="button"
+        >
+          <Ionicons name="close" size={24} color={colors.dark.text} />
+        </Pressable>
+        <View style={styles.headerSpacer} />
+      </View>
+
+      {/* Content */}
+      <View style={styles.content}>
+        <Text style={styles.heading}>Ready to share</Text>
+
+        {/* Save status */}
+        {savedToRoll && (
+          <View style={styles.savedBadge}>
+            <Ionicons
+              name="checkmark-circle"
+              size={18}
+              color={colors.accent.success}
+            />
+            <Text style={styles.savedText}>
+              This video was saved to your camera roll.
+            </Text>
+          </View>
+        )}
+        {saveError && (
+          <View style={styles.savedBadge}>
+            <Ionicons
+              name="alert-circle"
+              size={18}
+              color={colors.accent.warning}
+            />
+            <Text style={styles.savedText}>
+              Could not save to camera roll.
+            </Text>
+          </View>
+        )}
+
+        {/* Video preview */}
+        <View style={styles.previewContainer}>
+          {params.videoUri ? (
+            <Image
+              source={{ uri: params.videoUri }}
+              style={styles.previewImage}
+              resizeMode="cover"
+              accessibilityLabel="Exported video thumbnail"
+            />
+          ) : (
+            <Ionicons
+              name="videocam"
+              size={48}
+              color={colors.dark.textSecondary}
+            />
+          )}
+        </View>
+
+        {/* Share buttons */}
+        <View style={styles.actions}>
+          <Pressable
+            onPress={handleShareInstagram}
+            style={({ pressed }) => [
+              styles.instagramButton,
+              pressed && styles.buttonPressed,
+            ]}
+            accessibilityLabel="Share to Instagram"
+            accessibilityRole="button"
+          >
+            <Ionicons name="logo-instagram" size={20} color="#FFFFFF" />
+            <Text style={styles.instagramText}>Share to Instagram</Text>
+          </Pressable>
+
+          <Pressable
+            onPress={handleShareTikTok}
+            style={({ pressed }) => [
+              styles.tiktokButton,
+              pressed && styles.buttonPressed,
+            ]}
+            accessibilityLabel="Share to TikTok"
+            accessibilityRole="button"
+          >
+            <Ionicons name="musical-notes" size={20} color={colors.dark.text} />
+            <Text style={styles.tiktokText}>Share to TikTok</Text>
+          </Pressable>
+        </View>
+      </View>
+
+      {/* Done button */}
+      <View style={styles.footer}>
+        <Pressable
+          onPress={handleDone}
+          style={({ pressed }) => [
+            styles.doneButton,
+            pressed && styles.buttonPressed,
+          ]}
+          accessibilityLabel="Done, return to home"
+          accessibilityRole="button"
+        >
+          <Text style={styles.doneText}>Done</Text>
+        </Pressable>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.dark.background,
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  headerButton: {
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radius.full,
+    backgroundColor: colors.dark.surface,
+  },
+  headerSpacer: {
+    flex: 1,
+  },
+  content: {
+    flex: 1,
+    alignItems: "center",
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.lg,
+  },
+  heading: {
+    ...typography.h1,
+    color: colors.dark.text,
+    marginBottom: spacing.sm,
+  },
+  savedBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    marginBottom: spacing.lg,
+  },
+  savedText: {
+    ...typography.caption,
+    color: colors.dark.textSecondary,
+  },
+  previewContainer: {
+    width: 200,
+    height: 200,
+    borderRadius: radius.lg,
+    backgroundColor: colors.dark.surface,
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: spacing.xl,
+  },
+  previewImage: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: radius.lg,
+  },
+  actions: {
+    width: "100%",
+    gap: spacing.md,
+  },
+  instagramButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    borderRadius: radius.full,
+    backgroundColor: colors.instagram.mid,
+  },
+  instagramText: {
+    ...typography.button,
+    color: "#FFFFFF",
+  },
+  tiktokButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    borderRadius: radius.full,
+    backgroundColor: colors.dark.surface,
+    borderWidth: 1,
+    borderColor: colors.dark.border,
+  },
+  tiktokText: {
+    ...typography.button,
+    color: colors.dark.text,
+  },
+  buttonPressed: {
+    opacity: 0.8,
+    transform: [{ scale: 0.97 }],
+  },
+  footer: {
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.lg,
+  },
+  doneButton: {
+    alignItems: "center",
+    paddingVertical: spacing.md,
+    borderRadius: radius.full,
+    backgroundColor: colors.dark.surface,
+  },
+  doneText: {
+    ...typography.button,
+    color: colors.dark.text,
+  },
+});

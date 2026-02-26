@@ -28,6 +28,8 @@ export default defineSchema({
     photoUri: v.optional(v.string()),
     audioUri: v.optional(v.string()),
     exportedVideoUri: v.optional(v.string()),
+    trimStart: v.optional(v.number()),
+    trimEnd: v.optional(v.number()),
     status: v.union(v.literal("draft"), v.literal("exported")),
     createdAt: v.number(),
     updatedAt: v.number(),

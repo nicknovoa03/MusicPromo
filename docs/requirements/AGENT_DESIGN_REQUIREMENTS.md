@@ -76,6 +76,9 @@
 - 2026-02-20: **Bottom tab bar with 3 tabs (Home, Create, Profile)** → Simple, standard mobile pattern → Hamburger menu rejected (less discoverable)
 - 2026-02-20: **2-screen create flow (Picker → Editor)** → Separates media selection from editing, cleaner UX → Single screen rejected (too cramped)
 - 2026-02-20: **Spotify-style profile/settings** → Clean list-based settings, prominent avatar → Custom design rejected (unnecessary for POC)
+- 2026-02-25: **ffmpeg-kit-react-native + @config-plugins v11 for video rendering** → Single FFmpeg command handles spinning CD rotation, audio trimming, and MP4 encoding. Original ffmpeg-kit was retired/archived Jan-Apr 2025 but the Expo config plugin v11 (June 2025) bundles working binaries for SDK 53+. Alternatives evaluated and rejected: react-native-skia-video (beta, no audio support), expo-image-sequence-encoder (no audio muxing), @sheehanmunim/react-native-ffmpeg (wraps same retired lib, less transparent). If ffmpeg-kit fails at runtime, fallback is expo-image-sequence-encoder for frames + native audio mux module.
+- 2026-02-25: **No expo-task-manager for background rendering** → FFmpeg-kit runs on a native thread that survives JS backgrounding. expo-task-manager is designed for periodic short tasks (location, fetch), not long-running processes. "Please don't close the app" messaging is sufficient. OS will only kill the process if the user force-quits.
+- 2026-02-25: **expo-sharing for Instagram/TikTok share** → Uses the native share sheet which routes to the correct app. Direct API posting rejected (TOS complexity, requires app review from platforms).
 
 ## 2) Guidance (Methodology for Evolving Prompts)
 

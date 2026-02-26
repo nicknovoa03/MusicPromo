@@ -28,7 +28,9 @@
       "edgeToEdgeEnabled": true,
       "package": "com.musicpromo.app",
       "permissions": [
-        "android.permission.RECORD_AUDIO"
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_MEDIA_AUDIO"
       ]
     },
     "plugins": [
@@ -44,6 +46,20 @@
         "expo-document-picker",
         {
           "iCloudContainerEnvironment": "Production"
+        }
+      ],
+      [
+        "@config-plugins/ffmpeg-kit-react-native",
+        {
+          "package": "min"
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "MusicPromo saves exported videos to your camera roll.",
+          "savePhotosPermission": "MusicPromo saves exported videos to your camera roll.",
+          "isAccessMediaLocationEnabled": true
         }
       ]
     ],

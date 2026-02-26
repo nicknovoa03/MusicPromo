@@ -5,7 +5,6 @@ import {
   StyleSheet,
   Pressable,
   Image,
-  Alert,
   Dimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -81,11 +80,17 @@ export default function EditorScreen() {
   }, [router]);
 
   const handleExport = useCallback(() => {
-    Alert.alert(
-      "Export",
-      "Video rendering is not yet implemented. This will be added in the next phase.",
-    );
-  }, []);
+    router.push({
+      pathname: "/create/rendering",
+      params: {
+        photoUri: params.photoUri,
+        audioUri: params.audioUri,
+        trimStart: String(trimStart),
+        trimEnd: String(trimEnd),
+        aspectRatio,
+      },
+    });
+  }, [router, params.photoUri, params.audioUri, trimStart, trimEnd, aspectRatio]);
 
   const trimmedDuration = trimEnd - trimStart;
 
