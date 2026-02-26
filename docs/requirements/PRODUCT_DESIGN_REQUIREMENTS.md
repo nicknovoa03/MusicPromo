@@ -486,7 +486,7 @@ Primary reference: Meta's Edits app. Secondary: Spotify (profile). Screenshots i
   - Supported audio: MP3, WAV, M4A
   - Video output: MP4
   - Aspect ratios: 9:16 (vertical), 1:1 (square)
-- **Offline / poor network:** Requires internet for auth and Convex sync. Local rendering works regardless. Queued Convex writes on reconnect (may cut if complex).
+- **Offline / poor network:** Requires internet for auth and Convex sync. Local rendering works regardless. Phase 0: show "You're offline" message, block flows that need connectivity. Phase 1: queue Convex metadata writes locally and sync on reconnect.
 - **Rate limits / spam prevention:** Not needed for v1
 
 ## 13) Risks and Open Questions
@@ -530,7 +530,8 @@ Primary reference: Meta's Edits app. Secondary: Spotify (profile). Screenshots i
 - Onboarding screens
 - Profile and settings screen
 - Push notifications
-- Edge case handling (offline queue, error states, file-not-found)
+- Edge case handling (error states, file-not-found)
+- Offline queue for Convex metadata writes (local create → sync on reconnect)
 - Account deletion
 
 ### Deferred (Post-v1)
@@ -539,5 +540,5 @@ Primary reference: Meta's Edits app. Secondary: Spotify (profile). Screenshots i
 - AI-generated templates (Sora, etc.)
 - Label/agency multi-user accounts
 - Template marketplace
-- Offline rendering with queued analytics
+- Offline rendering with queued analytics (beyond Phase 1 queue scope)
 - Subscription tiers and monetization

@@ -83,7 +83,7 @@ Success screen with explicit buttons:
 | # | Assumption | Impact if Wrong |
 |---|---|---|
 | A16 | SoundCloud integration deferred to Phase 2 | If it's a must-have for v1, adds significant scope (API integration, audio extraction, TOS concerns) |
-| A17 | Offline Convex queueing is lightweight (AsyncStorage + retry on reconnect) | If complex, may cut for POC and just require internet for metadata saves |
+| A17 | Offline Convex queueing deferred to Phase 1 (AsyncStorage + retry on reconnect). Phase 0 requires internet. | If queueing is complex, may push to Phase 2 and require internet for all metadata saves |
 | A18 | Guest mode uses Clerk anonymous sessions | Need to verify Clerk supports this in React Native SDK |
 | A19 | File picker can be filtered to show only compatible audio formats | Depends on Expo DocumentPicker / MediaLibrary API capabilities |
 | A20 | Background rendering continues when app is backgrounded | May need expo-task-manager or similar for reliable background execution on iOS |
