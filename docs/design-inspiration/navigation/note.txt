@@ -1,0 +1,1 @@
+This is also something that is going to be really simple for the navigation. It's going to be a bottom navigation tab, and it'll have, I'm thinking, three sections for Home, Create, and Profile, something along those lines.

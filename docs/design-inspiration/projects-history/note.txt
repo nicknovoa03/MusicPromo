@@ -1,0 +1,1 @@
+The project history is very simple. It's just a quick tab on the app area on the app where you can scroll through your projects in a grid-like format, so there's either two and two next to each other all the way down or something like that.
