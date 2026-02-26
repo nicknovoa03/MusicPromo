@@ -45,7 +45,7 @@
 ### 1.4 System Map
 
 - **Key entities:** User Profile, Project, Template, Push Token, Notification
-- **Navigation model:** Bottom tabs or hamburger (TBD) — sections: Create, Projects, Profile
+- **Navigation model:** Bottom tab bar, 3 tabs: Home, Create, Profile. Light theme for browsing, dark theme for editing (Edits-inspired).
 - **Critical flows:**
   1. First-time user → sign in / guest → onboarding → create first video → export → share
   2. Returning user → open project → change settings → re-export → share
@@ -71,6 +71,11 @@
 - 2026-02-20: **SoundCloud deferred** → Adds API integration, audio extraction pipeline, potential TOS issues → Kept for Phase 2
 - 2026-02-20: **Guest mode** → Reduces friction, user can try before committing → Auth-required rejected for first use
 - 2026-02-20: **Soft-delete for account deletion** → Satisfies Apple requirement while retaining backend data → Full purge may be needed (verify Apple's exact requirements)
+- 2026-02-20: **Meta's Edits app as primary design reference** → Clean, professional, creative tool aesthetic → Other styles rejected (too playful, too corporate)
+- 2026-02-20: **Dual-theme (light browse / dark edit)** → Matches Edits pattern, creates clear mode distinction → Single theme rejected (less visual clarity between modes)
+- 2026-02-20: **Bottom tab bar with 3 tabs (Home, Create, Profile)** → Simple, standard mobile pattern → Hamburger menu rejected (less discoverable)
+- 2026-02-20: **2-screen create flow (Picker → Editor)** → Separates media selection from editing, cleaner UX → Single screen rejected (too cramped)
+- 2026-02-20: **Spotify-style profile/settings** → Clean list-based settings, prominent avatar → Custom design rejected (unnecessary for POC)
 
 ## 2) Guidance (Methodology for Evolving Prompts)
 
@@ -81,13 +86,15 @@
   - The Convex schema and relevant function files
   - The screen/component being worked on
   - Acceptance criteria for the feature being implemented
+  - Design reference screenshots from `docs/design-inspiration/` for the relevant screen
 - **Never include:**
   - Entire repo dumps
   - Unrelated node_modules or build artifacts
   - Large media files
 - **When context is missing:**
   - Check `docs/intake-notes/` for interview decisions
-  - If UI/design-related: note that Mobbin research is pending and propose a reasonable default
+  - Check `docs/design-inspiration/` for reference screenshots and notes
+  - If UI/design-related: reference the Edits-inspired design system in PRD Section 9
   - Ask targeted questions, propose defaults, label as assumptions
 
 ### 2.2 Standard Workflows

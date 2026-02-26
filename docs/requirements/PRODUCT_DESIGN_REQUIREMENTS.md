@@ -78,19 +78,22 @@
 
 ## 4) Information Architecture and Navigation
 
-*Pending — user is researching UI patterns via [Mobbin](https://mobbin.com/discover/apps/ios/latest?via=chris-raroque).*
+Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 
-- **Global navigation pattern:** Bottom tab bar or hamburger menu — TBD
-- **Core sections:** Create, Projects, Profile
-- **Global primary action:** Create (the main thing the app does)
-- **App-level screens (confirmed, layout TBD):**
-  - Sign In / Guest entry
-  - Onboarding (first-time, brief walkthrough)
-  - Create (photo + audio + trim + preview + export)
-  - Projects / History (past projects, re-export, share)
-  - Profile / Settings (name, avatar, preferences, sign-out, delete account)
-  - Notifications (push + possibly in-app)
-  - Post-Export Success (save / share / done)
+- **Global navigation pattern:** Bottom tab bar, 3 tabs: Home, Create, Profile
+- **Global primary action:** "+" FAB button (black rounded square, bottom-right on Home screen)
+- **Color theme strategy:** Light/white for browsing (Home, Picker), dark/black for editing (Editor, Export, Share)
+
+### App-Level Screens
+
+1. **Sign In** — Clean login with Apple + Google sign-in, "Continue as Guest" option. Light background.
+2. **Onboarding** — 1-2 walkthrough screens for first-time users. Design TBD.
+3. **Home / Projects** — White background. "Projects" header, profile icon top-right. 2-column grid of project thumbnails with title + metadata. Black "+" FAB bottom-right. Empty state: illustration + "Create your first project."
+4. **Create — Media Picker** — Light background. Tabbed interface (Photo / Audio tabs, same layout for both). Cancel top-left, Add top-right. Search bar. Grid of device items.
+5. **Create — Editor/Trimmer** — Dark background. Video preview centered (top half). Timeline strip at bottom with frame thumbnails and scrubber. Play/pause, timestamp, undo/redo. Aspect ratio toggle. Trim handles. "Export" button top-right.
+6. **Post-Export — Rendering** — Dark background. X top-left. Percentage text. Video preview with gradient border. "Please don't close" messaging.
+7. **Post-Export — Share** — Dark background. X top-left. "Ready to share" heading. Video preview. "Share to Instagram" gradient button. "Share to TikTok" button. "Saved to camera roll" confirmation.
+8. **Profile / Settings** — Spotify-inspired. Profile: large avatar, name, "Edit profile" button. Settings: list rows with chevrons. Sign out + delete account at bottom.
 
 ## 5) Core Entities (Conceptual Data Model)
 
@@ -280,15 +283,92 @@
 
 ## 7) Screen Requirements (Design Spec)
 
-*Detailed screen specs pending Mobbin research. Confirmed screens:*
+### Sign In
+- **Route:** `/sign-in`
+- **Primary intent:** Authenticate user or allow guest access
+- **Header:** App logo/name
+- **Main sections:** Sign-in buttons (Apple, Google), "Continue as Guest" link
+- **Primary CTA:** "Sign in with Apple" / "Sign in with Google"
+- **Secondary actions:** "Continue as Guest"
+- **Empty/loading/error:** Loading spinner during auth, "Sign-in failed" error with retry
+- **Theme:** Light
+- **Analytics:** `sign_in_completed`, `guest_mode_started`
 
-- Sign In / Guest Entry
-- Onboarding (1-3 screens)
-- Create (main tool)
-- Post-Export Success
-- Projects / History
-- Profile / Settings
-- Notification display (push, possibly in-app — TBD)
+### Home / Projects
+- **Route:** `/` (Home tab)
+- **Primary intent:** Browse past projects, create new ones
+- **Header:** "Projects" title left, filter icon + profile avatar right
+- **Main sections:** 2-column grid of project cards (thumbnail, title, date/size)
+- **Primary CTA:** Black "+" FAB button (bottom-right) → create flow
+- **List behavior:** Vertical scroll, pull to refresh
+- **Empty state:** Illustration + "Create your first project" + "Keep track of your drafts and finished videos all in one place."
+- **Loading:** Skeleton grid
+- **Error:** "Couldn't load projects" + retry
+- **Theme:** Light/white
+- **Analytics:** `project_reopened` (on tap)
+- **Reference:** `projects-history/Edits iOS Projects 0.png`, `Edits iOS Projects 1.png`
+
+### Create — Media Picker
+- **Route:** `/create/picker`
+- **Primary intent:** Select photo and audio from device
+- **Header:** Cancel (left), "Photos" / "Audio" tabs (center), Add (right, enabled when items selected)
+- **Main sections:** Search bar, 3-column media grid from device
+- **Primary CTA:** "Add" button (top-right)
+- **List behavior:** Vertical scroll grid, progressive loading
+- **Empty/loading/error:** Permission request sheet (Edits-style), empty grid if no items
+- **Theme:** Light
+- **Analytics:** `create_started`, `photo_selected`, `audio_selected`
+- **Reference:** `create-flow/Edits iOS Creating a project 1.png` (permissions), `Edits iOS Creating a project 2.png` (grid)
+
+### Create — Editor/Trimmer
+- **Route:** `/create/editor`
+- **Primary intent:** Preview, trim, and configure the promo video
+- **Header:** X/back (left), project name (center), "Export" button (right)
+- **Main sections:** Video preview (top, centered), play/pause + timestamp + undo/redo (middle), timeline strip with frame thumbnails + scrubber (bottom), aspect ratio toggle
+- **Primary CTA:** "Export" button (top-right)
+- **Secondary actions:** Play/pause, trim handles, aspect ratio toggle (9:16 / 1:1), undo/redo
+- **Empty/loading/error:** Preview loading skeleton, "Rendering failed" + retry
+- **Theme:** Dark/black
+- **Analytics:** `preview_viewed`
+- **Reference:** `create-flow/Create Flow - final media trimmer - screens 0.png`, `Create Flow - final media trimmer - screens 1.png`, `general-vibe/Edits iOS Creating a project 3.png`
+
+### Post-Export — Rendering
+- **Route:** `/create/exporting`
+- **Primary intent:** Show rendering progress
+- **Header:** X button (left, to cancel)
+- **Main sections:** Large percentage text, video preview with gradient border, "Please don't close" message
+- **Primary CTA:** None (wait state)
+- **Theme:** Dark/black
+- **Reference:** `post-export/Edits iOS Exporting a video 1.png`
+
+### Post-Export — Share
+- **Route:** `/create/share`
+- **Primary intent:** Save and share the finished video
+- **Header:** X button (left)
+- **Main sections:** "Ready to share" heading + subtitle, video preview, share buttons, confirmation text
+- **Primary CTA:** "Share to Instagram" (gradient button)
+- **Secondary actions:** "Share to TikTok" (outlined button), "Done" / X to return home
+- **Theme:** Dark/black
+- **Analytics:** `video_exported`, `video_saved_to_camera_roll`, `share_tapped_instagram`, `share_tapped_tiktok`
+- **Reference:** `post-export/Edits iOS Exporting a video 2.png`
+
+### Profile / Settings
+- **Route:** `/profile`
+- **Primary intent:** View/edit profile, manage account and preferences
+- **Header:** Back arrow (left), "Settings" title (center)
+- **Main sections:** Profile card (avatar, name, "Edit profile" button), settings list (rows with chevrons: Account, default aspect ratio, default video length), sign out button, delete account
+- **Primary CTA:** "Edit profile"
+- **Theme:** Dark (Spotify-inspired)
+- **Analytics:** None specific
+- **Reference:** `profile-settings/Spotify iOS View profile 0.png`, `Spotify iOS View profile 1.png`
+
+### Onboarding
+- **Route:** `/onboarding`
+- **Primary intent:** Introduce first-time users to the app
+- **Main sections:** 1-2 screens with illustration + brief copy explaining the flow
+- **Primary CTA:** "Get Started" / "Continue"
+- **Theme:** TBD
+- **Analytics:** `onboarding_completed`
 
 ## 8) Interaction Flows
 
@@ -321,23 +401,67 @@
 
 ## 9) Visual Design Requirements (Mini Design System)
 
-*Pending Mobbin research. Known direction:*
+Primary reference: Meta's Edits app. Secondary: Spotify (profile). Screenshots in `docs/design-inspiration/`.
 
-- **Brand adjectives:** Modern, artistic, fun, easy, simple
-- **Color tokens:** TBD
-- **Typography:** TBD
-- **Components:** TBD
-- **Motion:** TBD
-- **Inspiration source:** [Mobbin](https://mobbin.com/discover/apps/ios/latest?via=chris-raroque)
+- **Brand adjectives:** Clean, modern, creative, easy, professional
+- **Color tokens:**
+  - **Light theme (browsing):**
+    - Background: `#FFFFFF`
+    - Surface: `#F5F5F5`
+    - Text: `#1A1A1A`
+    - Text secondary: `#8E8E93`
+  - **Dark theme (editing):**
+    - Background: `#000000`
+    - Surface: `#1C1C1E`
+    - Text: `#FFFFFF`
+    - Text secondary: `#ABABAB`
+  - **Accents:**
+    - Primary CTA: `#5856D6` (blue-purple)
+    - Instagram gradient: orange → pink → purple
+    - Success: green
+    - Error: red
+    - FAB: black with white icon
+  - **Strategy:** Light for browsing (Home, Picker), dark for editing (Editor, Export, Share)
+- **Typography:**
+  - Font family: SF Pro (iOS system) / Inter (cross-platform fallback)
+  - Type scale:
+    - H1: 28pt bold (screen titles)
+    - H2: 22pt semibold (section headers)
+    - Body: 16pt regular (descriptions)
+    - Caption: 13pt regular (metadata, timestamps)
+    - Button: 17pt semibold (CTAs)
+- **Components:**
+  - Buttons: Rounded rectangles. Primary = filled (blue-purple or gradient). Secondary = outlined/gray.
+  - Cards: Rounded corners, thumbnail + text below (2-column project grid)
+  - Tab bar: Bottom-fixed, icon + label, 3 tabs
+  - Pickers: Full-screen with grid, tabs at top, action buttons in header
+  - Timeline: Horizontal strip, frame thumbnails, draggable playhead/scrubber
+  - FAB: Black rounded square with white "+" icon (bottom-right)
+  - Toasts: Subtle confirmation text ("This video was saved to your camera roll")
+- **Motion:**
+  - Fluid but not flashy — smooth transitions
+  - Export progress: animated percentage counter + gradient border fill
+  - Page transitions: standard iOS push/pop
+  - Tab switching: instant/crossfade
+  - FAB: subtle scale-down on press
+  - Respect `reduceMotionEnabled` system setting
 
 ## 10) Content Design
 
-*Pending Mobbin research.*
-
-- **Tone:** TBD (leaning casual and encouraging based on product principles)
-- **Voice do/don't:** TBD
-- **Key empty state copy:** TBD (e.g., "No projects yet — create your first promo!")
-- **Error message guidelines:** Fail gracefully, clear actionable messages
+- **Tone:** Casual and clear — not overly hype, not robotic
+- **Voice do:** Use plain language, short sentences, action-oriented copy
+- **Voice don't:** Jargon, excessive enthusiasm, ALL CAPS
+- **Key empty state copy:**
+  - Projects: "Create your first project" / "Keep track of your drafts and finished videos all in one place."
+- **Key action copy:**
+  - Export progress: "58%" / "Please don't close the app or lock your screen."
+  - Export complete: "Ready to share" / "This video was saved to your camera roll."
+  - Share: "Share to Instagram" / "Share to TikTok"
+- **Error message guidelines:**
+  - Generic: "Something went wrong. Please try again." + retry button
+  - File not found: "Original files no longer on this device."
+  - Storage: "Not enough storage to export."
+  - Network: "You're offline. Connect to the internet to continue."
 
 ## 11) Instrumentation and Analytics
 
@@ -375,11 +499,11 @@
 5. Clerk anonymous-to-authenticated session merge edge cases — test thoroughly
 
 ### Open Questions
-- Navigation pattern (tabs vs hamburger) — after Mobbin research
-- Create screen flow/layout — after Mobbin research
-- Visual design system — after Mobbin research
-- Onboarding design — after Mobbin research
-- Tone of voice — after Mobbin research
+- ~~Navigation pattern~~ — RESOLVED: Bottom tab bar, 3 tabs (Home, Create, Profile)
+- ~~Create screen flow/layout~~ — RESOLVED: 2 screens (Media Picker + Editor/Trimmer)
+- ~~Visual design system~~ — RESOLVED: Edits-inspired dual theme (light browse / dark edit)
+- ~~Tone of voice~~ — RESOLVED: Casual and clear
+- Onboarding screen design — still TBD (deferred to Phase 2)
 - User Profile exact fields — before Phase 2
 - Notification content strategy — before Phase 2
 
