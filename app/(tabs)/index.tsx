@@ -44,7 +44,7 @@ export default function HomeScreen() {
 
       <Pressable
         style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
-        onPress={() => router.push("/(tabs)/create")}
+        onPress={() => router.push("/create/picker" as const)}
         accessibilityLabel="Create new project"
         accessibilityRole="button"
       >
