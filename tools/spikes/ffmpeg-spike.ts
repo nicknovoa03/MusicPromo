@@ -3,7 +3,7 @@
  * Run this from a dev button or console to verify ffmpeg-kit works
  * with Expo SDK 54 / RN 0.81 / New Architecture.
  *
- * TODO(gh-issue): move/delete this spike before production release.
+ * TODO(gh-issue): delete this spike before production release.
  */
 import { Paths, File } from "expo-file-system";
 import { FFmpegKit, ReturnCode } from "ffmpeg-kit-react-native";
