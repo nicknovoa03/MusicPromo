@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { Tabs, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
@@ -260,6 +265,11 @@ export default function TabsLayout() {
       />
       <Tabs.Screen
         name="create"
+        listeners={{
+          tabPress: () => {
+            track("create_started");
+          },
+        }}
         options={{
           title: "Create",
           tabBarIcon: ({ color, size }) => (

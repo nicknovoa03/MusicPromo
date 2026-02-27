@@ -44,11 +44,24 @@ function AuthGate() {
   return <Slot />;
 }
 
+function AppStatusBar() {
+  const segments = useSegments();
+  const root = segments[0];
+  const child = segments[1];
+
+  const isDarkSurface =
+    (root === "(tabs)" && child === "profile") ||
+    (root === "create" &&
+      (child === "editor" || child === "rendering" || child === "share"));
+
+  return <StatusBar style={isDarkSurface ? "light" : "dark"} />;
+}
+
 function AppWithProviders() {
   return (
     <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
       <AuthGate />
-      <StatusBar style="auto" />
+      <AppStatusBar />
     </ConvexProviderWithClerk>
   );
 }
