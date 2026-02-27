@@ -1,18 +1,29 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const LOCAL_ONBOARDING_KEY_PREFIX = "musicpromo:onboarding-complete";
+const LOCAL_GUEST_ONBOARDING_KEY = `${LOCAL_ONBOARDING_KEY_PREFIX}:local-guest`;
 
 function localOnboardingKey(clerkUserId: string) {
   return `${LOCAL_ONBOARDING_KEY_PREFIX}:${clerkUserId}`;
 }
 
+type OnboardingLocalOptions = {
+  localGuest?: boolean;
+};
+
 export async function getLocalOnboardingCompleted(
-  clerkUserId?: string | null
+  clerkUserId?: string | null,
+  options?: OnboardingLocalOptions
 ): Promise<boolean> {
-  if (!clerkUserId) return false;
+  const key = clerkUserId
+    ? localOnboardingKey(clerkUserId)
+    : options?.localGuest
+      ? LOCAL_GUEST_ONBOARDING_KEY
+      : null;
+  if (!key) return false;
 
   try {
-    const value = await AsyncStorage.getItem(localOnboardingKey(clerkUserId));
+    const value = await AsyncStorage.getItem(key);
     return value === "1";
   } catch (error) {
     console.warn("Failed to read local onboarding completion state:", error);
@@ -21,15 +32,41 @@ export async function getLocalOnboardingCompleted(
 }
 
 export async function setLocalOnboardingCompleted(
-  clerkUserId?: string | null
+  clerkUserId?: string | null,
+  options?: OnboardingLocalOptions
 ): Promise<boolean> {
-  if (!clerkUserId) return false;
+  const key = clerkUserId
+    ? localOnboardingKey(clerkUserId)
+    : options?.localGuest
+      ? LOCAL_GUEST_ONBOARDING_KEY
+      : null;
+  if (!key) return false;
 
   try {
-    await AsyncStorage.setItem(localOnboardingKey(clerkUserId), "1");
+    await AsyncStorage.setItem(key, "1");
     return true;
   } catch (error) {
     console.warn("Failed to persist local onboarding completion state:", error);
+    return false;
+  }
+}
+
+export async function clearLocalOnboardingCompleted(
+  clerkUserId?: string | null,
+  options?: OnboardingLocalOptions
+): Promise<boolean> {
+  const key = clerkUserId
+    ? localOnboardingKey(clerkUserId)
+    : options?.localGuest
+      ? LOCAL_GUEST_ONBOARDING_KEY
+      : null;
+  if (!key) return false;
+
+  try {
+    await AsyncStorage.removeItem(key);
+    return true;
+  } catch (error) {
+    console.warn("Failed to clear local onboarding completion state:", error);
     return false;
   }
 }

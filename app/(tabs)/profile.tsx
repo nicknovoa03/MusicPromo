@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -16,8 +16,15 @@ import { Ionicons } from "@expo/vector-icons";
 import { usePostHog } from "posthog-react-native";
 import { api } from "../../convex/_generated/api";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
+import {
+  DEFAULT_LOCAL_PROFILE_PREFERENCES,
+  setLocalProfilePreferences,
+  getLocalProfilePreferences,
+} from "@/lib/localProfile";
+import { clearLocalOnboardingCompleted } from "@/lib/onboarding";
 import { getExpoPushTokenAsync } from "@/lib/notifications";
 import type { EventName } from "@/lib/analytics";
+import { useLocalSession } from "@/providers/localSession";
 
 type AspectRatio = "9:16" | "1:1";
 const ASPECT_RATIO_OPTIONS: AspectRatio[] = ["9:16", "1:1"];
@@ -25,9 +32,10 @@ const VIDEO_LENGTH_OPTIONS = [15, 30, 60] as const;
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { signOut, getToken } = useAuth();
+  const { signOut, getToken, userId } = useAuth();
   const { user: clerkUser } = useUser();
-  const { isLoading: isConvexAuthLoading } = useConvexAuth();
+  const { isAuthenticated, isLoading: isConvexAuthLoading } = useConvexAuth();
+  const { isLocalGuest, clearLocalSession } = useLocalSession();
   const posthog = usePostHog();
   const convexUser = useQuery(api.users.current);
   const getOrCreateUser = useMutation(api.users.getOrCreate);
@@ -42,23 +50,61 @@ export default function ProfileScreen() {
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
+  const [localPreferences, setLocalPreferences] = useState(
+    DEFAULT_LOCAL_PROFILE_PREFERENCES
+  );
+  const [isLocalPreferencesReady, setIsLocalPreferencesReady] = useState(false);
 
-  const isLoading =
-    convexUser === undefined || isBootstrappingUser || isConvexAuthLoading;
-  const isGuest = convexUser?.isGuest ?? !clerkUser?.primaryEmailAddress;
-  const displayName = convexUser?.name ?? clerkUser?.fullName ?? "Guest";
-  const displayEmail =
-    convexUser?.email ?? clerkUser?.primaryEmailAddress?.emailAddress ?? "No email";
+  useEffect(() => {
+    let isActive = true;
+    setIsLocalPreferencesReady(false);
+
+    (async () => {
+      const prefs = await getLocalProfilePreferences();
+      if (!isActive) return;
+      setLocalPreferences(prefs);
+      setIsLocalPreferencesReady(true);
+    })();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  const usesLocalProfile = isLocalGuest || !isAuthenticated;
+
+  const isLoading = usesLocalProfile
+    ? !isLocalPreferencesReady
+    : convexUser === undefined || isBootstrappingUser || isConvexAuthLoading;
+  const isGuest = usesLocalProfile
+    ? true
+    : convexUser?.isGuest ?? !clerkUser?.primaryEmailAddress;
+  const displayName = usesLocalProfile
+    ? "Guest"
+    : convexUser?.name ?? clerkUser?.fullName ?? "Guest";
+  const displayEmail = usesLocalProfile
+    ? "Local-only session"
+    : convexUser?.email ?? clerkUser?.primaryEmailAddress?.emailAddress ?? "No email";
 
   const selectedAspectRatio = useMemo<AspectRatio>(() => {
+    if (usesLocalProfile) return localPreferences.defaultAspectRatio;
     return convexUser?.preferences?.defaultAspectRatio ?? "9:16";
-  }, [convexUser?.preferences?.defaultAspectRatio]);
+  }, [
+    usesLocalProfile,
+    localPreferences.defaultAspectRatio,
+    convexUser?.preferences?.defaultAspectRatio,
+  ]);
 
   const selectedVideoLength = useMemo(() => {
+    if (usesLocalProfile) return localPreferences.defaultVideoLength;
     const value = convexUser?.preferences?.defaultVideoLength;
     if (value === 30 || value === 60) return value;
     return 15;
-  }, [convexUser?.preferences?.defaultVideoLength]);
+  }, [
+    usesLocalProfile,
+    localPreferences.defaultVideoLength,
+    convexUser?.preferences?.defaultVideoLength,
+  ]);
 
   const track = useCallback(
     (event: EventName, props?: Record<string, string>) => {
@@ -132,10 +178,17 @@ export default function ProfileScreen() {
       setErrorText(null);
       setSavingPreference("aspectRatio");
       try {
-        await ensureUserRecord();
-        await updateProfile({
-          preferences: { defaultAspectRatio: next },
-        });
+        if (usesLocalProfile) {
+          const saved = await setLocalProfilePreferences({
+            defaultAspectRatio: next,
+          });
+          setLocalPreferences(saved);
+        } else {
+          await ensureUserRecord();
+          await updateProfile({
+            preferences: { defaultAspectRatio: next },
+          });
+        }
         track("profile_preference_updated", {
           setting: "defaultAspectRatio",
           value: next,
@@ -157,10 +210,13 @@ export default function ProfileScreen() {
       convexUser,
       savingPreference,
       selectedAspectRatio,
+      usesLocalProfile,
       ensureUserRecord,
       updateProfile,
       track,
       isGuest,
+      isMissingConvexTemplateError,
+      isUnauthenticatedError,
     ],
   );
 
@@ -170,10 +226,17 @@ export default function ProfileScreen() {
       setErrorText(null);
       setSavingPreference("videoLength");
       try {
-        await ensureUserRecord();
-        await updateProfile({
-          preferences: { defaultVideoLength: next },
-        });
+        if (usesLocalProfile) {
+          const saved = await setLocalProfilePreferences({
+            defaultVideoLength: next,
+          });
+          setLocalPreferences(saved);
+        } else {
+          await ensureUserRecord();
+          await updateProfile({
+            preferences: { defaultVideoLength: next },
+          });
+        }
         track("profile_preference_updated", {
           setting: "defaultVideoLength",
           value: String(next),
@@ -195,11 +258,13 @@ export default function ProfileScreen() {
       convexUser,
       savingPreference,
       selectedVideoLength,
+      usesLocalProfile,
       ensureUserRecord,
       updateProfile,
       track,
       isGuest,
       isUnauthenticatedError,
+      isMissingConvexTemplateError,
     ],
   );
 
@@ -207,7 +272,13 @@ export default function ProfileScreen() {
     setIsSigningOut(true);
     setErrorText(null);
     try {
+      if (isLocalGuest) {
+        await clearLocalSession();
+        router.replace("/(auth)/sign-in");
+        return;
+      }
       await removePushTokenForCurrentDevice();
+      await clearLocalSession();
       await signOut();
     } catch (error) {
       console.warn("Failed to sign out:", error);
@@ -216,7 +287,13 @@ export default function ProfileScreen() {
     } finally {
       setIsSigningOut(false);
     }
-  }, [removePushTokenForCurrentDevice, signOut]);
+  }, [
+    isLocalGuest,
+    clearLocalSession,
+    router,
+    removePushTokenForCurrentDevice,
+    signOut,
+  ]);
 
   const handleSignOut = useCallback(() => {
     track("sign_out_tapped", { isGuest: String(isGuest) });
@@ -241,7 +318,9 @@ export default function ProfileScreen() {
       await removePushTokenForCurrentDevice();
       await ensureUserRecord();
       await softDeleteCurrent({});
+      await clearLocalOnboardingCompleted(userId);
       track("account_deleted", { isGuest: String(isGuest) });
+      await clearLocalSession();
       await signOut();
       router.replace("/(auth)/sign-in");
     } catch (error) {
@@ -262,6 +341,8 @@ export default function ProfileScreen() {
     removePushTokenForCurrentDevice,
     ensureUserRecord,
     softDeleteCurrent,
+    userId,
+    clearLocalSession,
     signOut,
     router,
     isUnauthenticatedError,
@@ -413,7 +494,9 @@ export default function ProfileScreen() {
           >
             <View style={styles.actionRowLeft}>
               <Ionicons name="log-out-outline" size={20} color={colors.dark.text} />
-              <Text style={styles.actionText}>Sign Out</Text>
+              <Text style={styles.actionText}>
+                {isLocalGuest ? "Exit Guest Mode" : "Sign Out"}
+              </Text>
             </View>
             {isSigningOut ? (
               <ActivityIndicator size="small" color={colors.dark.textSecondary} />
@@ -426,38 +509,42 @@ export default function ProfileScreen() {
             )}
           </Pressable>
 
-          <Pressable
-            style={({ pressed }) => [
-              styles.actionRow,
-              pressed && !actionsDisabled && styles.deleteRowPressed,
-            ]}
-            onPress={handleDeleteAccount}
-            disabled={actionsDisabled}
-            accessibilityLabel="Delete account"
-            accessibilityRole="button"
-          >
-            <View style={styles.actionRowLeft}>
-              <Ionicons
-                name="trash-outline"
-                size={20}
-                color={colors.accent.error}
-              />
-              <Text style={styles.deleteText}>Delete Account</Text>
-            </View>
-            {isDeleting ? (
-              <ActivityIndicator size="small" color={colors.accent.error} />
-            ) : (
-              <Ionicons
-                name="chevron-forward"
-                size={16}
-                color={colors.dark.textSecondary}
-              />
-            )}
-          </Pressable>
+          {!isLocalGuest ? (
+            <>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.actionRow,
+                  pressed && !actionsDisabled && styles.deleteRowPressed,
+                ]}
+                onPress={handleDeleteAccount}
+                disabled={actionsDisabled}
+                accessibilityLabel="Delete account"
+                accessibilityRole="button"
+              >
+                <View style={styles.actionRowLeft}>
+                  <Ionicons
+                    name="trash-outline"
+                    size={20}
+                    color={colors.accent.error}
+                  />
+                  <Text style={styles.deleteText}>Delete Account</Text>
+                </View>
+                {isDeleting ? (
+                  <ActivityIndicator size="small" color={colors.accent.error} />
+                ) : (
+                  <Ionicons
+                    name="chevron-forward"
+                    size={16}
+                    color={colors.dark.textSecondary}
+                  />
+                )}
+              </Pressable>
 
-          <Text style={styles.warningText}>
-            Deleting deactivates your account for v1 while keeping records recoverable.
-          </Text>
+              <Text style={styles.warningText}>
+                Deleting deactivates your account for v1 while keeping records recoverable.
+              </Text>
+            </>
+          ) : null}
         </View>
       </ScrollView>
     </SafeAreaView>

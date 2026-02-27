@@ -6,6 +6,10 @@ import { PostHogProvider } from "posthog-react-native";
 import { StatusBar } from "expo-status-bar";
 import { tokenCache } from "@/lib/clerk";
 import { convex } from "@/lib/convex";
+import {
+  LocalSessionProvider,
+  useLocalSession,
+} from "@/providers/localSession";
 
 const clerkPublishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
 if (!clerkPublishableKey) {
@@ -16,20 +20,26 @@ const posthogHost = process.env.EXPO_PUBLIC_POSTHOG_HOST;
 
 function AuthGate() {
   const { isSignedIn, isLoaded } = useAuth();
+  const { isHydrated, isLocalGuest, clearLocalSession } = useLocalSession();
   const segments = useSegments();
   const router = useRouter();
 
   useEffect(() => {
-    if (!isLoaded) return;
+    if (!isLoaded || !isHydrated) return;
 
+    if (isSignedIn && isLocalGuest) {
+      void clearLocalSession();
+    }
+
+    const hasSession = isSignedIn || isLocalGuest;
     const inAuthGroup = segments[0] === "(auth)";
 
-    if (!isSignedIn && !inAuthGroup) {
+    if (!hasSession && !inAuthGroup) {
       router.replace("/(auth)/sign-in");
-    } else if (isSignedIn && inAuthGroup) {
+    } else if (hasSession && inAuthGroup) {
       router.replace("/(tabs)");
     }
-  }, [isSignedIn, isLoaded, segments]);
+  }, [isSignedIn, isLoaded, isHydrated, isLocalGuest, clearLocalSession, segments, router]);
 
   return <Slot />;
 }
@@ -47,11 +57,13 @@ export default function RootLayout() {
   const posthogEnabled = posthogApiKey && posthogHost;
 
   const inner = (
-    <ClerkProvider publishableKey={clerkPublishableKey} tokenCache={tokenCache}>
-      <ClerkLoaded>
-        <AppWithProviders />
-      </ClerkLoaded>
-    </ClerkProvider>
+    <LocalSessionProvider>
+      <ClerkProvider publishableKey={clerkPublishableKey} tokenCache={tokenCache}>
+        <ClerkLoaded>
+          <AppWithProviders />
+        </ClerkLoaded>
+      </ClerkProvider>
+    </LocalSessionProvider>
   );
 
   if (posthogEnabled) {

@@ -12,7 +12,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@clerk/clerk-expo";
-import { useMutation, useQuery } from "convex/react";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { usePostHog } from "posthog-react-native";
 import { api } from "../convex/_generated/api";
 import { colors, radius, spacing, typography } from "@/constants/tokens";
@@ -21,6 +21,7 @@ import {
   getLocalOnboardingCompleted,
   setLocalOnboardingCompleted,
 } from "@/lib/onboarding";
+import { useLocalSession } from "@/providers/localSession";
 
 type CompletionMethod = "skip" | "cta";
 
@@ -64,6 +65,8 @@ export default function OnboardingScreen() {
   const router = useRouter();
   const { width } = useWindowDimensions();
   const { userId } = useAuth();
+  const { isAuthenticated } = useConvexAuth();
+  const { isLocalGuest } = useLocalSession();
   const posthog = usePostHog();
   const currentUser = useQuery(api.users.current);
   const completeOnboarding = useMutation(api.users.completeOnboarding);
@@ -89,7 +92,9 @@ export default function OnboardingScreen() {
     setServerLookupTimedOut(false);
 
     (async () => {
-      const completed = await getLocalOnboardingCompleted(userId);
+      const completed = await getLocalOnboardingCompleted(userId, {
+        localGuest: isLocalGuest,
+      });
       if (!isActive) return;
       setLocalCompletion(completed);
       setLocalCompletionReady(true);
@@ -98,23 +103,40 @@ export default function OnboardingScreen() {
     return () => {
       isActive = false;
     };
-  }, [userId]);
+  }, [userId, isLocalGuest]);
 
   useEffect(() => {
-    if (!localCompletionReady || localCompletion || currentUser !== undefined) return;
+    if (
+      !isAuthenticated ||
+      isLocalGuest ||
+      !localCompletionReady ||
+      localCompletion ||
+      currentUser !== undefined
+    ) {
+      return;
+    }
 
     const timeout = setTimeout(() => {
       setServerLookupTimedOut(true);
     }, 1500);
 
     return () => clearTimeout(timeout);
-  }, [localCompletionReady, localCompletion, currentUser]);
+  }, [
+    isAuthenticated,
+    isLocalGuest,
+    localCompletionReady,
+    localCompletion,
+    currentUser,
+  ]);
 
-  const hasServerCompletion = Boolean(currentUser?.onboardingCompletedAt);
+  const hasServerCompletion =
+    isAuthenticated && Boolean(currentUser?.onboardingCompletedAt);
   const isOnboardingCompleted = localCompletion || hasServerCompletion;
-  const hasCompletionState =
-    localCompletionReady &&
-    (isOnboardingCompleted || currentUser !== undefined || serverLookupTimedOut);
+  const hasCompletionState = localCompletionReady && (
+    isLocalGuest
+      ? true
+      : isOnboardingCompleted || currentUser !== undefined || serverLookupTimedOut
+  );
 
   useEffect(() => {
     if (!hasCompletionState || !isOnboardingCompleted || hasRedirectedRef.current) {
@@ -126,6 +148,8 @@ export default function OnboardingScreen() {
   }, [hasCompletionState, isOnboardingCompleted, router]);
 
   const persistCompletionToServer = useCallback(async () => {
+    if (!isAuthenticated) return;
+
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       try {
         await completeOnboarding({});
@@ -139,7 +163,7 @@ export default function OnboardingScreen() {
         await sleep(250 * attempt);
       }
     }
-  }, [completeOnboarding]);
+  }, [isAuthenticated, completeOnboarding]);
 
   const finishOnboarding = useCallback(
     async (method: CompletionMethod) => {
@@ -148,7 +172,7 @@ export default function OnboardingScreen() {
       setIsCompleting(true);
       setLocalCompletion(true);
 
-      await setLocalOnboardingCompleted(userId);
+      await setLocalOnboardingCompleted(userId, { localGuest: isLocalGuest });
       posthog?.capture("onboarding_completed" satisfies EventName, { method });
 
       await persistCompletionToServer();
@@ -157,7 +181,14 @@ export default function OnboardingScreen() {
         setIsCompleting(false);
       }
     },
-    [isCompleting, persistCompletionToServer, posthog, router, userId]
+    [
+      isCompleting,
+      persistCompletionToServer,
+      posthog,
+      router,
+      userId,
+      isLocalGuest,
+    ]
   );
 
   const handleNext = useCallback(() => {

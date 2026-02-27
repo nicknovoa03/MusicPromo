@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -11,13 +11,18 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useQuery } from "convex/react";
+import { useConvexAuth, useQuery } from "convex/react";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import { usePostHog } from "posthog-react-native";
 import { api } from "../../convex/_generated/api";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
 import type { EventName } from "@/lib/analytics";
+import {
+  DEFAULT_LOCAL_PROFILE_PREFERENCES,
+  getLocalProfilePreferences,
+} from "@/lib/localProfile";
+import { useLocalSession } from "@/providers/localSession";
 
 type Tab = "photo" | "audio";
 
@@ -67,11 +72,11 @@ export default function PickerScreen() {
   const trimEnd = firstParam(params.trimEnd);
   const initialTab =
     firstParam(params.initialTab) === "audio" ? "audio" : "photo";
+  const { isAuthenticated } = useConvexAuth();
+  const { isLocalGuest } = useLocalSession();
   const currentUser = useQuery(api.users.current);
-  const preferredAspectRatio =
-    currentUser?.preferences?.defaultAspectRatio ?? "9:16";
-  const preferredVideoLength = normalizeDefaultVideoLength(
-    currentUser?.preferences?.defaultVideoLength,
+  const [localPreferences, setLocalPreferences] = useState(
+    DEFAULT_LOCAL_PROFILE_PREFERENCES
   );
 
   const [activeTab, setActiveTab] = useState<Tab>(initialTab);
@@ -82,6 +87,28 @@ export default function PickerScreen() {
     audioName: firstParam(params.audioName) || null,
   });
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    let isActive = true;
+
+    (async () => {
+      const prefs = await getLocalProfilePreferences();
+      if (!isActive) return;
+      setLocalPreferences(prefs);
+    })();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  const useLocalDefaults = isLocalGuest || !isAuthenticated;
+  const preferredAspectRatio = useLocalDefaults
+    ? localPreferences.defaultAspectRatio
+    : currentUser?.preferences?.defaultAspectRatio ?? "9:16";
+  const preferredVideoLength = useLocalDefaults
+    ? localPreferences.defaultVideoLength
+    : normalizeDefaultVideoLength(currentUser?.preferences?.defaultVideoLength);
 
   const track = useCallback(
     (event: EventName, props?: Record<string, string>) => {

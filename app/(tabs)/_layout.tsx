@@ -10,6 +10,7 @@ import { api } from "../../convex/_generated/api";
 import { colors, typography } from "@/constants/tokens";
 import type { EventName } from "@/lib/analytics";
 import { getLocalOnboardingCompleted } from "@/lib/onboarding";
+import { useLocalSession } from "@/providers/localSession";
 import {
   handleInitialNotificationTap,
   registerNotificationListeners,
@@ -30,6 +31,7 @@ export default function TabsLayout() {
   const currentUser = useQuery(api.users.current);
   const posthog = usePostHog();
   const { signOut, getToken, userId } = useAuth();
+  const { isLocalGuest } = useLocalSession();
   const { user } = useUser();
   const didBootstrapPush = useRef(false);
   const didRouteToOnboarding = useRef(false);
@@ -45,11 +47,13 @@ export default function TabsLayout() {
     [posthog]
   );
 
+  const hasSession = isAuthenticated || isLocalGuest;
+
   useEffect(() => {
-    if (isAuthenticated) return;
+    if (hasSession) return;
     didBootstrapPush.current = false;
     didRouteToOnboarding.current = false;
-  }, [isAuthenticated]);
+  }, [hasSession]);
 
   useEffect(() => {
     let isActive = true;
@@ -57,7 +61,9 @@ export default function TabsLayout() {
     setOnboardingServerTimedOut(false);
 
     (async () => {
-      const completed = await getLocalOnboardingCompleted(userId);
+      const completed = await getLocalOnboardingCompleted(userId, {
+        localGuest: isLocalGuest,
+      });
       if (!isActive) return;
       setLocalOnboardingCompleted(completed);
       setLocalOnboardingReady(true);
@@ -66,27 +72,37 @@ export default function TabsLayout() {
     return () => {
       isActive = false;
     };
-  }, [userId]);
+  }, [userId, isLocalGuest]);
 
   useEffect(() => {
-    if (!isAuthenticated || !localOnboardingReady || currentUser !== undefined) return;
+    if (
+      !isAuthenticated ||
+      isLocalGuest ||
+      !localOnboardingReady ||
+      currentUser !== undefined
+    ) {
+      return;
+    }
 
     const timeout = setTimeout(() => {
       setOnboardingServerTimedOut(true);
     }, 1500);
 
     return () => clearTimeout(timeout);
-  }, [isAuthenticated, localOnboardingReady, currentUser]);
+  }, [isAuthenticated, isLocalGuest, localOnboardingReady, currentUser]);
 
-  const hasServerOnboardingCompletion = Boolean(currentUser?.onboardingCompletedAt);
+  const hasServerOnboardingCompletion =
+    isAuthenticated && Boolean(currentUser?.onboardingCompletedAt);
   const isOnboardingCompleted =
     localOnboardingCompleted || hasServerOnboardingCompletion;
-  const hasOnboardingStatus =
-    localOnboardingReady &&
-    (isOnboardingCompleted || currentUser !== undefined || onboardingServerTimedOut);
+  const hasOnboardingStatus = localOnboardingReady && (
+    isLocalGuest
+      ? true
+      : isOnboardingCompleted || currentUser !== undefined || onboardingServerTimedOut
+  );
 
   useEffect(() => {
-    if (!isAuthenticated || !hasOnboardingStatus) return;
+    if (!hasSession || !hasOnboardingStatus) return;
 
     if (!isOnboardingCompleted) {
       if (didRouteToOnboarding.current) return;
@@ -96,7 +112,7 @@ export default function TabsLayout() {
     }
 
     didRouteToOnboarding.current = false;
-  }, [hasOnboardingStatus, isAuthenticated, isOnboardingCompleted, router]);
+  }, [hasOnboardingStatus, hasSession, isOnboardingCompleted, router]);
 
   useEffect(() => {
     if (!isAuthenticated || didBootstrapPush.current) return;
@@ -201,6 +217,14 @@ export default function TabsLayout() {
       <View style={styles.gateContainer}>
         <ActivityIndicator size="large" color={colors.accent.primary} />
         <Text style={styles.gateText}>Loading your workspace...</Text>
+      </View>
+    );
+  }
+  if (isLocalGuest && (!hasOnboardingStatus || !isOnboardingCompleted)) {
+    return (
+      <View style={styles.gateContainer}>
+        <ActivityIndicator size="large" color={colors.accent.primary} />
+        <Text style={styles.gateText}>Preparing guest workspace...</Text>
       </View>
     );
   }

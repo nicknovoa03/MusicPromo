@@ -18,7 +18,15 @@ export const getOrCreate = mutation({
     const existing = await getUserByClerkId(ctx, clerkId);
 
     if (existing) {
-      if (existing.isDeleted) throw new Error("Account deleted");
+      if (existing.isDeleted) {
+        await ctx.db.patch(existing._id, {
+          isDeleted: false,
+          deletedAt: undefined,
+          name: identity.name ?? existing.name,
+          email: identity.email ?? existing.email,
+          avatarUrl: (identity.imageUrl as string) ?? existing.avatarUrl,
+        });
+      }
       return existing._id;
     }
 
@@ -97,6 +105,7 @@ export const softDeleteCurrent = mutation({
     await ctx.db.patch(user._id, {
       isDeleted: true,
       deletedAt,
+      onboardingCompletedAt: undefined,
     });
 
     return { userId: user._id, deletedAt };
@@ -128,7 +137,17 @@ export const completeOnboarding = mutation({
       return { userId, onboardingCompletedAt: completedAt };
     }
 
-    if (existing.isDeleted) throw new Error("Account deleted");
+    if (existing.isDeleted) {
+      await ctx.db.patch(existing._id, {
+        isDeleted: false,
+        deletedAt: undefined,
+        onboardingCompletedAt: completedAt,
+        name: identity.name ?? existing.name,
+        email: identity.email ?? existing.email,
+        avatarUrl: (identity.imageUrl as string) ?? existing.avatarUrl,
+      });
+      return { userId: existing._id, onboardingCompletedAt: completedAt };
+    }
     if (existing.onboardingCompletedAt) {
       return {
         userId: existing._id,
