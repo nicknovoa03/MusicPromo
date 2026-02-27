@@ -1,0 +1,469 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import { useAuth } from "@clerk/clerk-expo";
+import { useMutation, useQuery } from "convex/react";
+import { usePostHog } from "posthog-react-native";
+import { api } from "../convex/_generated/api";
+import { colors, radius, spacing, typography } from "@/constants/tokens";
+import type { EventName } from "@/lib/analytics";
+import {
+  getLocalOnboardingCompleted,
+  setLocalOnboardingCompleted,
+} from "@/lib/onboarding";
+
+type CompletionMethod = "skip" | "cta";
+
+type OnboardingSlide = {
+  id: string;
+  title: string;
+  body: string;
+  eyebrow: string;
+  icon: keyof typeof Ionicons.glyphMap;
+};
+
+const ONBOARDING_SLIDES: OnboardingSlide[] = [
+  {
+    id: "value",
+    eyebrow: "Fast Start",
+    title: "Turn one photo and one track into a promo in seconds",
+    body: "Pick a cover image, add your audio, and get a social-ready clip without opening a full editor.",
+    icon: "sparkles-outline",
+  },
+  {
+    id: "flow",
+    eyebrow: "Simple Flow",
+    title: "Pick media, trim, export, and share",
+    body: "Stay focused on your release. MusicPromo keeps the process short so you can post faster.",
+    icon: "musical-notes-outline",
+  },
+  {
+    id: "ready",
+    eyebrow: "You Are Set",
+    title: "Your first promo is one tap away",
+    body: "When you are ready, open Create and start building.",
+    icon: "rocket-outline",
+  },
+];
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export default function OnboardingScreen() {
+  const router = useRouter();
+  const { width } = useWindowDimensions();
+  const { userId } = useAuth();
+  const posthog = usePostHog();
+  const currentUser = useQuery(api.users.current);
+  const completeOnboarding = useMutation(api.users.completeOnboarding);
+  const listRef = useRef<FlatList<OnboardingSlide>>(null);
+  const hasRedirectedRef = useRef(false);
+  const isMountedRef = useRef(true);
+
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [isCompleting, setIsCompleting] = useState(false);
+  const [localCompletionReady, setLocalCompletionReady] = useState(false);
+  const [localCompletion, setLocalCompletion] = useState(false);
+  const [serverLookupTimedOut, setServerLookupTimedOut] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isActive = true;
+    setLocalCompletionReady(false);
+    setServerLookupTimedOut(false);
+
+    (async () => {
+      const completed = await getLocalOnboardingCompleted(userId);
+      if (!isActive) return;
+      setLocalCompletion(completed);
+      setLocalCompletionReady(true);
+    })();
+
+    return () => {
+      isActive = false;
+    };
+  }, [userId]);
+
+  useEffect(() => {
+    if (!localCompletionReady || localCompletion || currentUser !== undefined) return;
+
+    const timeout = setTimeout(() => {
+      setServerLookupTimedOut(true);
+    }, 1500);
+
+    return () => clearTimeout(timeout);
+  }, [localCompletionReady, localCompletion, currentUser]);
+
+  const hasServerCompletion = Boolean(currentUser?.onboardingCompletedAt);
+  const isOnboardingCompleted = localCompletion || hasServerCompletion;
+  const hasCompletionState =
+    localCompletionReady &&
+    (isOnboardingCompleted || currentUser !== undefined || serverLookupTimedOut);
+
+  useEffect(() => {
+    if (!hasCompletionState || !isOnboardingCompleted || hasRedirectedRef.current) {
+      return;
+    }
+
+    hasRedirectedRef.current = true;
+    router.replace("/(tabs)");
+  }, [hasCompletionState, isOnboardingCompleted, router]);
+
+  const persistCompletionToServer = useCallback(async () => {
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      try {
+        await completeOnboarding({});
+        return;
+      } catch (error) {
+        if (attempt === 2) {
+          console.warn("Failed to persist onboarding completion to Convex:", error);
+          return;
+        }
+
+        await sleep(250 * attempt);
+      }
+    }
+  }, [completeOnboarding]);
+
+  const finishOnboarding = useCallback(
+    async (method: CompletionMethod) => {
+      if (isCompleting) return;
+
+      setIsCompleting(true);
+      setLocalCompletion(true);
+
+      await setLocalOnboardingCompleted(userId);
+      posthog?.capture("onboarding_completed" satisfies EventName, { method });
+
+      await persistCompletionToServer();
+      router.replace("/(tabs)");
+      if (isMountedRef.current) {
+        setIsCompleting(false);
+      }
+    },
+    [isCompleting, persistCompletionToServer, posthog, router, userId]
+  );
+
+  const handleNext = useCallback(() => {
+    if (currentIndex >= ONBOARDING_SLIDES.length - 1) {
+      finishOnboarding("cta").catch((error) => {
+        console.warn("Failed to complete onboarding:", error);
+      });
+      return;
+    }
+
+    listRef.current?.scrollToOffset({
+      offset: (currentIndex + 1) * width,
+      animated: true,
+    });
+  }, [currentIndex, finishOnboarding, width]);
+
+  const handleSkip = useCallback(() => {
+    finishOnboarding("skip").catch((error) => {
+      console.warn("Failed to skip onboarding:", error);
+    });
+  }, [finishOnboarding]);
+
+  const renderSlide = useCallback(
+    ({ item }: { item: OnboardingSlide }) => {
+      return (
+        <View style={[styles.slide, { width }]}>
+          <View style={styles.card}>
+            <View style={styles.iconShell}>
+              <Ionicons name={item.icon} size={32} color={colors.accent.primary} />
+            </View>
+            <Text style={styles.eyebrow}>{item.eyebrow}</Text>
+            <Text style={styles.slideTitle}>{item.title}</Text>
+            <Text style={styles.slideBody}>{item.body}</Text>
+
+            {item.id === "flow" ? (
+              <View style={styles.flowRow}>
+                {["Pick", "Trim", "Export", "Share"].map((step) => (
+                  <View key={step} style={styles.flowPill}>
+                    <Text style={styles.flowPillText}>{step}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+          </View>
+        </View>
+      );
+    },
+    [width]
+  );
+
+  if (!hasCompletionState) {
+    return (
+      <SafeAreaView style={styles.loadingContainer} edges={["top", "bottom"]}>
+        <ActivityIndicator size="large" color={colors.accent.primary} />
+        <Text style={styles.loadingText}>Preparing your workspace...</Text>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
+      <View style={styles.backdropBlobA} />
+      <View style={styles.backdropBlobB} />
+
+      <View style={styles.header}>
+        <Text style={styles.stepCounter}>
+          {currentIndex + 1}/{ONBOARDING_SLIDES.length}
+        </Text>
+        <Pressable
+          style={({ pressed }) => [styles.skipButton, pressed && styles.pressed]}
+          onPress={handleSkip}
+          disabled={isCompleting}
+          accessibilityLabel="Skip onboarding"
+          accessibilityRole="button"
+        >
+          <Text style={styles.skipButtonText}>Skip</Text>
+        </Pressable>
+      </View>
+
+      <FlatList
+        ref={listRef}
+        data={ONBOARDING_SLIDES}
+        renderItem={renderSlide}
+        keyExtractor={(item) => item.id}
+        horizontal
+        pagingEnabled
+        bounces={false}
+        showsHorizontalScrollIndicator={false}
+        onMomentumScrollEnd={(event) => {
+          const page = Math.round(event.nativeEvent.contentOffset.x / width);
+          setCurrentIndex(Math.max(0, Math.min(ONBOARDING_SLIDES.length - 1, page)));
+        }}
+      />
+
+      <View style={styles.footer}>
+        <View style={styles.dots}>
+          {ONBOARDING_SLIDES.map((slide, index) => (
+            <View
+              key={slide.id}
+              style={[styles.dot, index === currentIndex && styles.dotActive]}
+            />
+          ))}
+        </View>
+
+        <Pressable
+          style={({ pressed }) => [
+            styles.primaryButton,
+            pressed && styles.pressed,
+            isCompleting && styles.primaryButtonDisabled,
+          ]}
+          onPress={handleNext}
+          disabled={isCompleting}
+          accessibilityRole="button"
+          accessibilityLabel={
+            currentIndex === ONBOARDING_SLIDES.length - 1
+              ? "Start creating"
+              : "Continue to next onboarding step"
+          }
+        >
+          {isCompleting ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+            <Text style={styles.primaryButtonText}>
+              {currentIndex === ONBOARDING_SLIDES.length - 1
+                ? "Start Creating"
+                : "Next"}
+            </Text>
+          )}
+        </Pressable>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: "#F3F4FB",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.md,
+    paddingHorizontal: spacing.xl,
+  },
+  loadingText: {
+    ...typography.body,
+    color: colors.light.textSecondary,
+  },
+  container: {
+    flex: 1,
+    backgroundColor: "#F3F4FB",
+  },
+  backdropBlobA: {
+    position: "absolute",
+    top: -100,
+    right: -70,
+    width: 260,
+    height: 260,
+    borderRadius: radius.full,
+    backgroundColor: "rgba(88, 86, 214, 0.16)",
+  },
+  backdropBlobB: {
+    position: "absolute",
+    bottom: -130,
+    left: -90,
+    width: 300,
+    height: 300,
+    borderRadius: radius.full,
+    backgroundColor: "rgba(245, 133, 41, 0.14)",
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
+  },
+  stepCounter: {
+    ...typography.caption,
+    color: colors.light.textSecondary,
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    fontWeight: "600",
+  },
+  skipButton: {
+    borderWidth: 1,
+    borderColor: colors.light.border,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    backgroundColor: "rgba(255,255,255,0.85)",
+  },
+  skipButtonText: {
+    ...typography.caption,
+    color: colors.light.text,
+    fontWeight: "600",
+  },
+  slide: {
+    paddingHorizontal: spacing.lg,
+    justifyContent: "center",
+  },
+  card: {
+    backgroundColor: "rgba(255,255,255,0.9)",
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.9)",
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xxl,
+    minHeight: 430,
+    shadowColor: "#101018",
+    shadowOpacity: 0.09,
+    shadowOffset: { width: 0, height: 18 },
+    shadowRadius: 24,
+    elevation: 8,
+  },
+  iconShell: {
+    width: 68,
+    height: 68,
+    borderRadius: radius.full,
+    backgroundColor: "#ECEBFF",
+    borderWidth: 1,
+    borderColor: "#D9D8FF",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: spacing.lg,
+  },
+  eyebrow: {
+    ...typography.caption,
+    color: colors.light.textSecondary,
+    textTransform: "uppercase",
+    letterSpacing: 1.2,
+    marginBottom: spacing.sm,
+    fontWeight: "600",
+  },
+  slideTitle: {
+    ...typography.h1,
+    color: colors.light.text,
+    marginBottom: spacing.md,
+    lineHeight: 36,
+  },
+  slideBody: {
+    ...typography.body,
+    color: colors.light.textSecondary,
+    lineHeight: 24,
+  },
+  flowRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+    marginTop: spacing.xl,
+  },
+  flowPill: {
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.full,
+    backgroundColor: "#F5F4FF",
+    borderWidth: 1,
+    borderColor: "#E3E1FF",
+  },
+  flowPillText: {
+    ...typography.caption,
+    color: colors.accent.primary,
+    fontWeight: "600",
+  },
+  footer: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xl,
+    paddingTop: spacing.lg,
+    gap: spacing.lg,
+  },
+  dots: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: spacing.sm,
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: radius.full,
+    backgroundColor: "#D0D2DE",
+  },
+  dotActive: {
+    width: 28,
+    backgroundColor: colors.accent.primary,
+  },
+  primaryButton: {
+    height: 56,
+    borderRadius: radius.md,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.accent.primary,
+    shadowColor: colors.accent.primary,
+    shadowOpacity: 0.28,
+    shadowOffset: { width: 0, height: 10 },
+    shadowRadius: 16,
+    elevation: 6,
+  },
+  primaryButtonDisabled: {
+    opacity: 0.72,
+  },
+  primaryButtonText: {
+    ...typography.button,
+    color: "#FFFFFF",
+  },
+  pressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.99 }],
+  },
+});

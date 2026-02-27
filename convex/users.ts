@@ -102,3 +102,44 @@ export const softDeleteCurrent = mutation({
     return { userId: user._id, deletedAt };
   },
 });
+
+export const completeOnboarding = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthenticated");
+
+    const completedAt = Date.now();
+    const clerkId = identity.subject;
+    const existing = await getUserByClerkId(ctx, clerkId);
+
+    if (!existing) {
+      const isGuest = !identity.email;
+      const userId = await ctx.db.insert("users", {
+        clerkId,
+        name: identity.name ?? undefined,
+        email: identity.email ?? undefined,
+        avatarUrl: (identity.imageUrl as string) ?? undefined,
+        isGuest,
+        onboardingCompletedAt: completedAt,
+        isDeleted: false,
+        createdAt: completedAt,
+      });
+      return { userId, onboardingCompletedAt: completedAt };
+    }
+
+    if (existing.isDeleted) throw new Error("Account deleted");
+    if (existing.onboardingCompletedAt) {
+      return {
+        userId: existing._id,
+        onboardingCompletedAt: existing.onboardingCompletedAt,
+      };
+    }
+
+    await ctx.db.patch(existing._id, {
+      onboardingCompletedAt: completedAt,
+    });
+
+    return { userId: existing._id, onboardingCompletedAt: completedAt };
+  },
+});

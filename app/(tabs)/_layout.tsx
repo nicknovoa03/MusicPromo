@@ -1,14 +1,15 @@
-import { useCallback, useEffect, useRef } from "react";
-import { StyleSheet } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { Tabs, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useConvexAuth, useMutation } from "convex/react";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { usePostHog } from "posthog-react-native";
 import { useAuth, useUser } from "@clerk/clerk-expo";
 import type { NotificationResponse } from "expo-notifications";
 import { api } from "../../convex/_generated/api";
 import { colors, typography } from "@/constants/tokens";
 import type { EventName } from "@/lib/analytics";
+import { getLocalOnboardingCompleted } from "@/lib/onboarding";
 import {
   handleInitialNotificationTap,
   registerNotificationListeners,
@@ -26,11 +27,16 @@ export default function TabsLayout() {
   const { isAuthenticated } = useConvexAuth();
   const getOrCreateUser = useMutation(api.users.getOrCreate);
   const upsertPushToken = useMutation(api.pushTokens.upsertForCurrentUser);
+  const currentUser = useQuery(api.users.current);
   const posthog = usePostHog();
-  const { signOut, getToken } = useAuth();
+  const { signOut, getToken, userId } = useAuth();
   const { user } = useUser();
   const didBootstrapPush = useRef(false);
+  const didRouteToOnboarding = useRef(false);
   const hasWarnedMissingConvexToken = useRef(false);
+  const [localOnboardingReady, setLocalOnboardingReady] = useState(false);
+  const [localOnboardingCompleted, setLocalOnboardingCompleted] = useState(false);
+  const [onboardingServerTimedOut, setOnboardingServerTimedOut] = useState(false);
 
   const track = useCallback(
     (event: EventName, props?: Record<string, string>) => {
@@ -42,7 +48,55 @@ export default function TabsLayout() {
   useEffect(() => {
     if (isAuthenticated) return;
     didBootstrapPush.current = false;
+    didRouteToOnboarding.current = false;
   }, [isAuthenticated]);
+
+  useEffect(() => {
+    let isActive = true;
+    setLocalOnboardingReady(false);
+    setOnboardingServerTimedOut(false);
+
+    (async () => {
+      const completed = await getLocalOnboardingCompleted(userId);
+      if (!isActive) return;
+      setLocalOnboardingCompleted(completed);
+      setLocalOnboardingReady(true);
+    })();
+
+    return () => {
+      isActive = false;
+    };
+  }, [userId]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !localOnboardingReady || currentUser !== undefined) return;
+
+    const timeout = setTimeout(() => {
+      setOnboardingServerTimedOut(true);
+    }, 1500);
+
+    return () => clearTimeout(timeout);
+  }, [isAuthenticated, localOnboardingReady, currentUser]);
+
+  const hasServerOnboardingCompletion = Boolean(currentUser?.onboardingCompletedAt);
+  const isOnboardingCompleted =
+    localOnboardingCompleted || hasServerOnboardingCompletion;
+  const hasOnboardingStatus =
+    localOnboardingReady &&
+    (isOnboardingCompleted || currentUser !== undefined || onboardingServerTimedOut);
+
+  useEffect(() => {
+    if (!isAuthenticated || !hasOnboardingStatus) return;
+
+    if (!isOnboardingCompleted) {
+      if (didRouteToOnboarding.current) return;
+      didRouteToOnboarding.current = true;
+      router.replace("/onboarding");
+      return;
+    }
+
+    didRouteToOnboarding.current = false;
+  }, [hasOnboardingStatus, isAuthenticated, isOnboardingCompleted, router]);
 
   useEffect(() => {
     if (!isAuthenticated || didBootstrapPush.current) return;
@@ -142,6 +196,15 @@ export default function TabsLayout() {
     }
   }, [user]);
 
+  if (isAuthenticated && (!hasOnboardingStatus || !isOnboardingCompleted)) {
+    return (
+      <View style={styles.gateContainer}>
+        <ActivityIndicator size="large" color={colors.accent.primary} />
+        <Text style={styles.gateText}>Loading your workspace...</Text>
+      </View>
+    );
+  }
+
   return (
     <Tabs
       screenOptions={{
@@ -192,3 +255,17 @@ export default function TabsLayout() {
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  gateContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.light.background,
+    gap: 12,
+  },
+  gateText: {
+    ...typography.body,
+    color: colors.light.textSecondary,
+  },
+});
