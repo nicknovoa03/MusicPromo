@@ -7,13 +7,21 @@ import {
   Image,
   Dimensions,
   ActivityIndicator,
+  Modal,
+  TextInput,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { usePostHog } from "posthog-react-native";
+import { useMutation } from "convex/react";
 import * as FileSystem from "expo-file-system";
 import { Audio } from "expo-av";
+import { api } from "../../convex/_generated/api";
+import type { Id } from "../../convex/_generated/dataModel";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
 import { AudioTrimmer } from "@/components/create/AudioTrimmer";
 import {
@@ -21,11 +29,12 @@ import {
   type AspectRatio,
 } from "@/components/create/AspectRatioToggle";
 import type { EventName } from "@/lib/analytics";
-import { fileNameFromUri } from "@/lib/uri";
+import { decodeUriParam, encodeUriParam, fileNameFromUri } from "@/lib/uri";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const PREVIEW_PADDING = spacing.xl * 2;
 const FALLBACK_AUDIO_DURATION = 180;
+const DEFAULT_PROJECT_TITLE = "New Project";
 
 type MissingFilesState = {
   photo: boolean;
@@ -48,6 +57,11 @@ function parseAspectRatioParam(
   value: string | string[] | undefined,
 ): AspectRatio {
   return firstParam(value) === "1:1" ? "1:1" : "9:16";
+}
+
+function asProjectId(value?: string) {
+  if (!value) return null;
+  return value as Id<"projects">;
 }
 
 async function isMissingFile(uri?: string) {
@@ -133,9 +147,11 @@ export default function EditorScreen() {
   }>();
 
   const projectId = firstParam(params.projectId);
-  const projectTitle = firstParam(params.title)?.trim() || "New Project";
-  const photoUri = firstParam(params.photoUri) ?? "";
-  const audioUri = firstParam(params.audioUri) ?? "";
+  const existingProjectId = asProjectId(projectId);
+  const initialProjectTitle =
+    firstParam(params.title)?.trim() || DEFAULT_PROJECT_TITLE;
+  const photoUri = decodeUriParam(firstParam(params.photoUri));
+  const audioUri = decodeUriParam(firstParam(params.audioUri));
   const photoName = firstParam(params.photoName) || fileNameFromUri(photoUri) || "Photo";
   const audioName = firstParam(params.audioName) || fileNameFromUri(audioUri) || "Audio";
   const initialAspectRatio = parseAspectRatioParam(params.aspectRatio);
@@ -146,10 +162,17 @@ export default function EditorScreen() {
       ? initialTrimEndRaw
       : initialTrimStart + 30;
 
+  const updateProject = useMutation(api.projects.update);
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>(initialAspectRatio);
   const [isPlaying, setIsPlaying] = useState(false);
   const [trimStart, setTrimStart] = useState(initialTrimStart);
   const [trimEnd, setTrimEnd] = useState(initialTrimEnd);
+  const [projectTitle, setProjectTitle] = useState(initialProjectTitle);
+  const [isNameModalVisible, setIsNameModalVisible] = useState(false);
+  const [projectNameDraft, setProjectNameDraft] = useState(
+    initialProjectTitle === DEFAULT_PROJECT_TITLE ? "" : initialProjectTitle,
+  );
+  const [isSavingProjectTitle, setIsSavingProjectTitle] = useState(false);
   const [audioDurationSec, setAudioDurationSec] = useState(FALLBACK_AUDIO_DURATION);
   const [missingFiles, setMissingFiles] = useState<MissingFilesState>({
     photo: false,
@@ -274,6 +297,55 @@ export default function EditorScreen() {
     setIsPlaying((prev) => !prev);
   }, []);
 
+  const handleOpenProjectNameModal = useCallback(() => {
+    setProjectNameDraft(
+      projectTitle === DEFAULT_PROJECT_TITLE ? "" : projectTitle,
+    );
+    setIsNameModalVisible(true);
+    track("project_title_edit_opened", {
+      reopened: String(!!existingProjectId),
+    });
+  }, [existingProjectId, projectTitle, track]);
+
+  const handleCloseProjectNameModal = useCallback(() => {
+    if (isSavingProjectTitle) return;
+    setIsNameModalVisible(false);
+  }, [isSavingProjectTitle]);
+
+  const handleSaveProjectTitle = useCallback(async () => {
+    const nextTitle = projectNameDraft.trim();
+    if (!nextTitle || isSavingProjectTitle) return;
+
+    setIsSavingProjectTitle(true);
+    try {
+      if (existingProjectId) {
+        await updateProject({
+          projectId: existingProjectId,
+          title: nextTitle,
+        });
+      }
+
+      setProjectTitle(nextTitle);
+      setIsNameModalVisible(false);
+      track("project_title_updated", {
+        reopened: String(!!existingProjectId),
+      });
+    } catch {
+      Alert.alert(
+        "Couldn't update name",
+        "Please try again in a moment.",
+      );
+    } finally {
+      setIsSavingProjectTitle(false);
+    }
+  }, [
+    existingProjectId,
+    isSavingProjectTitle,
+    projectNameDraft,
+    track,
+    updateProject,
+  ]);
+
   const handleSwapMedia = useCallback(
     (initialTab: "photo" | "audio") => {
       router.push({
@@ -281,9 +353,9 @@ export default function EditorScreen() {
         params: {
           projectId: projectId ?? "",
           title: projectTitle,
-          photoUri,
+          photoUri: encodeUriParam(photoUri),
           photoName,
-          audioUri,
+          audioUri: encodeUriParam(audioUri),
           audioName,
           aspectRatio,
           trimStart: String(trimStart),
@@ -330,8 +402,8 @@ export default function EditorScreen() {
       params: {
         projectId: projectId ?? "",
         title: projectTitle,
-        photoUri,
-        audioUri,
+        photoUri: encodeUriParam(photoUri),
+        audioUri: encodeUriParam(audioUri),
         trimStart: String(safeTrimStart),
         trimEnd: String(safeTrimEnd),
         aspectRatio,
@@ -363,6 +435,8 @@ export default function EditorScreen() {
     missingMessage =
       "The original audio file is no longer available on this device. Replace it to continue.";
   }
+  const canSaveProjectTitle =
+    projectNameDraft.trim().length > 0 && !isSavingProjectTitle;
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
@@ -376,9 +450,21 @@ export default function EditorScreen() {
           <Ionicons name="close" size={24} color={colors.dark.text} />
         </Pressable>
 
-        <Text style={styles.headerTitle} numberOfLines={1}>
-          {projectTitle}
-        </Text>
+        <Pressable
+          onPress={handleOpenProjectNameModal}
+          style={styles.headerTitleButton}
+          accessibilityLabel="Edit project name"
+          accessibilityRole="button"
+        >
+          <Text style={styles.headerTitle} numberOfLines={1}>
+            {projectTitle}
+          </Text>
+          <Ionicons
+            name="chevron-down"
+            size={14}
+            color={colors.dark.textSecondary}
+          />
+        </Pressable>
 
         <Pressable
           onPress={handleExport}
@@ -399,6 +485,91 @@ export default function EditorScreen() {
           )}
         </Pressable>
       </View>
+
+      <Modal
+        visible={isNameModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={handleCloseProjectNameModal}
+      >
+        <KeyboardAvoidingView
+          style={styles.projectNameModalRoot}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          <Pressable
+            style={styles.projectNameModalBackdrop}
+            onPress={handleCloseProjectNameModal}
+            accessibilityLabel="Close project name editor"
+            accessibilityRole="button"
+          />
+          <View style={styles.projectNameModalSheet}>
+            <View style={styles.projectNameModalHandle} />
+            <View style={styles.projectNameModalHeader}>
+              <Pressable
+                onPress={handleCloseProjectNameModal}
+                style={styles.projectNameHeaderButton}
+                accessibilityLabel="Close project name editor"
+                accessibilityRole="button"
+              >
+                <Ionicons name="close" size={18} color={colors.dark.text} />
+              </Pressable>
+              <Text style={styles.projectNameModalTitle}>Project name</Text>
+              <View style={styles.projectNameHeaderButton} />
+            </View>
+
+            <View style={styles.projectNameInputWrap}>
+              <TextInput
+                autoFocus
+                value={projectNameDraft}
+                onChangeText={setProjectNameDraft}
+                placeholder="Name your project..."
+                placeholderTextColor={colors.dark.textSecondary}
+                style={styles.projectNameInput}
+                maxLength={60}
+                returnKeyType="done"
+                onSubmitEditing={() => {
+                  if (!canSaveProjectTitle) return;
+                  void handleSaveProjectTitle();
+                }}
+              />
+              {projectNameDraft.length > 0 ? (
+                <Pressable
+                  onPress={() => setProjectNameDraft("")}
+                  accessibilityLabel="Clear project name"
+                  accessibilityRole="button"
+                >
+                  <Ionicons
+                    name="close-circle"
+                    size={18}
+                    color={colors.dark.textSecondary}
+                  />
+                </Pressable>
+              ) : null}
+            </View>
+
+            <Pressable
+              onPress={() => {
+                void handleSaveProjectTitle();
+              }}
+              disabled={!canSaveProjectTitle}
+              style={({ pressed }) => [
+                styles.projectNameDoneButton,
+                !canSaveProjectTitle && styles.projectNameDoneButtonDisabled,
+                pressed && canSaveProjectTitle && styles.projectNameDoneButtonPressed,
+              ]}
+              accessibilityLabel="Save project name"
+              accessibilityRole="button"
+              accessibilityState={{ disabled: !canSaveProjectTitle }}
+            >
+              {isSavingProjectTitle ? (
+                <ActivityIndicator size="small" color={colors.dark.background} />
+              ) : (
+                <Text style={styles.projectNameDoneText}>Done</Text>
+              )}
+            </Pressable>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
 
       {showMissingNotice && (
         <View style={styles.missingNotice}>
@@ -551,7 +722,14 @@ const styles = StyleSheet.create({
     ...typography.body,
     fontWeight: "600",
     color: colors.dark.text,
+    maxWidth: "88%",
+  },
+  headerTitleButton: {
     flex: 1,
+    minHeight: 40,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     textAlign: "center",
     marginHorizontal: spacing.sm,
   },
@@ -575,6 +753,82 @@ const styles = StyleSheet.create({
     ...typography.caption,
     fontWeight: "700",
     color: "#FFFFFF",
+  },
+  projectNameModalRoot: {
+    flex: 1,
+    justifyContent: "flex-end",
+  },
+  projectNameModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.45)",
+  },
+  projectNameModalSheet: {
+    backgroundColor: "#111318",
+    borderTopLeftRadius: radius.lg,
+    borderTopRightRadius: radius.lg,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.lg,
+    gap: spacing.sm,
+  },
+  projectNameModalHandle: {
+    alignSelf: "center",
+    width: 44,
+    height: 4,
+    borderRadius: radius.full,
+    backgroundColor: "rgba(255,255,255,0.25)",
+    marginBottom: spacing.xs,
+  },
+  projectNameModalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  projectNameHeaderButton: {
+    width: 30,
+    height: 30,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  projectNameModalTitle: {
+    ...typography.body,
+    color: colors.dark.text,
+    fontWeight: "700",
+  },
+  projectNameInputWrap: {
+    minHeight: 46,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.35)",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    paddingHorizontal: spacing.sm,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  projectNameInput: {
+    flex: 1,
+    ...typography.body,
+    color: colors.dark.text,
+    paddingVertical: spacing.sm,
+  },
+  projectNameDoneButton: {
+    minHeight: 46,
+    borderRadius: radius.md,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFFFFF",
+  },
+  projectNameDoneButtonDisabled: {
+    opacity: 0.35,
+  },
+  projectNameDoneButtonPressed: {
+    opacity: 0.85,
+  },
+  projectNameDoneText: {
+    ...typography.button,
+    color: colors.dark.background,
+    fontWeight: "700",
   },
   missingNotice: {
     marginHorizontal: spacing.lg,

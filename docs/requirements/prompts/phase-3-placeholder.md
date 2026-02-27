@@ -10,8 +10,11 @@ Focus: Post-v1 Expansion
 
 ## Status
 
-Phase 3 is intentionally undefined for now.
-This document is a lightweight placeholder to capture future work once Phase 2 is complete and validated.
+Phase 3 is now started with scoped prompt docs:
+- `docs/requirements/prompts/phase-3a-project-quick-actions-delete.md`
+- `docs/requirements/prompts/phase-3b-project-editing-core.md`
+
+Keep this placeholder as the umbrella backlog for additional Phase 3 slices.
 
 ## Candidate Epics (Draft)
 

@@ -87,6 +87,7 @@
 - 2026-02-26: **Profile preferences save immediately with constrained presets** → `defaultAspectRatio` and `defaultVideoLength` are updated from Profile via one-tap controls (9:16/1:1 and 15s/30s/60s) and reused as defaults for new create sessions.
 - 2026-02-26: **Account deletion is soft-delete plus forced sign-out** → Added `users.isDeleted`/`users.deletedAt` and `users.softDeleteCurrent`; deleted users are treated as inactive for queries/mutations and app bootstrap routes them back to auth.
 - 2026-02-27: **Onboarding completion uses Convex-backed state with AsyncStorage fallback** → Added `users.onboardingCompletedAt` + `users.completeOnboarding` for durable cross-device routing gates, and local per-user fallback (`musicpromo:onboarding-complete:<clerkUserId>`) so onboarding completion is never blocked by transient offline/write failures.
+- 2026-02-27: **Project card quick-actions adopted (Rename, Duplicate, Delete) with destructive confirmation for delete** → Home projects now expose a lightweight actions menu inspired by Edits; `projects.remove` enforces ownership checks, and delete requires explicit confirmation before removing metadata from history.
 
 ## 2) Guidance (Methodology for Evolving Prompts)
 
@@ -183,7 +184,7 @@ Project: MusicPromo
 Stack: React Native + Expo, Clerk, Convex, PostHog
 PRD: docs/requirements/PRODUCT_DESIGN_REQUIREMENTS.md
 Agent Design: docs/requirements/AGENT_DESIGN_REQUIREMENTS.md
-Current phase: [Phase 0/1/2]
+Current phase: [Phase 0/1/2/3]
 Focus: [epic name]
 ```
 
@@ -202,6 +203,11 @@ Phase 2 — Polish
   ├── Epic: Push Notifications
   ├── Epic: Profile & Settings
   └── Epic: Onboarding
+
+Phase 3 — Project Management Enhancements
+  ├── Epic: Project Quick Actions (Delete now, rename/duplicate staged)
+  ├── Epic: Project Editing Core (autosave, title, media replacement recovery)
+  └── Epic: Advanced history controls (future)
 ```
 
 Work through epics within a phase, then move to the next phase. Update "Current phase" and "Focus" as you go. Examples:
@@ -219,6 +225,11 @@ Focus: Create Promo Video
 ```
 Current phase: Phase 2
 Focus: Push Notifications
+```
+
+```
+Current phase: Phase 3
+Focus: Project Quick Actions
 ```
 
 ## 3) Guardrails (AI-Assisted Reviews and Quality Gates)

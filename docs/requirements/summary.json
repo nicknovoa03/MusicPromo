@@ -76,6 +76,8 @@
     { "name": "Push Notifications", "v1": true, "phase": 2 },
     { "name": "Profile & Settings", "v1": true, "phase": 2 },
     { "name": "Onboarding", "v1": true, "phase": 2 },
+    { "name": "Project Quick Actions", "v1": true, "phase": 3 },
+    { "name": "Project Editing Core", "v1": true, "phase": 3 },
     { "name": "SoundCloud Integration", "v1": false, "phase": null },
     { "name": "Additional Video Templates", "v1": false, "phase": null },
     { "name": "AI-Generated Templates", "v1": false, "phase": null },
@@ -97,6 +99,9 @@
     "share_tapped_instagram",
     "share_tapped_tiktok",
     "project_reopened",
+    "project_actions_opened",
+    "project_delete_started",
+    "project_deleted",
     "notification_received",
     "notification_tapped"
   ],

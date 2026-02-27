@@ -133,3 +133,22 @@ export const listByUser = query({
       .collect();
   },
 });
+
+export const remove = mutation({
+  args: {
+    projectId: v.id("projects"),
+  },
+  handler: async (ctx, args) => {
+    const project = await ctx.db.get(args.projectId);
+    if (!project) throw new Error("Project not found");
+
+    const user = await getActiveUserByIdentity(ctx);
+    if (!user || project.userId !== user._id) {
+      throw new Error("Not authorized");
+    }
+
+    await ctx.db.delete(args.projectId);
+
+    return { projectId: args.projectId };
+  },
+});

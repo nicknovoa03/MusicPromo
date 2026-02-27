@@ -20,6 +20,7 @@ import type { Id } from "../../convex/_generated/dataModel";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
 import type { EventName } from "@/lib/analytics";
 import { sleep } from "@/lib/utils";
+import { decodeUriParam, encodeUriParam } from "@/lib/uri";
 
 function isExpoGo(): boolean {
   return Constants.appOwnership === "expo";
@@ -91,6 +92,7 @@ export default function RenderingScreen() {
   const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
   const createProject = useMutation(api.projects.create);
   const updateProject = useMutation(api.projects.update);
+  const previewPhotoUri = decodeUriParam(firstParam(params.photoUri));
 
   const [progress, setProgress] = useState(0);
   const [renderState, setRenderState] = useState<RenderState>("rendering");
@@ -123,8 +125,8 @@ export default function RenderingScreen() {
 
     const existingProjectId = asProjectId(firstParam(params.projectId));
     const title = firstParam(params.title);
-    const photoUri = firstParam(params.photoUri) ?? "";
-    const audioUri = firstParam(params.audioUri) ?? "";
+    const photoUri = decodeUriParam(firstParam(params.photoUri));
+    const audioUri = decodeUriParam(firstParam(params.audioUri));
     const parsedTrimStart = Number(firstParam(params.trimStart));
     const parsedTrimEnd = Number(firstParam(params.trimEnd));
     const [trimStart, trimEnd] = normalizeTrimBounds(parsedTrimStart, parsedTrimEnd);
@@ -212,9 +214,9 @@ export default function RenderingScreen() {
       router.replace({
         pathname: "/create/share",
         params: {
-          videoUri,
+          videoUri: encodeUriParam(videoUri),
           projectId: projectIdRef.current ?? "",
-          posterUri: photoUri,
+          posterUri: encodeUriParam(photoUri),
         },
       });
     } catch (err) {
@@ -329,9 +331,9 @@ export default function RenderingScreen() {
                 />
               </View>
               <View style={styles.previewInner}>
-                {firstParam(params.photoUri) ? (
+                {previewPhotoUri ? (
                   <Image
-                    source={{ uri: firstParam(params.photoUri) }}
+                    source={{ uri: previewPhotoUri }}
                     style={styles.previewImage}
                     resizeMode="cover"
                     accessibilityLabel="Video preview"

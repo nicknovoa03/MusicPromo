@@ -216,20 +216,25 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 
 - **User problem:** User wants to revisit past projects, re-export, or share again.
 - **Primary user story:** As a creator, I can see my past projects and re-open them to re-export or change settings.
-- **Scope (v1):** List past projects, open to view/edit, re-export with changed settings
-- **Non-goals:** Cloud file backup, project duplication/remix
+- **Scope (v1):** List past projects, open to view/edit, re-export with changed settings, and delete a project via quick actions
+- **Non-goals:** Cloud file backup, project duplication/remix, inline rename UI
 - **Key screens/components:** Projects screen (list/grid of past projects), project detail view
-- **Backend/data needs:** Convex query for user's projects sorted by recent
-- **Analytics/events:** `project_reopened`
+- **Backend/data needs:** Convex query for user's projects sorted by recent, plus ownership-checked delete mutation
+- **Analytics/events:** `project_reopened`, `project_actions_opened`, `project_delete_started`, `project_deleted`
 - **Acceptance criteria:**
   - User sees a list of past projects with metadata (date, aspect ratio, template)
   - User can tap a project to re-open it
+  - User can set/edit a project name from the editor flow and see it reflected in project history
+  - User can open a project quick-actions sheet with Rename, Duplicate, and Delete actions
+  - Tapping Delete requires a destructive confirmation before any deletion occurs
+  - Confirmed deletion removes the project from history immediately
   - User can change settings (aspect ratio, video length) and re-export
   - If original files were deleted from device, show "Files not found" error gracefully
 - **States:**
   - Loading: Skeleton/spinner while fetching from Convex
   - Empty: "No projects yet — create your first promo!"
   - Error: "Couldn't load projects" + retry
+  - Deleting: Show in-progress state and prevent duplicate delete actions
   - File-not-found: "Original files no longer on this device"
 
 ### Epic: Push Notifications
@@ -300,12 +305,13 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 - **Header:** "Projects" title left, filter icon + profile avatar right
 - **Main sections:** 2-column grid of project cards (thumbnail, title, date/size)
 - **Primary CTA:** Black "+" FAB button (bottom-right) → create flow
+- **Card actions:** Quick-actions menu with Rename, Duplicate (placeholder), and Delete (destructive + confirm)
 - **List behavior:** Vertical scroll, pull to refresh
 - **Empty state:** Illustration + "Create your first project" + "Keep track of your drafts and finished videos all in one place."
 - **Loading:** Skeleton grid
 - **Error:** "Couldn't load projects" + retry
 - **Theme:** Light/white
-- **Analytics:** `project_reopened` (on tap)
+- **Analytics:** `project_reopened` (on card tap), `project_actions_opened`, `project_delete_started`, `project_deleted`
 - **Reference:** `projects-history/Edits iOS Projects 0.png`, `Edits iOS Projects 1.png`
 
 ### Create — Media Picker
@@ -323,14 +329,14 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 ### Create — Editor/Trimmer
 - **Route:** `/create/editor`
 - **Primary intent:** Preview, trim, and configure the promo video
-- **Header:** X/back (left), project name (center), "Export" button (right)
+- **Header:** X/back (left), editable project name control (center, opens compact name modal), "Export" button (right)
 - **Main sections:** Video preview (top, centered), play/pause + timestamp + undo/redo (middle), timeline strip with frame thumbnails + scrubber (bottom), aspect ratio toggle
 - **Primary CTA:** "Export" button (top-right)
-- **Secondary actions:** Play/pause, trim handles, aspect ratio toggle (9:16 / 1:1), undo/redo
+- **Secondary actions:** Play/pause, trim handles, aspect ratio toggle (9:16 / 1:1), undo/redo, edit project name
 - **Empty/loading/error:** Preview loading skeleton, "Rendering failed" + retry
 - **Theme:** Dark/black
 - **Analytics:** `preview_viewed`
-- **Reference:** `create-flow/Create Flow - final media trimmer - screens 0.png`, `Create Flow - final media trimmer - screens 1.png`, `general-vibe/Edits iOS Creating a project 3.png`
+- **Reference:** `create-flow/Create Flow - final media trimmer - screens 0.png`, `create-flow/Create Flow - final media trimmer - screens 1.png`, `general-vibe/Edits iOS Creating a project 3.png`, `add-project-name/Edits iOS Adding a project name 0.png`, `add-project-name/Edits iOS Adding a project name 1.png`, `add-project-name/Edits iOS Adding a project name 2.png`, `add-project-name/Edits iOS Adding a project name 3.png`
 
 ### Post-Export — Rendering
 - **Route:** `/create/exporting`

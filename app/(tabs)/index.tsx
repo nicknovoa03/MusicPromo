@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -8,17 +8,19 @@ import {
   ActivityIndicator,
   Image,
   RefreshControl,
+  Alert,
+  Modal,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { useConvex, useQuery } from "convex/react";
+import { useConvex, useMutation, useQuery } from "convex/react";
 import { Ionicons } from "@expo/vector-icons";
 import { usePostHog } from "posthog-react-native";
 import { api } from "../../convex/_generated/api";
 import type { Doc } from "../../convex/_generated/dataModel";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
 import type { EventName } from "@/lib/analytics";
-import { fileNameFromUri } from "@/lib/uri";
+import { encodeUriParam, fileNameFromUri } from "@/lib/uri";
 
 type Project = Doc<"projects">;
 
@@ -39,7 +41,11 @@ export default function HomeScreen() {
   const convex = useConvex();
   const posthog = usePostHog();
   const projectsQuery = useQuery(api.projects.listByUser);
+  const deleteProject = useMutation(api.projects.remove);
   const [refreshing, setRefreshing] = useState(false);
+  const [actionProject, setActionProject] = useState<Project | null>(null);
+  const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
+  const longPressProjectIdRef = useRef<string | null>(null);
 
   const track = useCallback(
     (event: EventName, props?: Record<string, string>) => {
@@ -59,6 +65,11 @@ export default function HomeScreen() {
 
   const openProject = useCallback(
     (project: Project) => {
+      if (longPressProjectIdRef.current === String(project._id)) {
+        longPressProjectIdRef.current = null;
+        return;
+      }
+      if (deletingProjectId === String(project._id)) return;
       track("project_reopened", { projectId: String(project._id) });
 
       router.push({
@@ -66,9 +77,9 @@ export default function HomeScreen() {
         params: {
           projectId: String(project._id),
           title: project.title ?? "",
-          photoUri: project.photoUri ?? "",
+          photoUri: encodeUriParam(project.photoUri ?? ""),
           photoName: mediaNameFromUri(project.photoUri) || "Photo",
-          audioUri: project.audioUri ?? "",
+          audioUri: encodeUriParam(project.audioUri ?? ""),
           audioName: mediaNameFromUri(project.audioUri) || "Audio",
           aspectRatio: project.aspectRatio,
           trimStart: String(project.trimStart ?? 0),
@@ -76,7 +87,71 @@ export default function HomeScreen() {
         },
       });
     },
-    [router, track],
+    [deletingProjectId, router, track],
+  );
+
+  const closeProjectActions = useCallback(() => {
+    setActionProject(null);
+  }, []);
+
+  const openProjectActions = useCallback(
+    (project: Project) => {
+      setActionProject(project);
+      track("project_actions_opened", { projectId: String(project._id) });
+    },
+    [track],
+  );
+
+  const runDeleteProject = useCallback(
+    async (project: Project) => {
+      setDeletingProjectId(String(project._id));
+      try {
+        await deleteProject({ projectId: project._id });
+        track("project_deleted", { projectId: String(project._id) });
+      } catch {
+        Alert.alert(
+          "Could not delete project",
+          "Please try again in a moment.",
+        );
+      } finally {
+        setDeletingProjectId(null);
+      }
+    },
+    [deleteProject, track],
+  );
+
+  const handleProjectAction = useCallback(
+    (action: "rename" | "duplicate" | "delete") => {
+      const project = actionProject;
+      if (!project) return;
+
+      if (action === "delete") {
+        closeProjectActions();
+        track("project_delete_started", { projectId: String(project._id) });
+        Alert.alert(
+          "Delete project?",
+          "If you choose to delete, you'll lose this project.",
+          [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "Delete",
+              style: "destructive",
+              onPress: () => {
+                void runDeleteProject(project);
+              },
+            },
+          ],
+        );
+        return;
+      }
+
+      closeProjectActions();
+      Alert.alert(
+        action === "rename" ? "Rename coming soon" : "Duplicate coming soon",
+        "This action is part of the next project-management pass.",
+      );
+    },
+    [actionProject, closeProjectActions, runDeleteProject, track],
   );
 
   const stableProjects = useMemo(() => projectsQuery ?? [], [projectsQuery]);
@@ -86,39 +161,75 @@ export default function HomeScreen() {
   const renderProjectCard = useCallback(
     ({ item }: { item: Project }) => {
       const previewUri = item.photoUri ?? item.exportedVideoUri;
+      const isDeleting = deletingProjectId === String(item._id);
+
       return (
-        <Pressable
-          style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-          onPress={() => openProject(item)}
-          accessibilityLabel={`Open ${item.title ?? "Untitled Project"}`}
-          accessibilityRole="button"
-        >
-          <View style={styles.thumbnail}>
-            {previewUri ? (
-              <Image
-                source={{ uri: previewUri }}
-                style={styles.thumbnailImage}
-                resizeMode="cover"
-              />
+        <View style={styles.card}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.cardPressable,
+              pressed && styles.cardPressed,
+            ]}
+            onPress={() => openProject(item)}
+            onLongPress={() => {
+              longPressProjectIdRef.current = String(item._id);
+              openProjectActions(item);
+            }}
+            delayLongPress={220}
+            disabled={isDeleting}
+            accessibilityLabel={`Open ${item.title ?? "Untitled Project"}`}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: isDeleting }}
+          >
+            <View style={styles.thumbnail}>
+              {previewUri ? (
+                <Image
+                  source={{ uri: previewUri }}
+                  style={styles.thumbnailImage}
+                  resizeMode="cover"
+                />
+              ) : (
+                <Ionicons
+                  name="image-outline"
+                  size={30}
+                  color={colors.light.textSecondary}
+                />
+              )}
+            </View>
+            <View style={styles.cardBody}>
+              <Text numberOfLines={1} style={styles.cardTitle}>
+                {item.title?.trim() ? item.title : "Untitled Project"}
+              </Text>
+              <Text style={styles.cardDate}>{formatDate(item.createdAt)}</Text>
+            </View>
+          </Pressable>
+
+          <Pressable
+            style={styles.cardMenuButton}
+            onPress={() => openProjectActions(item)}
+            disabled={isDeleting}
+            accessibilityLabel={`Project actions for ${item.title ?? "Untitled Project"}`}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: isDeleting }}
+          >
+            {isDeleting ? (
+              <ActivityIndicator size="small" color={colors.light.textSecondary} />
             ) : (
               <Ionicons
-                name="image-outline"
-                size={30}
-                color={colors.light.textSecondary}
+                name="ellipsis-horizontal"
+                size={16}
+                color={colors.light.text}
               />
             )}
-          </View>
-          <View style={styles.cardBody}>
-            <Text numberOfLines={1} style={styles.cardTitle}>
-              {item.title?.trim() ? item.title : "Untitled Project"}
-            </Text>
-            <Text style={styles.cardDate}>{formatDate(item.createdAt)}</Text>
-          </View>
-        </Pressable>
+          </Pressable>
+        </View>
       );
     },
-    [openProject],
+    [deletingProjectId, openProject, openProjectActions],
   );
+
+  const isDeletingSelectedProject =
+    !!actionProject && deletingProjectId === String(actionProject._id);
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -178,6 +289,85 @@ export default function HomeScreen() {
           <ActivityIndicator size="large" color={colors.accent.primary} />
         </View>
       )}
+
+      <Modal
+        visible={!!actionProject}
+        transparent
+        animationType="fade"
+        onRequestClose={closeProjectActions}
+      >
+        <Pressable
+          style={styles.actionsBackdrop}
+          onPress={closeProjectActions}
+          accessibilityLabel="Dismiss project actions"
+          accessibilityRole="button"
+        />
+
+        <View style={styles.actionsOverlay} pointerEvents="box-none">
+          {actionProject ? (
+            <>
+              <View style={styles.actionsCard}>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.actionsRow,
+                    pressed && styles.actionsRowPressed,
+                  ]}
+                  onPress={() => handleProjectAction("rename")}
+                  accessibilityLabel="Rename project"
+                  accessibilityRole="button"
+                >
+                  <Ionicons
+                    name="create-outline"
+                    size={18}
+                    color={colors.light.text}
+                  />
+                  <Text style={styles.actionsText}>Rename</Text>
+                </Pressable>
+
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.actionsRow,
+                    pressed && styles.actionsRowPressed,
+                  ]}
+                  onPress={() => handleProjectAction("duplicate")}
+                  accessibilityLabel="Duplicate project"
+                  accessibilityRole="button"
+                >
+                  <Ionicons
+                    name="copy-outline"
+                    size={18}
+                    color={colors.light.text}
+                  />
+                  <Text style={styles.actionsText}>Duplicate</Text>
+                </Pressable>
+
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.actionsRow,
+                    pressed && styles.actionsRowPressed,
+                  ]}
+                  onPress={() => handleProjectAction("delete")}
+                  disabled={isDeletingSelectedProject}
+                  accessibilityLabel="Delete project"
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: isDeletingSelectedProject }}
+                >
+                  {isDeletingSelectedProject ? (
+                    <ActivityIndicator size="small" color={colors.accent.error} />
+                  ) : (
+                    <Ionicons
+                      name="trash-outline"
+                      size={18}
+                      color={colors.accent.error}
+                    />
+                  )}
+                  <Text style={styles.actionsDeleteText}>Delete</Text>
+                </Pressable>
+              </View>
+            </>
+          ) : null}
+        </View>
+      </Modal>
 
       <Pressable
         style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
@@ -258,9 +448,23 @@ const styles = StyleSheet.create({
     backgroundColor: colors.light.surface,
     overflow: "hidden",
   },
+  cardPressable: {
+    flex: 1,
+  },
   cardPressed: {
     opacity: 0.88,
     transform: [{ scale: 0.98 }],
+  },
+  cardMenuButton: {
+    position: "absolute",
+    top: spacing.xs,
+    right: spacing.xs,
+    width: 28,
+    height: 28,
+    borderRadius: radius.full,
+    backgroundColor: "rgba(255,255,255,0.85)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   thumbnail: {
     width: "100%",
@@ -292,6 +496,45 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(255,255,255,0.6)",
+  },
+  actionsBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.22)",
+  },
+  actionsOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: spacing.xl,
+  },
+  actionsCard: {
+    width: "100%",
+    maxWidth: 240,
+    borderRadius: radius.lg,
+    backgroundColor: colors.light.background,
+    overflow: "hidden",
+  },
+  actionsRow: {
+    minHeight: 54,
+    paddingHorizontal: spacing.lg,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.light.border,
+  },
+  actionsRowPressed: {
+    backgroundColor: colors.light.surface,
+  },
+  actionsText: {
+    ...typography.body,
+    color: colors.light.text,
+    fontWeight: "500",
+  },
+  actionsDeleteText: {
+    ...typography.body,
+    color: colors.accent.error,
+    fontWeight: "500",
   },
   fab: {
     position: "absolute",

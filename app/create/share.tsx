@@ -15,6 +15,7 @@ import * as Sharing from "expo-sharing";
 import * as MediaLibrary from "expo-media-library";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
 import type { EventName } from "@/lib/analytics";
+import { decodeUriParam } from "@/lib/uri";
 
 function firstParam(param: string | string[] | undefined) {
   return Array.isArray(param) ? param[0] : param;
@@ -28,8 +29,8 @@ export default function ShareScreen() {
     projectId: string;
     posterUri?: string;
   }>();
-  const videoUri = firstParam(params.videoUri) ?? "";
-  const posterUri = firstParam(params.posterUri) ?? "";
+  const videoUri = decodeUriParam(firstParam(params.videoUri));
+  const posterUri = decodeUriParam(firstParam(params.posterUri));
 
   const [savedToRoll, setSavedToRoll] = useState(false);
   const [saveError, setSaveError] = useState<"permission" | "failed" | null>(
