@@ -20,7 +20,9 @@ export const create = mutation({
     templateId: v.optional(v.string()),
     aspectRatio: v.union(v.literal("9:16"), v.literal("1:1")),
     photoUri: v.optional(v.string()),
+    photoName: v.optional(v.string()),
     audioUri: v.optional(v.string()),
+    audioName: v.optional(v.string()),
     trimStart: v.optional(v.number()),
     trimEnd: v.optional(v.number()),
   },
@@ -41,7 +43,9 @@ export const create = mutation({
       templateId: args.templateId,
       aspectRatio: args.aspectRatio,
       photoUri: args.photoUri,
+      photoName: args.photoName,
       audioUri: args.audioUri,
+      audioName: args.audioName,
       trimStart: args.trimStart,
       trimEnd: args.trimEnd,
       status: "draft",
@@ -81,7 +85,9 @@ export const update = mutation({
     templateId: v.optional(v.string()),
     aspectRatio: v.optional(v.union(v.literal("9:16"), v.literal("1:1"))),
     photoUri: v.optional(v.string()),
+    photoName: v.optional(v.string()),
     audioUri: v.optional(v.string()),
+    audioName: v.optional(v.string()),
     trimStart: v.optional(v.number()),
     trimEnd: v.optional(v.number()),
     exportedVideoUri: v.optional(v.string()),
@@ -102,7 +108,9 @@ export const update = mutation({
     if (args.templateId !== undefined) updates.templateId = args.templateId;
     if (args.aspectRatio !== undefined) updates.aspectRatio = args.aspectRatio;
     if (args.photoUri !== undefined) updates.photoUri = args.photoUri;
+    if (args.photoName !== undefined) updates.photoName = args.photoName;
     if (args.audioUri !== undefined) updates.audioUri = args.audioUri;
+    if (args.audioName !== undefined) updates.audioName = args.audioName;
     if (args.trimStart !== undefined) updates.trimStart = args.trimStart;
     if (args.trimEnd !== undefined) updates.trimEnd = args.trimEnd;
     if (args.exportedVideoUri !== undefined) {
@@ -131,6 +139,21 @@ export const listByUser = query({
       .withIndex("by_user_updated", (q) => q.eq("userId", user._id))
       .order("desc")
       .collect();
+  },
+});
+
+export const getById = query({
+  args: {
+    projectId: v.id("projects"),
+  },
+  handler: async (ctx, args) => {
+    const project = await ctx.db.get(args.projectId);
+    if (!project) return null;
+
+    const user = await getActiveUserByIdentity(ctx);
+    if (!user || project.userId !== user._id) return null;
+
+    return project;
   },
 });
 

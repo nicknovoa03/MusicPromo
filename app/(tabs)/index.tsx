@@ -20,7 +20,6 @@ import { api } from "../../convex/_generated/api";
 import type { Doc } from "../../convex/_generated/dataModel";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
 import type { EventName } from "@/lib/analytics";
-import { encodeUriParam, fileNameFromUri } from "@/lib/uri";
 
 type Project = Doc<"projects">;
 
@@ -30,10 +29,6 @@ function formatDate(timestamp: number) {
     day: "numeric",
     year: "numeric",
   });
-}
-
-function mediaNameFromUri(uri?: string) {
-  return fileNameFromUri(uri);
 }
 
 export default function HomeScreen() {
@@ -77,10 +72,8 @@ export default function HomeScreen() {
         params: {
           projectId: String(project._id),
           title: project.title ?? "",
-          photoUri: encodeUriParam(project.photoUri ?? ""),
-          photoName: mediaNameFromUri(project.photoUri) || "Photo",
-          audioUri: encodeUriParam(project.audioUri ?? ""),
-          audioName: mediaNameFromUri(project.audioUri) || "Audio",
+          photoName: project.photoName ?? "",
+          audioName: project.audioName ?? "",
           aspectRatio: project.aspectRatio,
           trimStart: String(project.trimStart ?? 0),
           trimEnd: String(project.trimEnd ?? 30),

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -17,8 +17,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { usePostHog } from "posthog-react-native";
-import { useMutation } from "convex/react";
-import * as FileSystem from "expo-file-system";
+import { useMutation, useQuery } from "convex/react";
+import * as FileSystem from "expo-file-system/legacy";
 import { Audio } from "expo-av";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
@@ -64,16 +64,42 @@ function asProjectId(value?: string) {
   return value as Id<"projects">;
 }
 
+function isGeneratedMediaName(value: string) {
+  return /^media-\d+-\d+(\.[a-z0-9]{1,8})?$/i.test(value.trim());
+}
+
+function fallbackMediaNameFromUri(uri: string, fallback: "Photo" | "Audio") {
+  const fromUri = fileNameFromUri(uri);
+  if (!fromUri || isGeneratedMediaName(fromUri)) return fallback;
+  return fromUri;
+}
+
 async function isMissingFile(uri?: string) {
   if (!uri) return true;
   if (!uri.startsWith("file://")) return false;
 
   try {
     const info = await FileSystem.getInfoAsync(uri);
-    return !info.exists;
+    if (info.exists) return false;
   } catch {
-    return true;
+    // Fall through to loader-based checks below.
   }
+
+  // Metadata checks can be wrong on some iOS sandboxed files.
+  // Try actually loading media before declaring "missing".
+  const isLikelyAudio = /\.(mp3|wav|m4a|aac|mp4)$/i.test(uri);
+  if (isLikelyAudio) {
+    const duration = await getAudioDurationSec(uri);
+    return !(duration && Number.isFinite(duration) && duration > 0);
+  }
+
+  return await new Promise<boolean>((resolve) => {
+    Image.getSize(
+      uri,
+      () => resolve(false),
+      () => resolve(true),
+    );
+  });
 }
 
 async function getAudioDurationSec(uri: string): Promise<number | null> {
@@ -148,12 +174,27 @@ export default function EditorScreen() {
 
   const projectId = firstParam(params.projectId);
   const existingProjectId = asProjectId(projectId);
+  const paramTitle = firstParam(params.title)?.trim() || "";
   const initialProjectTitle =
-    firstParam(params.title)?.trim() || DEFAULT_PROJECT_TITLE;
-  const photoUri = decodeUriParam(firstParam(params.photoUri));
-  const audioUri = decodeUriParam(firstParam(params.audioUri));
-  const photoName = firstParam(params.photoName) || fileNameFromUri(photoUri) || "Photo";
-  const audioName = firstParam(params.audioName) || fileNameFromUri(audioUri) || "Audio";
+    paramTitle || DEFAULT_PROJECT_TITLE;
+  const paramPhotoUri = decodeUriParam(firstParam(params.photoUri));
+  const paramAudioUri = decodeUriParam(firstParam(params.audioUri));
+  const paramPhotoName = firstParam(params.photoName);
+  const paramAudioName = firstParam(params.audioName);
+  const projectDetails = useQuery(
+    api.projects.getById,
+    existingProjectId ? { projectId: existingProjectId } : "skip",
+  );
+  const photoUri = paramPhotoUri || projectDetails?.photoUri || "";
+  const audioUri = paramAudioUri || projectDetails?.audioUri || "";
+  const photoName =
+    paramPhotoName ||
+    projectDetails?.photoName ||
+    fallbackMediaNameFromUri(photoUri, "Photo");
+  const audioName =
+    paramAudioName ||
+    projectDetails?.audioName ||
+    fallbackMediaNameFromUri(audioUri, "Audio");
   const initialAspectRatio = parseAspectRatioParam(params.aspectRatio);
   const initialTrimStart = parseNumberParam(params.trimStart, 0);
   const initialTrimEndRaw = parseNumberParam(params.trimEnd, 30);
@@ -172,13 +213,27 @@ export default function EditorScreen() {
   const [projectNameDraft, setProjectNameDraft] = useState(
     initialProjectTitle === DEFAULT_PROJECT_TITLE ? "" : initialProjectTitle,
   );
-  const [isSavingProjectTitle, setIsSavingProjectTitle] = useState(false);
   const [audioDurationSec, setAudioDurationSec] = useState(FALLBACK_AUDIO_DURATION);
   const [missingFiles, setMissingFiles] = useState<MissingFilesState>({
     photo: false,
     audio: false,
   });
   const [isCheckingFiles, setIsCheckingFiles] = useState(true);
+  const [editorSaveStatus, setEditorSaveStatus] = useState<
+    "idle" | "saving" | "saved" | "error"
+  >("idle");
+  const [forceAutosaveTick, setForceAutosaveTick] = useState(0);
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const forceAutosaveTickRef = useRef(0);
+  const initialSnapshotRef = useRef<string | null>(null);
+  const lastSavedSnapshotRef = useRef<string | null>(null);
+  const hasTrackedEditStartedRef = useRef(false);
+  const previousMediaUrisRef = useRef<{ photoUri: string; audioUri: string } | null>(null);
+  const shouldWaitForProjectMedia =
+    !!existingProjectId &&
+    !paramPhotoUri &&
+    !paramAudioUri &&
+    projectDetails === undefined;
 
   const track = useCallback(
     (event: EventName, props?: Record<string, string>) => {
@@ -196,6 +251,14 @@ export default function EditorScreen() {
   }, [audioUri, photoUri, projectId, track]);
 
   useEffect(() => {
+    return () => {
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     let isCancelled = false;
 
     async function checkFiles() {
@@ -205,6 +268,13 @@ export default function EditorScreen() {
         if (!isCancelled) {
           setMissingFiles({ photo: false, audio: false });
           setIsCheckingFiles(false);
+        }
+        return;
+      }
+
+      if (shouldWaitForProjectMedia) {
+        if (!isCancelled) {
+          setIsCheckingFiles(true);
         }
         return;
       }
@@ -225,7 +295,7 @@ export default function EditorScreen() {
     return () => {
       isCancelled = true;
     };
-  }, [photoUri, audioUri, projectId]);
+  }, [photoUri, audioUri, projectId, shouldWaitForProjectMedia]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -308,43 +378,135 @@ export default function EditorScreen() {
   }, [existingProjectId, projectTitle, track]);
 
   const handleCloseProjectNameModal = useCallback(() => {
-    if (isSavingProjectTitle) return;
     setIsNameModalVisible(false);
-  }, [isSavingProjectTitle]);
+  }, []);
 
-  const handleSaveProjectTitle = useCallback(async () => {
+  const handleSaveProjectTitle = useCallback(() => {
     const nextTitle = projectNameDraft.trim();
-    if (!nextTitle || isSavingProjectTitle) return;
-
-    setIsSavingProjectTitle(true);
-    try {
-      if (existingProjectId) {
-        await updateProject({
-          projectId: existingProjectId,
-          title: nextTitle,
-        });
-      }
-
+    if (!nextTitle) return;
+    if (nextTitle !== projectTitle) {
       setProjectTitle(nextTitle);
-      setIsNameModalVisible(false);
       track("project_title_updated", {
         reopened: String(!!existingProjectId),
       });
-    } catch {
-      Alert.alert(
-        "Couldn't update name",
-        "Please try again in a moment.",
-      );
-    } finally {
-      setIsSavingProjectTitle(false);
     }
+    setIsNameModalVisible(false);
+  }, [existingProjectId, projectNameDraft, projectTitle, track]);
+
+  useEffect(() => {
+    if (!existingProjectId || shouldWaitForProjectMedia) return;
+
+    const roundedTrimStart = Math.round(trimStart * 100) / 100;
+    const roundedTrimEnd = Math.round(trimEnd * 100) / 100;
+    const normalizedTitle = projectTitle.trim() || DEFAULT_PROJECT_TITLE;
+    const nextSnapshot = JSON.stringify({
+      title: normalizedTitle,
+      aspectRatio,
+      trimStart: roundedTrimStart,
+      trimEnd: roundedTrimEnd,
+      photoUri,
+      audioUri,
+    });
+
+    if (!initialSnapshotRef.current) {
+      initialSnapshotRef.current = nextSnapshot;
+      lastSavedSnapshotRef.current = nextSnapshot;
+      setEditorSaveStatus("saved");
+      return;
+    }
+
+    const forceSave = forceAutosaveTick !== forceAutosaveTickRef.current;
+    if (forceSave) {
+      forceAutosaveTickRef.current = forceAutosaveTick;
+    }
+
+    if (!forceSave && nextSnapshot === lastSavedSnapshotRef.current) {
+      return;
+    }
+
+    if (
+      !hasTrackedEditStartedRef.current &&
+      nextSnapshot !== initialSnapshotRef.current
+    ) {
+      hasTrackedEditStartedRef.current = true;
+      track("project_edit_started", {
+        projectId: String(existingProjectId),
+      });
+    }
+
+    if (autosaveTimerRef.current) {
+      clearTimeout(autosaveTimerRef.current);
+    }
+    setEditorSaveStatus("saving");
+
+    autosaveTimerRef.current = setTimeout(async () => {
+      try {
+        await updateProject({
+          projectId: existingProjectId,
+          title: normalizedTitle,
+          aspectRatio,
+          trimStart: roundedTrimStart,
+          trimEnd: roundedTrimEnd,
+          photoUri,
+          photoName,
+          audioUri,
+          audioName,
+        });
+        lastSavedSnapshotRef.current = nextSnapshot;
+        setEditorSaveStatus("saved");
+        track("project_autosave_succeeded", {
+          projectId: String(existingProjectId),
+        });
+      } catch {
+        setEditorSaveStatus("error");
+        track("project_autosave_failed", {
+          projectId: String(existingProjectId),
+        });
+      }
+    }, 700);
+
+    return () => {
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+      }
+    };
   }, [
     existingProjectId,
-    isSavingProjectTitle,
-    projectNameDraft,
+    shouldWaitForProjectMedia,
+    forceAutosaveTick,
+    projectTitle,
+    aspectRatio,
+    trimStart,
+    trimEnd,
+    photoUri,
+    photoName,
+    audioUri,
+    audioName,
     track,
     updateProject,
   ]);
+
+  useEffect(() => {
+    if (!existingProjectId) return;
+
+    if (!previousMediaUrisRef.current) {
+      previousMediaUrisRef.current = { photoUri, audioUri };
+      return;
+    }
+
+    const previous = previousMediaUrisRef.current;
+    const photoChanged = previous.photoUri !== photoUri;
+    const audioChanged = previous.audioUri !== audioUri;
+    previousMediaUrisRef.current = { photoUri, audioUri };
+
+    if (!photoChanged && !audioChanged) return;
+
+    track("project_media_replaced", {
+      projectId: String(existingProjectId),
+      photoChanged: String(photoChanged),
+      audioChanged: String(audioChanged),
+    });
+  }, [existingProjectId, photoUri, audioUri, track]);
 
   const handleSwapMedia = useCallback(
     (initialTab: "photo" | "audio") => {
@@ -403,7 +565,9 @@ export default function EditorScreen() {
         projectId: projectId ?? "",
         title: projectTitle,
         photoUri: encodeUriParam(photoUri),
+        photoName,
         audioUri: encodeUriParam(audioUri),
+        audioName,
         trimStart: String(safeTrimStart),
         trimEnd: String(safeTrimEnd),
         aspectRatio,
@@ -415,7 +579,9 @@ export default function EditorScreen() {
     projectId,
     projectTitle,
     photoUri,
+    photoName,
     audioUri,
+    audioName,
     trimStart,
     trimEnd,
     audioDurationSec,
@@ -436,7 +602,26 @@ export default function EditorScreen() {
       "The original audio file is no longer available on this device. Replace it to continue.";
   }
   const canSaveProjectTitle =
-    projectNameDraft.trim().length > 0 && !isSavingProjectTitle;
+    projectNameDraft.trim().length > 0;
+
+  const saveStatusLabel =
+    editorSaveStatus === "saving"
+      ? "Saving..."
+      : editorSaveStatus === "saved"
+        ? "Saved"
+        : editorSaveStatus === "error"
+          ? "Save failed"
+          : "";
+  const saveStatusIcon =
+    editorSaveStatus === "saving"
+      ? "sync-outline"
+      : editorSaveStatus === "saved"
+        ? "checkmark-circle-outline"
+        : "alert-circle-outline";
+  const saveStatusColor =
+    editorSaveStatus === "error"
+      ? colors.accent.warning
+      : colors.dark.textSecondary;
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
@@ -485,6 +670,30 @@ export default function EditorScreen() {
           )}
         </Pressable>
       </View>
+
+      {existingProjectId ? (
+        <Pressable
+          style={styles.saveStatusRow}
+          onPress={() => {
+            if (editorSaveStatus !== "error") return;
+            setForceAutosaveTick((tick) => tick + 1);
+          }}
+          disabled={editorSaveStatus !== "error"}
+          accessibilityLabel={
+            editorSaveStatus === "error" ? "Retry project save" : "Project saved status"
+          }
+          accessibilityRole={editorSaveStatus === "error" ? "button" : "text"}
+        >
+          <Ionicons
+            name={saveStatusIcon}
+            size={14}
+            color={saveStatusColor}
+          />
+          <Text style={[styles.saveStatusText, { color: saveStatusColor }]}>
+            {saveStatusLabel}
+          </Text>
+        </Pressable>
+      ) : null}
 
       <Modal
         visible={isNameModalVisible}
@@ -549,7 +758,7 @@ export default function EditorScreen() {
 
             <Pressable
               onPress={() => {
-                void handleSaveProjectTitle();
+                handleSaveProjectTitle();
               }}
               disabled={!canSaveProjectTitle}
               style={({ pressed }) => [
@@ -561,11 +770,7 @@ export default function EditorScreen() {
               accessibilityRole="button"
               accessibilityState={{ disabled: !canSaveProjectTitle }}
             >
-              {isSavingProjectTitle ? (
-                <ActivityIndicator size="small" color={colors.dark.background} />
-              ) : (
-                <Text style={styles.projectNameDoneText}>Done</Text>
-              )}
+              <Text style={styles.projectNameDoneText}>Done</Text>
             </Pressable>
           </View>
         </KeyboardAvoidingView>
@@ -753,6 +958,20 @@ const styles = StyleSheet.create({
     ...typography.caption,
     fontWeight: "700",
     color: "#FFFFFF",
+  },
+  saveStatusRow: {
+    minHeight: 22,
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    marginTop: -2,
+    marginBottom: spacing.xs,
+    paddingHorizontal: spacing.sm,
+  },
+  saveStatusText: {
+    ...typography.caption,
+    fontWeight: "500",
   },
   projectNameModalRoot: {
     flex: 1,

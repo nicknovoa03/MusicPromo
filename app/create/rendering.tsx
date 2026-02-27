@@ -83,7 +83,9 @@ export default function RenderingScreen() {
     projectId?: string;
     title?: string;
     photoUri: string;
+    photoName?: string;
     audioUri: string;
+    audioName?: string;
     trimStart: string;
     trimEnd: string;
     aspectRatio: string;
@@ -126,7 +128,9 @@ export default function RenderingScreen() {
     const existingProjectId = asProjectId(firstParam(params.projectId));
     const title = firstParam(params.title);
     const photoUri = decodeUriParam(firstParam(params.photoUri));
+    const photoName = firstParam(params.photoName) || undefined;
     const audioUri = decodeUriParam(firstParam(params.audioUri));
+    const audioName = firstParam(params.audioName) || undefined;
     const parsedTrimStart = Number(firstParam(params.trimStart));
     const parsedTrimEnd = Number(firstParam(params.trimEnd));
     const [trimStart, trimEnd] = normalizeTrimBounds(parsedTrimStart, parsedTrimEnd);
@@ -146,7 +150,9 @@ export default function RenderingScreen() {
             title: title?.trim() || "New Project",
             aspectRatio,
             photoUri,
+            photoName,
             audioUri,
+            audioName,
             trimStart,
             trimEnd,
             templateId: "spinning-cd",
@@ -198,7 +204,9 @@ export default function RenderingScreen() {
             templateId: "spinning-cd",
             aspectRatio,
             photoUri,
+            photoName,
             audioUri,
+            audioName,
             trimStart,
             trimEnd,
             exportedVideoUri: videoUri,
