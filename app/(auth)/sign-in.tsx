@@ -7,17 +7,25 @@ import {
   ActivityIndicator,
   Alert,
 } from "react-native";
-import { useSSO, useSignIn } from "@clerk/clerk-expo";
+import {
+  isClerkAPIResponseError,
+  useSSO,
+  useSignIn,
+  useSignUp,
+} from "@clerk/clerk-expo";
 import { usePostHog } from "posthog-react-native";
 import * as WebBrowser from "expo-web-browser";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
+import { useLocalSession } from "@/providers/localSession";
 
 WebBrowser.maybeCompleteAuthSession();
 
 export default function SignInScreen() {
   const { startSSOFlow } = useSSO();
   const { signIn, setActive } = useSignIn();
+  const { signUp } = useSignUp();
+  const { startLocalGuest, clearLocalSession } = useLocalSession();
   const posthog = usePostHog();
   const [loading, setLoading] = useState<"apple" | "google" | "guest" | null>(
     null
@@ -32,6 +40,14 @@ export default function SignInScreen() {
           await startSSOFlow({ strategy });
 
         if (createdSessionId && ssoSetActive) {
+          try {
+            await clearLocalSession();
+          } catch (cleanupError) {
+            console.warn(
+              "Failed to clear local session before SSO activation:",
+              cleanupError
+            );
+          }
           await ssoSetActive({ session: createdSessionId });
           posthog?.capture("sign_in_completed", { provider });
         } else if (createdSessionId) {
@@ -48,32 +64,91 @@ export default function SignInScreen() {
         setLoading(null);
       }
     },
-    [startSSOFlow, posthog]
+    [startSSOFlow, posthog, clearLocalSession]
   );
 
   const handleGuest = useCallback(async () => {
     setLoading("guest");
     try {
-      if (!signIn) return;
-      const { createdSessionId } = await signIn.create({
-        strategy: "ticket",
-        ticket: "__clerk_anonymous",
-      });
-      if (createdSessionId && setActive) {
-        await setActive({ session: createdSessionId });
-        posthog?.capture("guest_mode_started");
+      if (!setActive || (!signIn && !signUp)) {
+        throw new Error("Auth is still loading. Please try again.");
       }
-    } catch {
-      // Guest mode via anonymous sign-in: if ticket strategy fails,
-      // fall back to displaying an error.
-      Alert.alert(
-        "Guest mode unavailable",
-        "Please sign in with Apple or Google."
-      );
+
+      let createdSessionId: string | null = null;
+
+      if (signIn) {
+        const signInResult = await signIn.create({
+          strategy: "ticket",
+          ticket: "__clerk_anonymous",
+        });
+
+        if (signInResult.status === "complete" && signInResult.createdSessionId) {
+          createdSessionId = signInResult.createdSessionId;
+        }
+      }
+
+      if (!createdSessionId && signUp) {
+        const signUpResult = await signUp.create({
+          strategy: "ticket",
+          ticket: "__clerk_anonymous",
+        });
+
+        if (signUpResult.status === "complete" && signUpResult.createdSessionId) {
+          createdSessionId = signUpResult.createdSessionId;
+        }
+      }
+
+      if (!createdSessionId) {
+        throw new Error("Guest sign-in could not be completed.");
+      }
+
+      try {
+        await clearLocalSession();
+      } catch (cleanupError) {
+        console.warn(
+          "Failed to clear local session before guest activation:",
+          cleanupError
+        );
+      }
+      await setActive({ session: createdSessionId });
+      posthog?.capture("guest_mode_started", { mode: "clerk" });
+      return;
+    } catch (err: unknown) {
+      const startedLocalGuest = await startLocalGuest();
+      if (startedLocalGuest) {
+        posthog?.capture("guest_mode_started", { mode: "local" });
+        return;
+      }
+
+      let message = "Please sign in with Apple or Google.";
+
+      if (isClerkAPIResponseError(err)) {
+        const primaryError = err.errors[0];
+        const code = primaryError?.code ?? "";
+        const longMessage = primaryError?.longMessage ?? primaryError?.message;
+        const text = `${code} ${longMessage ?? ""}`.toLowerCase();
+
+        if (text.includes("anonymous") || text.includes("ticket")) {
+          message =
+            "Anonymous guest sign-in appears disabled for this Clerk app. Enable guest/anonymous access in Clerk, then try again.";
+        } else if (longMessage) {
+          message = longMessage;
+        }
+
+        console.warn("Guest sign-in Clerk error:", {
+          code,
+          errors: err.errors,
+        });
+      } else if (err instanceof Error && err.message) {
+        message = err.message;
+        console.warn("Guest sign-in error:", err);
+      }
+
+      Alert.alert("Guest mode unavailable", message);
     } finally {
       setLoading(null);
     }
-  }, [signIn, setActive, posthog]);
+  }, [signIn, signUp, setActive, posthog, startLocalGuest, clearLocalSession]);
 
   return (
     <View style={styles.container}>

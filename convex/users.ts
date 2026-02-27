@@ -1,6 +1,13 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 
+async function getUserByClerkId(ctx: any, clerkId: string) {
+  return await ctx.db
+    .query("users")
+    .withIndex("by_clerk_id", (q: any) => q.eq("clerkId", clerkId))
+    .unique();
+}
+
 export const getOrCreate = mutation({
   args: {},
   handler: async (ctx) => {
@@ -8,22 +15,33 @@ export const getOrCreate = mutation({
     if (!identity) throw new Error("Unauthenticated");
 
     const clerkId = identity.subject;
-    const existing = await ctx.db
-      .query("users")
-      .withIndex("by_clerk_id", (q) => q.eq("clerkId", clerkId))
-      .unique();
+    const existing = await getUserByClerkId(ctx, clerkId);
 
-    if (existing) return existing._id;
+    if (existing) {
+      if (existing.isDeleted) throw new Error("Account deleted");
+      return existing._id;
+    }
 
     const isGuest = !identity.email;
-    return await ctx.db.insert("users", {
+    const userDoc: {
+      clerkId: string;
+      isGuest: boolean;
+      isDeleted: boolean;
+      createdAt: number;
+      name?: string;
+      email?: string;
+      avatarUrl?: string;
+    } = {
       clerkId,
-      name: identity.name ?? undefined,
-      email: identity.email ?? undefined,
-      avatarUrl: (identity.imageUrl as string) ?? undefined,
       isGuest,
+      isDeleted: false,
       createdAt: Date.now(),
-    });
+    };
+    if (identity.name) userDoc.name = identity.name;
+    if (identity.email) userDoc.email = identity.email;
+    if (identity.imageUrl) userDoc.avatarUrl = identity.imageUrl as string;
+
+    return await ctx.db.insert("users", userDoc);
   },
 });
 
@@ -33,10 +51,9 @@ export const current = query({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return null;
 
-    return await ctx.db
-      .query("users")
-      .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
-      .unique();
+    const user = await getUserByClerkId(ctx, identity.subject);
+    if (!user || user.isDeleted) return null;
+    return user;
   },
 });
 
@@ -49,7 +66,9 @@ export const updateProfile = mutation({
         defaultAspectRatio: v.optional(
           v.union(v.literal("9:16"), v.literal("1:1"))
         ),
-        defaultVideoLength: v.optional(v.number()),
+        defaultVideoLength: v.optional(
+          v.union(v.literal(15), v.literal(30), v.literal(60))
+        ),
       })
     ),
   },
@@ -57,12 +76,10 @@ export const updateProfile = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Unauthenticated");
 
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
-      .unique();
+    const user = await getUserByClerkId(ctx, identity.subject);
 
     if (!user) throw new Error("User not found");
+    if (user.isDeleted) throw new Error("Account deleted");
 
     const updates: Record<string, unknown> = {};
     if (args.name !== undefined) updates.name = args.name;
@@ -72,5 +89,81 @@ export const updateProfile = mutation({
     }
 
     await ctx.db.patch(user._id, updates);
+  },
+});
+
+export const softDeleteCurrent = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthenticated");
+
+    const user = await getUserByClerkId(ctx, identity.subject);
+    if (!user) throw new Error("User not found");
+
+    if (user.isDeleted) {
+      return { userId: user._id, deletedAt: user.deletedAt ?? Date.now() };
+    }
+
+    const deletedAt = Date.now();
+    await ctx.db.patch(user._id, {
+      isDeleted: true,
+      deletedAt,
+      onboardingCompletedAt: undefined,
+    });
+
+    return { userId: user._id, deletedAt };
+  },
+});
+
+export const completeOnboarding = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthenticated");
+
+    const completedAt = Date.now();
+    const clerkId = identity.subject;
+    const existing = await getUserByClerkId(ctx, clerkId);
+
+    if (!existing) {
+      const isGuest = !identity.email;
+      const userDoc: {
+        clerkId: string;
+        isGuest: boolean;
+        onboardingCompletedAt: number;
+        isDeleted: boolean;
+        createdAt: number;
+        name?: string;
+        email?: string;
+        avatarUrl?: string;
+      } = {
+        clerkId,
+        isGuest,
+        onboardingCompletedAt: completedAt,
+        isDeleted: false,
+        createdAt: completedAt,
+      };
+      if (identity.name) userDoc.name = identity.name;
+      if (identity.email) userDoc.email = identity.email;
+      if (identity.imageUrl) userDoc.avatarUrl = identity.imageUrl as string;
+
+      const userId = await ctx.db.insert("users", userDoc);
+      return { userId, onboardingCompletedAt: completedAt };
+    }
+
+    if (existing.isDeleted) throw new Error("Account deleted");
+    if (existing.onboardingCompletedAt) {
+      return {
+        userId: existing._id,
+        onboardingCompletedAt: existing.onboardingCompletedAt,
+      };
+    }
+
+    await ctx.db.patch(existing._id, {
+      onboardingCompletedAt: completedAt,
+    });
+
+    return { userId: existing._id, onboardingCompletedAt: completedAt };
   },
 });

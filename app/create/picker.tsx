@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -11,11 +11,18 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { useConvexAuth, useQuery } from "convex/react";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import { usePostHog } from "posthog-react-native";
+import { api } from "../../convex/_generated/api";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
 import type { EventName } from "@/lib/analytics";
+import {
+  DEFAULT_LOCAL_PROFILE_PREFERENCES,
+  getLocalProfilePreferences,
+} from "@/lib/localProfile";
+import { useLocalSession } from "@/providers/localSession";
 
 type Tab = "photo" | "audio";
 
@@ -26,8 +33,21 @@ interface MediaSelection {
   audioName: string | null;
 }
 
+const VIDEO_LENGTH_PRESETS = [15, 30, 60] as const;
+
 function firstParam(param: string | string[] | undefined) {
   return Array.isArray(param) ? param[0] : param;
+}
+
+function normalizeDefaultVideoLength(value: number | undefined) {
+  if (!Number.isFinite(value)) return VIDEO_LENGTH_PRESETS[0];
+  const safe = Math.max(15, Math.min(60, Math.round(value ?? 0)));
+
+  return VIDEO_LENGTH_PRESETS.reduce((closest, candidate) => {
+    return Math.abs(candidate - safe) < Math.abs(closest - safe)
+      ? candidate
+      : closest;
+  }, VIDEO_LENGTH_PRESETS[0]);
 }
 
 export default function PickerScreen() {
@@ -52,6 +72,12 @@ export default function PickerScreen() {
   const trimEnd = firstParam(params.trimEnd);
   const initialTab =
     firstParam(params.initialTab) === "audio" ? "audio" : "photo";
+  const { isAuthenticated } = useConvexAuth();
+  const { isLocalGuest } = useLocalSession();
+  const currentUser = useQuery(api.users.current);
+  const [localPreferences, setLocalPreferences] = useState(
+    DEFAULT_LOCAL_PROFILE_PREFERENCES
+  );
 
   const [activeTab, setActiveTab] = useState<Tab>(initialTab);
   const [media, setMedia] = useState<MediaSelection>({
@@ -61,6 +87,28 @@ export default function PickerScreen() {
     audioName: firstParam(params.audioName) || null,
   });
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    let isActive = true;
+
+    (async () => {
+      const prefs = await getLocalProfilePreferences();
+      if (!isActive) return;
+      setLocalPreferences(prefs);
+    })();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  const useLocalDefaults = isLocalGuest || !isAuthenticated;
+  const preferredAspectRatio = useLocalDefaults
+    ? localPreferences.defaultAspectRatio
+    : currentUser?.preferences?.defaultAspectRatio ?? "9:16";
+  const preferredVideoLength = useLocalDefaults
+    ? localPreferences.defaultVideoLength
+    : normalizeDefaultVideoLength(currentUser?.preferences?.defaultVideoLength);
 
   const track = useCallback(
     (event: EventName, props?: Record<string, string>) => {
@@ -139,18 +187,21 @@ export default function PickerScreen() {
     }
 
     if (media.photoUri && media.audioUri) {
+      const nextAspectRatio = aspectRatio ?? preferredAspectRatio;
+      const nextTrimStart = trimStart ?? "0";
+      const nextTrimEnd = trimEnd ?? String(preferredVideoLength);
       const nextParams: Record<string, string> = {
         photoUri: media.photoUri,
         photoName: media.photoName ?? "Photo",
         audioUri: media.audioUri,
         audioName: media.audioName ?? "Audio",
+        aspectRatio: nextAspectRatio,
+        trimStart: nextTrimStart,
+        trimEnd: nextTrimEnd,
       };
 
       if (projectId) nextParams.projectId = projectId;
       if (title) nextParams.title = title;
-      if (aspectRatio) nextParams.aspectRatio = aspectRatio;
-      if (trimStart) nextParams.trimStart = trimStart;
-      if (trimEnd) nextParams.trimEnd = trimEnd;
 
       router.push({
         pathname: "/create/editor" as const,
@@ -166,6 +217,8 @@ export default function PickerScreen() {
     aspectRatio,
     trimStart,
     trimEnd,
+    preferredAspectRatio,
+    preferredVideoLength,
   ]);
 
   const canAdd = activeTab === "photo" ? !!media.photoUri : !!media.audioUri;

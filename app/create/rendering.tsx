@@ -12,12 +12,14 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { usePostHog } from "posthog-react-native";
-import { useMutation } from "convex/react";
+import { useConvexAuth, useMutation } from "convex/react";
+import { ConvexError } from "convex/values";
 import Constants from "expo-constants";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
 import type { EventName } from "@/lib/analytics";
+import { sleep } from "@/lib/utils";
 
 function isExpoGo(): boolean {
   return Constants.appOwnership === "expo";
@@ -66,6 +68,13 @@ function asProjectId(value: string | undefined): Id<"projects"> | null {
   return value as Id<"projects">;
 }
 
+function isUnauthenticatedConvexError(error: unknown) {
+  if (!(error instanceof ConvexError)) return false;
+  if (!error.data || typeof error.data !== "object") return false;
+  const code = (error.data as { code?: unknown }).code;
+  return code === "UNAUTHENTICATED";
+}
+
 export default function RenderingScreen() {
   const router = useRouter();
   const posthog = usePostHog();
@@ -79,6 +88,7 @@ export default function RenderingScreen() {
     aspectRatio: string;
   }>();
 
+  const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
   const createProject = useMutation(api.projects.create);
   const updateProject = useMutation(api.projects.update);
 
@@ -127,21 +137,32 @@ export default function RenderingScreen() {
       projectIdRef.current = existingProjectId;
     }
 
-    if (!projectIdRef.current) {
-      try {
-        const projectId = await createProject({
-          title: title?.trim() || "New Project",
-          aspectRatio,
-          photoUri,
-          audioUri,
-          trimStart,
-          trimEnd,
-          templateId: "spinning-cd",
-        });
-        projectIdRef.current = projectId;
-      } catch {
-        // Non-fatal — project metadata save failure shouldn't block render
-      }
+    if (!projectIdRef.current && isAuthenticated) {
+      const tryCreate = async (retries = 1): Promise<void> => {
+        try {
+          const projectId = await createProject({
+            title: title?.trim() || "New Project",
+            aspectRatio,
+            photoUri,
+            audioUri,
+            trimStart,
+            trimEnd,
+            templateId: "spinning-cd",
+          });
+          projectIdRef.current = projectId;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "";
+          if (isUnauthenticatedConvexError(err) && retries > 0) {
+            await sleep(800);
+            return tryCreate(retries - 1);
+          }
+          track("project_create_failed_during_export", {
+            error: msg.slice(0, 200) || "unknown_error",
+          });
+          // Non-fatal — project metadata save failure shouldn't block render
+        }
+      };
+      await tryCreate();
     }
 
     try {
@@ -209,6 +230,7 @@ export default function RenderingScreen() {
     }
   }, [
     params,
+    isAuthenticated,
     createProject,
     updateProject,
     track,
@@ -217,8 +239,9 @@ export default function RenderingScreen() {
   ]);
 
   useEffect(() => {
+    if (isAuthLoading) return;
     startRender();
-  }, [startRender]);
+  }, [startRender, isAuthLoading]);
 
   const handleCancel = useCallback(() => {
     Alert.alert(

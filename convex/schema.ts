@@ -8,12 +8,17 @@ export default defineSchema({
     email: v.optional(v.string()),
     avatarUrl: v.optional(v.string()),
     isGuest: v.boolean(),
+    onboardingCompletedAt: v.optional(v.number()),
+    isDeleted: v.optional(v.boolean()),
+    deletedAt: v.optional(v.number()),
     preferences: v.optional(
       v.object({
         defaultAspectRatio: v.optional(
           v.union(v.literal("9:16"), v.literal("1:1"))
         ),
-        defaultVideoLength: v.optional(v.number()),
+        defaultVideoLength: v.optional(
+          v.union(v.literal(15), v.literal(30), v.literal(60))
+        ),
       })
     ),
     createdAt: v.number(),
@@ -36,6 +41,29 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_user_updated", ["userId", "updatedAt"]),
+
+  pushTokens: defineTable({
+    userId: v.id("users"),
+    expoPushToken: v.string(),
+    platform: v.union(v.literal("ios"), v.literal("android")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_user_and_token", ["userId", "expoPushToken"]),
+
+  notifications: defineTable({
+    userId: v.id("users"),
+    type: v.union(
+      v.literal("reminder"),
+      v.literal("new-template"),
+      v.literal("export-complete"),
+      v.literal("announcement")
+    ),
+    title: v.string(),
+    body: v.string(),
+    read: v.boolean(),
+    trigger: v.union(v.literal("automated"), v.literal("manual")),
+    sentAt: v.number(),
+  }).index("by_user_and_sent_at", ["userId", "sentAt"]),
 
   templates: defineTable({
     name: v.string(),
