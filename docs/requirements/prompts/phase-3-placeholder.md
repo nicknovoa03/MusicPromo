@@ -1,6 +1,6 @@
 # Phase 3: Placeholder
 
-```
+```txt
 Project: MusicPromo
 Stack: React Native + Expo, Clerk, Convex, PostHog
 PRD: docs/requirements/PRODUCT_DESIGN_REQUIREMENTS.md

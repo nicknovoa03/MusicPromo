@@ -40,7 +40,14 @@ export default function SignInScreen() {
           await startSSOFlow({ strategy });
 
         if (createdSessionId && ssoSetActive) {
-          await clearLocalSession();
+          try {
+            await clearLocalSession();
+          } catch (cleanupError) {
+            console.warn(
+              "Failed to clear local session before SSO activation:",
+              cleanupError
+            );
+          }
           await ssoSetActive({ session: createdSessionId });
           posthog?.capture("sign_in_completed", { provider });
         } else if (createdSessionId) {
@@ -57,7 +64,7 @@ export default function SignInScreen() {
         setLoading(null);
       }
     },
-    [startSSOFlow, posthog]
+    [startSSOFlow, posthog, clearLocalSession]
   );
 
   const handleGuest = useCallback(async () => {
@@ -95,7 +102,14 @@ export default function SignInScreen() {
         throw new Error("Guest sign-in could not be completed.");
       }
 
-      await clearLocalSession();
+      try {
+        await clearLocalSession();
+      } catch (cleanupError) {
+        console.warn(
+          "Failed to clear local session before guest activation:",
+          cleanupError
+        );
+      }
       await setActive({ session: createdSessionId });
       posthog?.capture("guest_mode_started", { mode: "clerk" });
       return;

@@ -11,15 +11,20 @@ type OnboardingLocalOptions = {
   localGuest?: boolean;
 };
 
+function resolveLocalOnboardingKey(
+  clerkUserId?: string | null,
+  options?: OnboardingLocalOptions
+) {
+  if (clerkUserId) return localOnboardingKey(clerkUserId);
+  if (options?.localGuest) return LOCAL_GUEST_ONBOARDING_KEY;
+  return null;
+}
+
 export async function getLocalOnboardingCompleted(
   clerkUserId?: string | null,
   options?: OnboardingLocalOptions
 ): Promise<boolean> {
-  const key = clerkUserId
-    ? localOnboardingKey(clerkUserId)
-    : options?.localGuest
-      ? LOCAL_GUEST_ONBOARDING_KEY
-      : null;
+  const key = resolveLocalOnboardingKey(clerkUserId, options);
   if (!key) return false;
 
   try {
@@ -35,11 +40,7 @@ export async function setLocalOnboardingCompleted(
   clerkUserId?: string | null,
   options?: OnboardingLocalOptions
 ): Promise<boolean> {
-  const key = clerkUserId
-    ? localOnboardingKey(clerkUserId)
-    : options?.localGuest
-      ? LOCAL_GUEST_ONBOARDING_KEY
-      : null;
+  const key = resolveLocalOnboardingKey(clerkUserId, options);
   if (!key) return false;
 
   try {
@@ -55,11 +56,7 @@ export async function clearLocalOnboardingCompleted(
   clerkUserId?: string | null,
   options?: OnboardingLocalOptions
 ): Promise<boolean> {
-  const key = clerkUserId
-    ? localOnboardingKey(clerkUserId)
-    : options?.localGuest
-      ? LOCAL_GUEST_ONBOARDING_KEY
-      : null;
+  const key = resolveLocalOnboardingKey(clerkUserId, options);
   if (!key) return false;
 
   try {

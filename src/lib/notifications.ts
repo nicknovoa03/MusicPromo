@@ -112,8 +112,11 @@ export async function handleInitialNotificationTap(
   const response = await Notifications.getLastNotificationResponseAsync();
   if (!response) return;
 
-  onTapped(response);
-  await Notifications.clearLastNotificationResponseAsync();
+  try {
+    onTapped(response);
+  } finally {
+    await Notifications.clearLastNotificationResponseAsync();
+  }
 }
 
 export function registerNotificationListeners(options: {

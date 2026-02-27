@@ -16,7 +16,9 @@ export default defineSchema({
         defaultAspectRatio: v.optional(
           v.union(v.literal("9:16"), v.literal("1:1"))
         ),
-        defaultVideoLength: v.optional(v.number()),
+        defaultVideoLength: v.optional(
+          v.union(v.literal(15), v.literal(30), v.literal(60))
+        ),
       })
     ),
     createdAt: v.number(),

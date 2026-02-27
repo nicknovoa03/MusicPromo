@@ -98,15 +98,24 @@ export const sendTestPush = action({
       },
     }));
 
-    const response: Response = await fetch("https://exp.host/--/api/v2/push/send", {
-      method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Accept-Encoding": "gzip, deflate",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(messages),
-    });
+    let response: Response;
+    try {
+      response = await fetch("https://exp.host/--/api/v2/push/send", {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Accept-Encoding": "gzip, deflate",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(messages),
+      });
+    } catch (error) {
+      console.warn("Expo push request failed", { error });
+      return {
+        ok: false,
+        reason: "Failed to reach Expo Push API",
+      };
+    }
 
     let responseBody: unknown = null;
     try {

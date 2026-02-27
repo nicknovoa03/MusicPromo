@@ -1,5 +1,12 @@
 import { v } from "convex/values";
-import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import {
+  internalMutation,
+  internalQuery,
+  mutation,
+  query,
+  type MutationCtx,
+  type QueryCtx,
+} from "./_generated/server";
 
 const notificationType = v.union(
   v.literal("reminder"),
@@ -10,17 +17,26 @@ const notificationType = v.union(
 
 const notificationTrigger = v.union(v.literal("automated"), v.literal("manual"));
 
-async function getActiveUserByIdentity(ctx: any) {
+const DEFAULT_NOTIFICATION_LIMIT = 50;
+const MAX_NOTIFICATION_LIMIT = 100;
+
+async function getUserByClerkIdInternal(
+  ctx: QueryCtx | MutationCtx,
+  clerkId: string
+) {
+  const user = await ctx.db
+    .query("users")
+    .withIndex("by_clerk_id", (q) => q.eq("clerkId", clerkId))
+    .unique();
+  if (!user || user.isDeleted) return null;
+  return user;
+}
+
+async function getActiveUserByIdentity(ctx: QueryCtx | MutationCtx) {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) return null;
 
-  const user = await ctx.db
-    .query("users")
-    .withIndex("by_clerk_id", (q: any) => q.eq("clerkId", identity.subject))
-    .unique();
-
-  if (!user || user.isDeleted) return null;
-  return user;
+  return await getUserByClerkIdInternal(ctx, identity.subject);
 }
 
 export const getUserByClerkId = internalQuery({
@@ -28,18 +44,20 @@ export const getUserByClerkId = internalQuery({
     clerkId: v.string(),
   },
   handler: async (ctx, args) => {
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
-      .unique();
-    if (!user || user.isDeleted) return null;
-    return user;
+    return await getUserByClerkIdInternal(ctx, args.clerkId);
   },
 });
 
+function getNotificationLimit(limit?: number) {
+  if (!Number.isFinite(limit)) return DEFAULT_NOTIFICATION_LIMIT;
+  return Math.max(1, Math.min(MAX_NOTIFICATION_LIMIT, Math.floor(limit ?? 0)));
+}
+
 export const listByUser = query({
-  args: {},
-  handler: async (ctx) => {
+  args: {
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
     const user = await getActiveUserByIdentity(ctx);
 
     if (!user) return [];
@@ -48,7 +66,7 @@ export const listByUser = query({
       .query("notifications")
       .withIndex("by_user_and_sent_at", (q) => q.eq("userId", user._id))
       .order("desc")
-      .collect();
+      .take(getNotificationLimit(args.limit));
   },
 });
 

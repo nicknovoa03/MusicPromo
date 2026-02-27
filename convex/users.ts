@@ -18,28 +18,30 @@ export const getOrCreate = mutation({
     const existing = await getUserByClerkId(ctx, clerkId);
 
     if (existing) {
-      if (existing.isDeleted) {
-        await ctx.db.patch(existing._id, {
-          isDeleted: false,
-          deletedAt: undefined,
-          name: identity.name ?? existing.name,
-          email: identity.email ?? existing.email,
-          avatarUrl: (identity.imageUrl as string) ?? existing.avatarUrl,
-        });
-      }
+      if (existing.isDeleted) throw new Error("Account deleted");
       return existing._id;
     }
 
     const isGuest = !identity.email;
-    return await ctx.db.insert("users", {
+    const userDoc: {
+      clerkId: string;
+      isGuest: boolean;
+      isDeleted: boolean;
+      createdAt: number;
+      name?: string;
+      email?: string;
+      avatarUrl?: string;
+    } = {
       clerkId,
-      name: identity.name ?? undefined,
-      email: identity.email ?? undefined,
-      avatarUrl: (identity.imageUrl as string) ?? undefined,
       isGuest,
       isDeleted: false,
       createdAt: Date.now(),
-    });
+    };
+    if (identity.name) userDoc.name = identity.name;
+    if (identity.email) userDoc.email = identity.email;
+    if (identity.imageUrl) userDoc.avatarUrl = identity.imageUrl as string;
+
+    return await ctx.db.insert("users", userDoc);
   },
 });
 
@@ -64,7 +66,9 @@ export const updateProfile = mutation({
         defaultAspectRatio: v.optional(
           v.union(v.literal("9:16"), v.literal("1:1"))
         ),
-        defaultVideoLength: v.optional(v.number()),
+        defaultVideoLength: v.optional(
+          v.union(v.literal(15), v.literal(30), v.literal(60))
+        ),
       })
     ),
   },
@@ -124,30 +128,31 @@ export const completeOnboarding = mutation({
 
     if (!existing) {
       const isGuest = !identity.email;
-      const userId = await ctx.db.insert("users", {
+      const userDoc: {
+        clerkId: string;
+        isGuest: boolean;
+        onboardingCompletedAt: number;
+        isDeleted: boolean;
+        createdAt: number;
+        name?: string;
+        email?: string;
+        avatarUrl?: string;
+      } = {
         clerkId,
-        name: identity.name ?? undefined,
-        email: identity.email ?? undefined,
-        avatarUrl: (identity.imageUrl as string) ?? undefined,
         isGuest,
         onboardingCompletedAt: completedAt,
         isDeleted: false,
         createdAt: completedAt,
-      });
+      };
+      if (identity.name) userDoc.name = identity.name;
+      if (identity.email) userDoc.email = identity.email;
+      if (identity.imageUrl) userDoc.avatarUrl = identity.imageUrl as string;
+
+      const userId = await ctx.db.insert("users", userDoc);
       return { userId, onboardingCompletedAt: completedAt };
     }
 
-    if (existing.isDeleted) {
-      await ctx.db.patch(existing._id, {
-        isDeleted: false,
-        deletedAt: undefined,
-        onboardingCompletedAt: completedAt,
-        name: identity.name ?? existing.name,
-        email: identity.email ?? existing.email,
-        avatarUrl: (identity.imageUrl as string) ?? existing.avatarUrl,
-      });
-      return { userId: existing._id, onboardingCompletedAt: completedAt };
-    }
+    if (existing.isDeleted) throw new Error("Account deleted");
     if (existing.onboardingCompletedAt) {
       return {
         userId: existing._id,

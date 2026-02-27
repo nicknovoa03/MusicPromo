@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 
 async function getActiveUserByIdentity(ctx: any) {
@@ -27,7 +27,12 @@ export const create = mutation({
   handler: async (ctx, args) => {
     const user = await getActiveUserByIdentity(ctx);
 
-    if (!user) throw new Error("Unauthenticated");
+    if (!user) {
+      throw new ConvexError({
+        code: "UNAUTHENTICATED",
+        message: "Sign in required",
+      });
+    }
 
     const now = Date.now();
     return await ctx.db.insert("projects", {

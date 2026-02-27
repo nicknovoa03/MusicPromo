@@ -35,7 +35,7 @@ export default function TabsLayout() {
   const upsertPushToken = useMutation(api.pushTokens.upsertForCurrentUser);
   const currentUser = useQuery(api.users.current);
   const posthog = usePostHog();
-  const { signOut, getToken, userId } = useAuth();
+  const { signOut, getToken, userId, isSignedIn } = useAuth();
   const { isLocalGuest } = useLocalSession();
   const { user } = useUser();
   const didBootstrapPush = useRef(false);
@@ -43,7 +43,6 @@ export default function TabsLayout() {
   const hasWarnedMissingConvexToken = useRef(false);
   const [localOnboardingReady, setLocalOnboardingReady] = useState(false);
   const [localOnboardingCompleted, setLocalOnboardingCompleted] = useState(false);
-  const [onboardingServerTimedOut, setOnboardingServerTimedOut] = useState(false);
 
   const track = useCallback(
     (event: EventName, props?: Record<string, string>) => {
@@ -52,7 +51,7 @@ export default function TabsLayout() {
     [posthog]
   );
 
-  const hasSession = isAuthenticated || isLocalGuest;
+  const hasSession = Boolean(isSignedIn) || isLocalGuest;
 
   useEffect(() => {
     if (hasSession) return;
@@ -63,7 +62,6 @@ export default function TabsLayout() {
   useEffect(() => {
     let isActive = true;
     setLocalOnboardingReady(false);
-    setOnboardingServerTimedOut(false);
 
     (async () => {
       const completed = await getLocalOnboardingCompleted(userId, {
@@ -79,23 +77,6 @@ export default function TabsLayout() {
     };
   }, [userId, isLocalGuest]);
 
-  useEffect(() => {
-    if (
-      !isAuthenticated ||
-      isLocalGuest ||
-      !localOnboardingReady ||
-      currentUser !== undefined
-    ) {
-      return;
-    }
-
-    const timeout = setTimeout(() => {
-      setOnboardingServerTimedOut(true);
-    }, 1500);
-
-    return () => clearTimeout(timeout);
-  }, [isAuthenticated, isLocalGuest, localOnboardingReady, currentUser]);
-
   const hasServerOnboardingCompletion =
     isAuthenticated && Boolean(currentUser?.onboardingCompletedAt);
   const isOnboardingCompleted =
@@ -103,7 +84,7 @@ export default function TabsLayout() {
   const hasOnboardingStatus = localOnboardingReady && (
     isLocalGuest
       ? true
-      : isOnboardingCompleted || currentUser !== undefined || onboardingServerTimedOut
+      : isOnboardingCompleted || currentUser !== undefined
   );
 
   useEffect(() => {

@@ -22,6 +22,7 @@ import {
   setLocalOnboardingCompleted,
 } from "@/lib/onboarding";
 import { useLocalSession } from "@/providers/localSession";
+import { sleep } from "@/lib/utils";
 
 type CompletionMethod = "skip" | "cta";
 
@@ -57,10 +58,6 @@ const ONBOARDING_SLIDES: OnboardingSlide[] = [
   },
 ];
 
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 export default function OnboardingScreen() {
   const router = useRouter();
   const { width } = useWindowDimensions();
@@ -78,7 +75,6 @@ export default function OnboardingScreen() {
   const [isCompleting, setIsCompleting] = useState(false);
   const [localCompletionReady, setLocalCompletionReady] = useState(false);
   const [localCompletion, setLocalCompletion] = useState(false);
-  const [serverLookupTimedOut, setServerLookupTimedOut] = useState(false);
 
   useEffect(() => {
     return () => {
@@ -89,7 +85,6 @@ export default function OnboardingScreen() {
   useEffect(() => {
     let isActive = true;
     setLocalCompletionReady(false);
-    setServerLookupTimedOut(false);
 
     (async () => {
       const completed = await getLocalOnboardingCompleted(userId, {
@@ -105,37 +100,13 @@ export default function OnboardingScreen() {
     };
   }, [userId, isLocalGuest]);
 
-  useEffect(() => {
-    if (
-      !isAuthenticated ||
-      isLocalGuest ||
-      !localCompletionReady ||
-      localCompletion ||
-      currentUser !== undefined
-    ) {
-      return;
-    }
-
-    const timeout = setTimeout(() => {
-      setServerLookupTimedOut(true);
-    }, 1500);
-
-    return () => clearTimeout(timeout);
-  }, [
-    isAuthenticated,
-    isLocalGuest,
-    localCompletionReady,
-    localCompletion,
-    currentUser,
-  ]);
-
   const hasServerCompletion =
     isAuthenticated && Boolean(currentUser?.onboardingCompletedAt);
   const isOnboardingCompleted = localCompletion || hasServerCompletion;
   const hasCompletionState = localCompletionReady && (
     isLocalGuest
       ? true
-      : isOnboardingCompleted || currentUser !== undefined || serverLookupTimedOut
+      : isOnboardingCompleted || currentUser !== undefined
   );
 
   useEffect(() => {

@@ -1,6 +1,6 @@
 # Phase 2c: Onboarding
 
-```
+```txt
 Project: MusicPromo
 Stack: React Native + Expo, Clerk, Convex, PostHog
 PRD: docs/requirements/PRODUCT_DESIGN_REQUIREMENTS.md

@@ -25,6 +25,7 @@ import { clearLocalOnboardingCompleted } from "@/lib/onboarding";
 import { getExpoPushTokenAsync } from "@/lib/notifications";
 import type { EventName } from "@/lib/analytics";
 import { useLocalSession } from "@/providers/localSession";
+import { sleep } from "@/lib/utils";
 
 type AspectRatio = "9:16" | "1:1";
 const ASPECT_RATIO_OPTIONS: AspectRatio[] = ["9:16", "1:1"];
@@ -32,7 +33,7 @@ const VIDEO_LENGTH_OPTIONS = [15, 30, 60] as const;
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { signOut, getToken, userId } = useAuth();
+  const { signOut, getToken, userId, isSignedIn } = useAuth();
   const { user: clerkUser } = useUser();
   const { isAuthenticated, isLoading: isConvexAuthLoading } = useConvexAuth();
   const { isLocalGuest, clearLocalSession } = useLocalSession();
@@ -71,11 +72,14 @@ export default function ProfileScreen() {
     };
   }, []);
 
-  const usesLocalProfile = isLocalGuest || !isAuthenticated;
+  const usesLocalProfile = isLocalGuest || !isSignedIn;
+  const isConvexUnavailableForSignedIn = Boolean(isSignedIn) && !isAuthenticated;
 
   const isLoading = usesLocalProfile
     ? !isLocalPreferencesReady
-    : convexUser === undefined || isBootstrappingUser || isConvexAuthLoading;
+    : isConvexUnavailableForSignedIn
+      ? false
+      : convexUser === undefined || isBootstrappingUser || isConvexAuthLoading;
   const isGuest = usesLocalProfile
     ? true
     : convexUser?.isGuest ?? !clerkUser?.primaryEmailAddress;
@@ -125,10 +129,6 @@ export default function ProfileScreen() {
     }
   }, [removePushToken]);
 
-  const sleep = useCallback((ms: number) => {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-  }, []);
-
   const isUnauthenticatedError = useCallback((error: unknown) => {
     const message = error instanceof Error ? error.message : "";
     return message.includes("Unauthenticated");
@@ -142,13 +142,13 @@ export default function ProfileScreen() {
     );
   }, []);
 
-  const ensureUserRecord = useCallback(async () => {
+  const ensureUserRecord = useCallback(async (currentConvexUser: typeof convexUser) => {
     const convexToken = await getToken({ template: "convex" });
     if (!convexToken) {
       throw new Error("MissingConvexTemplate");
     }
 
-    if (convexUser) return;
+    if (currentConvexUser) return;
 
     setIsBootstrappingUser(true);
     try {
@@ -170,28 +170,47 @@ export default function ProfileScreen() {
     } finally {
       setIsBootstrappingUser(false);
     }
-  }, [convexUser, getOrCreateUser, getToken, isUnauthenticatedError, sleep]);
+  }, [getOrCreateUser, getToken, isUnauthenticatedError]);
 
-  const saveAspectRatio = useCallback(
-    async (next: AspectRatio) => {
-      if (savingPreference || next === selectedAspectRatio) return;
+  const savePreference = useCallback(
+    async (params: {
+      savingKey: "aspectRatio" | "videoLength";
+      setting: "defaultAspectRatio" | "defaultVideoLength";
+      value: AspectRatio | (typeof VIDEO_LENGTH_OPTIONS)[number];
+      selectedValue: AspectRatio | (typeof VIDEO_LENGTH_OPTIONS)[number];
+      genericError: string;
+    }) => {
+      const { savingKey, setting, value, selectedValue, genericError } = params;
+      if (savingPreference || value === selectedValue) return;
+
       setErrorText(null);
-      setSavingPreference("aspectRatio");
+      setSavingPreference(savingKey);
       try {
         if (usesLocalProfile) {
-          const saved = await setLocalProfilePreferences({
-            defaultAspectRatio: next,
-          });
+          const localUpdates =
+            setting === "defaultAspectRatio"
+              ? { defaultAspectRatio: value as AspectRatio }
+              : {
+                  defaultVideoLength:
+                    value as (typeof VIDEO_LENGTH_OPTIONS)[number],
+                };
+          const saved = await setLocalProfilePreferences(localUpdates);
           setLocalPreferences(saved);
         } else {
-          await ensureUserRecord();
-          await updateProfile({
-            preferences: { defaultAspectRatio: next },
-          });
+          const remotePreferences =
+            setting === "defaultAspectRatio"
+              ? { defaultAspectRatio: value as AspectRatio }
+              : {
+                  defaultVideoLength:
+                    value as (typeof VIDEO_LENGTH_OPTIONS)[number],
+                };
+          await ensureUserRecord(convexUser);
+          await updateProfile({ preferences: remotePreferences });
         }
+
         track("profile_preference_updated", {
-          setting: "defaultAspectRatio",
-          value: next,
+          setting,
+          value: String(value),
           isGuest: String(isGuest),
         });
       } catch (error) {
@@ -199,9 +218,12 @@ export default function ProfileScreen() {
           ? "Clerk JWT template 'convex' is missing. Configure it in Clerk, then sign out/in."
           : isUnauthenticatedError(error)
             ? "Session isn't ready yet. Please wait a moment and try again."
-            : "Couldn't update aspect ratio. Please try again.";
+            : genericError;
         setErrorText(saveError);
-        console.warn("Failed to save aspect ratio preference:", error);
+        console.warn("Failed to save profile preference:", {
+          setting,
+          error,
+        });
       } finally {
         setSavingPreference(null);
       }
@@ -209,7 +231,6 @@ export default function ProfileScreen() {
     [
       convexUser,
       savingPreference,
-      selectedAspectRatio,
       usesLocalProfile,
       ensureUserRecord,
       updateProfile,
@@ -220,52 +241,30 @@ export default function ProfileScreen() {
     ],
   );
 
+  const saveAspectRatio = useCallback(
+    async (next: AspectRatio) => {
+      await savePreference({
+        savingKey: "aspectRatio",
+        setting: "defaultAspectRatio",
+        value: next,
+        selectedValue: selectedAspectRatio,
+        genericError: "Couldn't update aspect ratio. Please try again.",
+      });
+    },
+    [savePreference, selectedAspectRatio],
+  );
+
   const saveVideoLength = useCallback(
     async (next: (typeof VIDEO_LENGTH_OPTIONS)[number]) => {
-      if (savingPreference || next === selectedVideoLength) return;
-      setErrorText(null);
-      setSavingPreference("videoLength");
-      try {
-        if (usesLocalProfile) {
-          const saved = await setLocalProfilePreferences({
-            defaultVideoLength: next,
-          });
-          setLocalPreferences(saved);
-        } else {
-          await ensureUserRecord();
-          await updateProfile({
-            preferences: { defaultVideoLength: next },
-          });
-        }
-        track("profile_preference_updated", {
-          setting: "defaultVideoLength",
-          value: String(next),
-          isGuest: String(isGuest),
-        });
-      } catch (error) {
-        const saveError = isMissingConvexTemplateError(error)
-          ? "Clerk JWT template 'convex' is missing. Configure it in Clerk, then sign out/in."
-          : isUnauthenticatedError(error)
-            ? "Session isn't ready yet. Please wait a moment and try again."
-            : "Couldn't update default length. Please try again.";
-        setErrorText(saveError);
-        console.warn("Failed to save video length preference:", error);
-      } finally {
-        setSavingPreference(null);
-      }
+      await savePreference({
+        savingKey: "videoLength",
+        setting: "defaultVideoLength",
+        value: next,
+        selectedValue: selectedVideoLength,
+        genericError: "Couldn't update default length. Please try again.",
+      });
     },
-    [
-      convexUser,
-      savingPreference,
-      selectedVideoLength,
-      usesLocalProfile,
-      ensureUserRecord,
-      updateProfile,
-      track,
-      isGuest,
-      isUnauthenticatedError,
-      isMissingConvexTemplateError,
-    ],
+    [savePreference, selectedVideoLength],
   );
 
   const runSignOut = useCallback(async () => {
@@ -274,12 +273,14 @@ export default function ProfileScreen() {
     try {
       if (isLocalGuest) {
         await clearLocalSession();
+        track("sign_out_completed", { method: "local", isGuest: "true" });
         router.replace("/(auth)/sign-in");
         return;
       }
       await removePushTokenForCurrentDevice();
       await clearLocalSession();
       await signOut();
+      track("sign_out_completed", { method: "auth", isGuest: String(isGuest) });
     } catch (error) {
       console.warn("Failed to sign out:", error);
       setErrorText("Sign out failed. Please try again.");
@@ -293,6 +294,8 @@ export default function ProfileScreen() {
     router,
     removePushTokenForCurrentDevice,
     signOut,
+    track,
+    isGuest,
   ]);
 
   const handleSignOut = useCallback(() => {
@@ -316,7 +319,7 @@ export default function ProfileScreen() {
 
     try {
       await removePushTokenForCurrentDevice();
-      await ensureUserRecord();
+      await ensureUserRecord(convexUser);
       await softDeleteCurrent({});
       await clearLocalOnboardingCompleted(userId);
       track("account_deleted", { isGuest: String(isGuest) });
@@ -338,6 +341,7 @@ export default function ProfileScreen() {
   }, [
     track,
     isGuest,
+    convexUser,
     removePushTokenForCurrentDevice,
     ensureUserRecord,
     softDeleteCurrent,

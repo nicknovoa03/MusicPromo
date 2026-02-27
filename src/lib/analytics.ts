@@ -16,9 +16,11 @@ type EventName =
   | "project_reopened"
   | "notification_received"
   | "notification_tapped"
+  | "project_create_failed_during_export"
   | "profile_preference_updated"
   | "account_delete_started"
   | "account_deleted"
-  | "sign_out_tapped";
+  | "sign_out_tapped"
+  | "sign_out_completed";
 
 export type { EventName };
