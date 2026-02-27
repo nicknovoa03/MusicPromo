@@ -4,7 +4,7 @@ import { Tabs, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useConvexAuth, useMutation } from "convex/react";
 import { usePostHog } from "posthog-react-native";
-import { useUser } from "@clerk/clerk-expo";
+import { useAuth, useUser } from "@clerk/clerk-expo";
 import type { NotificationResponse } from "expo-notifications";
 import { api } from "../../convex/_generated/api";
 import { colors, typography } from "@/constants/tokens";
@@ -27,8 +27,10 @@ export default function TabsLayout() {
   const getOrCreateUser = useMutation(api.users.getOrCreate);
   const upsertPushToken = useMutation(api.pushTokens.upsertForCurrentUser);
   const posthog = usePostHog();
+  const { signOut, getToken } = useAuth();
   const { user } = useUser();
   const didBootstrapPush = useRef(false);
+  const hasWarnedMissingConvexToken = useRef(false);
 
   const track = useCallback(
     (event: EventName, props?: Record<string, string>) => {
@@ -47,15 +49,57 @@ export default function TabsLayout() {
     didBootstrapPush.current = true;
 
     (async () => {
+      let shouldContinue = true;
+      let convexToken: string | null = null;
+      try {
+        convexToken = await getToken({ template: "convex" });
+      } catch (error) {
+        if (!hasWarnedMissingConvexToken.current) {
+          hasWarnedMissingConvexToken.current = true;
+          console.warn(
+            "Missing Clerk JWT template 'convex'. Create it in Clerk Dashboard, then sign out/in.",
+            error,
+          );
+        }
+        return;
+      }
+      if (!convexToken) {
+        if (!hasWarnedMissingConvexToken.current) {
+          hasWarnedMissingConvexToken.current = true;
+          console.warn(
+            "Clerk JWT template 'convex' token is unavailable. Convex mutations are disabled until this template is configured and session refreshed.",
+          );
+        }
+        return;
+      }
       try {
         await getOrCreateUser();
       } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        if (message.includes("Account deleted")) {
+          shouldContinue = false;
+          try {
+            await signOut();
+          } catch (signOutError) {
+            console.warn("Failed to sign out deleted account:", signOutError);
+          }
+          router.replace("/(auth)/sign-in");
+          return;
+        }
         console.warn("Failed to bootstrap user:", error);
       }
 
+      if (!shouldContinue) return;
       await registerPushTokenForCurrentUser(upsertPushToken);
     })();
-  }, [isAuthenticated, getOrCreateUser, upsertPushToken]);
+  }, [
+    isAuthenticated,
+    getOrCreateUser,
+    upsertPushToken,
+    router,
+    signOut,
+    getToken,
+  ]);
 
   useEffect(() => {
     if (!isAuthenticated) return;

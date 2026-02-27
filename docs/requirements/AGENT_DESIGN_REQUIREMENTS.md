@@ -84,6 +84,8 @@
 - 2026-02-26: **Editor validates local file URIs before export** → Uses `expo-file-system/legacy` `getInfoAsync` to detect deleted/moved media and shows a non-destructive "Files not found" path to swap missing media.
 - 2026-02-26: **Push registration runs post-auth in tabs bootstrap and degrades gracefully** → App requests notification permission once after auth, registers Expo token in Convex (`pushTokens.upsertForCurrentUser`), and continues core create/export flows when permission or token registration fails.
 - 2026-02-26: **Push delivery uses Expo Push API via Convex action with persisted notification records** → Added `pushNotifications.sendTestPush` for QA and `notifications.createInternal` for durable per-user notification records (`reminder`, `new-template`, `export-complete`, `announcement`) even when delivery fails.
+- 2026-02-26: **Profile preferences save immediately with constrained presets** → `defaultAspectRatio` and `defaultVideoLength` are updated from Profile via one-tap controls (9:16/1:1 and 15s/30s/60s) and reused as defaults for new create sessions.
+- 2026-02-26: **Account deletion is soft-delete plus forced sign-out** → Added `users.isDeleted`/`users.deletedAt` and `users.softDeleteCurrent`; deleted users are treated as inactive for queries/mutations and app bootstrap routes them back to auth.
 
 ## 2) Guidance (Methodology for Evolving Prompts)
 

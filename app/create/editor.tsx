@@ -176,6 +176,16 @@ export default function EditorScreen() {
     let isCancelled = false;
 
     async function checkFiles() {
+      // Fresh create sessions use newly picked media; "files not found"
+      // protection is only needed for reopened historical projects.
+      if (!projectId) {
+        if (!isCancelled) {
+          setMissingFiles({ photo: false, audio: false });
+          setIsCheckingFiles(false);
+        }
+        return;
+      }
+
       setIsCheckingFiles(true);
       const [photoMissing, audioMissing] = await Promise.all([
         isMissingFile(photoUri),
@@ -192,7 +202,7 @@ export default function EditorScreen() {
     return () => {
       isCancelled = true;
     };
-  }, [photoUri, audioUri]);
+  }, [photoUri, audioUri, projectId]);
 
   useEffect(() => {
     let isCancelled = false;

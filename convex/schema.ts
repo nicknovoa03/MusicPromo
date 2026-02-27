@@ -8,6 +8,8 @@ export default defineSchema({
     email: v.optional(v.string()),
     avatarUrl: v.optional(v.string()),
     isGuest: v.boolean(),
+    isDeleted: v.optional(v.boolean()),
+    deletedAt: v.optional(v.number()),
     preferences: v.optional(
       v.object({
         defaultAspectRatio: v.optional(

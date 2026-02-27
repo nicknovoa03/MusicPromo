@@ -1,6 +1,13 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 
+async function getUserByClerkId(ctx: any, clerkId: string) {
+  return await ctx.db
+    .query("users")
+    .withIndex("by_clerk_id", (q: any) => q.eq("clerkId", clerkId))
+    .unique();
+}
+
 export const getOrCreate = mutation({
   args: {},
   handler: async (ctx) => {
@@ -8,12 +15,12 @@ export const getOrCreate = mutation({
     if (!identity) throw new Error("Unauthenticated");
 
     const clerkId = identity.subject;
-    const existing = await ctx.db
-      .query("users")
-      .withIndex("by_clerk_id", (q) => q.eq("clerkId", clerkId))
-      .unique();
+    const existing = await getUserByClerkId(ctx, clerkId);
 
-    if (existing) return existing._id;
+    if (existing) {
+      if (existing.isDeleted) throw new Error("Account deleted");
+      return existing._id;
+    }
 
     const isGuest = !identity.email;
     return await ctx.db.insert("users", {
@@ -22,6 +29,7 @@ export const getOrCreate = mutation({
       email: identity.email ?? undefined,
       avatarUrl: (identity.imageUrl as string) ?? undefined,
       isGuest,
+      isDeleted: false,
       createdAt: Date.now(),
     });
   },
@@ -33,10 +41,9 @@ export const current = query({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return null;
 
-    return await ctx.db
-      .query("users")
-      .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
-      .unique();
+    const user = await getUserByClerkId(ctx, identity.subject);
+    if (!user || user.isDeleted) return null;
+    return user;
   },
 });
 
@@ -57,12 +64,10 @@ export const updateProfile = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Unauthenticated");
 
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
-      .unique();
+    const user = await getUserByClerkId(ctx, identity.subject);
 
     if (!user) throw new Error("User not found");
+    if (user.isDeleted) throw new Error("Account deleted");
 
     const updates: Record<string, unknown> = {};
     if (args.name !== undefined) updates.name = args.name;
@@ -72,5 +77,28 @@ export const updateProfile = mutation({
     }
 
     await ctx.db.patch(user._id, updates);
+  },
+});
+
+export const softDeleteCurrent = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthenticated");
+
+    const user = await getUserByClerkId(ctx, identity.subject);
+    if (!user) throw new Error("User not found");
+
+    if (user.isDeleted) {
+      return { userId: user._id, deletedAt: user.deletedAt ?? Date.now() };
+    }
+
+    const deletedAt = Date.now();
+    await ctx.db.patch(user._id, {
+      isDeleted: true,
+      deletedAt,
+    });
+
+    return { userId: user._id, deletedAt };
   },
 });

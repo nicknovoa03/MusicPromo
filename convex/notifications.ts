@@ -10,28 +10,37 @@ const notificationType = v.union(
 
 const notificationTrigger = v.union(v.literal("automated"), v.literal("manual"));
 
+async function getActiveUserByIdentity(ctx: any) {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) return null;
+
+  const user = await ctx.db
+    .query("users")
+    .withIndex("by_clerk_id", (q: any) => q.eq("clerkId", identity.subject))
+    .unique();
+
+  if (!user || user.isDeleted) return null;
+  return user;
+}
+
 export const getUserByClerkId = internalQuery({
   args: {
     clerkId: v.string(),
   },
   handler: async (ctx, args) => {
-    return await ctx.db
+    const user = await ctx.db
       .query("users")
       .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
       .unique();
+    if (!user || user.isDeleted) return null;
+    return user;
   },
 });
 
 export const listByUser = query({
   args: {},
   handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) return [];
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
-      .unique();
+    const user = await getActiveUserByIdentity(ctx);
 
     if (!user) return [];
 
@@ -48,15 +57,9 @@ export const markRead = mutation({
     notificationId: v.id("notifications"),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Unauthenticated");
+    const user = await getActiveUserByIdentity(ctx);
 
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
-      .unique();
-
-    if (!user) throw new Error("User not found");
+    if (!user) throw new Error("Unauthenticated");
 
     const notification = await ctx.db.get(args.notificationId);
 
@@ -76,15 +79,9 @@ export const create = mutation({
     trigger: notificationTrigger,
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Unauthenticated");
+    const user = await getActiveUserByIdentity(ctx);
 
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
-      .unique();
-
-    if (!user) throw new Error("User not found");
+    if (!user) throw new Error("Unauthenticated");
 
     return await ctx.db.insert("notifications", {
       userId: user._id,

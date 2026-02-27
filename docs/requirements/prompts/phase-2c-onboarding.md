@@ -5,13 +5,13 @@ Project: MusicPromo
 Stack: React Native + Expo, Clerk, Convex, PostHog
 PRD: docs/requirements/PRODUCT_DESIGN_REQUIREMENTS.md
 Agent Design: docs/requirements/AGENT_DESIGN_REQUIREMENTS.md
-Design References: docs/design-inspiration/ (onboarding style TBD, align with overall product aesthetic)
+Design References: docs/design-inspiration/
 Current phase: Phase 2
 Focus: Onboarding
 
 ## Prerequisites
 
-Phase 1 core flow is complete. Auth, create/export/share, and project history are functional.
+Phase 1 is complete. The app can authenticate users, create/render/share promo videos, and load project history from Convex.
 
 Before writing any code, run the Preflight Checklist from the Agent Design doc (Section 3.1). Follow the standard workflow: Plan -> Implement -> Verify -> Refactor -> Update PRD (Section 2.2).
 

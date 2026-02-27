@@ -15,6 +15,10 @@ type EventName =
   | "share_tapped_tiktok"
   | "project_reopened"
   | "notification_received"
-  | "notification_tapped";
+  | "notification_tapped"
+  | "profile_preference_updated"
+  | "account_delete_started"
+  | "account_deleted"
+  | "sign_out_tapped";
 
 export type { EventName };
