@@ -20,7 +20,7 @@ import { usePostHog } from "posthog-react-native";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { ConvexError } from "convex/values";
 import * as FileSystem from "expo-file-system/legacy";
-import { Audio } from "expo-av";
+import { Audio, type AVPlaybackStatus } from "expo-av";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
@@ -29,7 +29,7 @@ import {
   AspectRatioToggle,
   type AspectRatio,
 } from "@/components/create/AspectRatioToggle";
-import { VinylPreview } from "@/components/create/VinylPreview";
+import { SpinningCdTemplateStage } from "@/components/create/SpinningCdTemplateStage";
 import type { EventName } from "@/lib/analytics";
 import { decodeUriParam, encodeUriParam, fileNameFromUri } from "@/lib/uri";
 import { sleep } from "@/lib/utils";
@@ -176,6 +176,13 @@ function clampTrimRange(
   return [nextStart, nextEnd];
 }
 
+function formatClock(seconds: number): string {
+  const safe = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
+  const mins = Math.floor(safe / 60);
+  const secs = Math.floor(safe % 60);
+  return `${mins}:${secs.toString().padStart(2, "0")}`;
+}
+
 export default function EditorScreen() {
   const router = useRouter();
   const posthog = usePostHog();
@@ -236,9 +243,10 @@ export default function EditorScreen() {
   const createProject = useMutation(api.projects.create);
   const updateProject = useMutation(api.projects.update);
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>(initialAspectRatio);
-  const [isPlaying, setIsPlaying] = useState(true);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [trimStart, setTrimStart] = useState(initialTrimStart);
   const [trimEnd, setTrimEnd] = useState(initialTrimEnd);
+  const [previewPositionSec, setPreviewPositionSec] = useState(0);
   const [projectTitle, setProjectTitle] = useState(initialProjectTitle);
   const [isNameModalVisible, setIsNameModalVisible] = useState(false);
   const [projectNameDraft, setProjectNameDraft] = useState(
@@ -264,6 +272,9 @@ export default function EditorScreen() {
     null,
   );
   const localDraftCreationPromiseRef = useRef<Promise<string | null> | null>(null);
+  const previewSoundRef = useRef<Audio.Sound | null>(null);
+  const previewAudioUriRef = useRef<string | null>(null);
+  const playbackBusyRef = useRef(false);
   const shouldWaitForProjectMedia =
     !!currentProjectId &&
     !paramPhotoUri &&
@@ -552,10 +563,178 @@ export default function EditorScreen() {
     setTrimEnd(nextEnd);
   }, [audioDurationSec, minTrimDuration, maxTrimDuration]);
 
-  const handlePlayPause = useCallback(() => {
-    // TODO(phase-2): replace this placeholder with real audio preview playback state.
-    setIsPlaying((prev) => !prev);
+  const unloadPreviewSound = useCallback(async () => {
+    const sound = previewSoundRef.current;
+    previewSoundRef.current = null;
+    previewAudioUriRef.current = null;
+    setIsPlaying(false);
+    setPreviewPositionSec(0);
+    if (!sound) return;
+    try {
+      sound.setOnPlaybackStatusUpdate(null);
+    } catch {
+      // Ignore cleanup callback detach failures.
+    }
+    try {
+      await sound.unloadAsync();
+    } catch {
+      // Ignore unload failures.
+    }
   }, []);
+
+  const stopAndResetPreview = useCallback(async () => {
+    const sound = previewSoundRef.current;
+    const startMillis = Math.round(Math.max(trimStart, 0) * 1000);
+    if (!sound) {
+      setIsPlaying(false);
+      setPreviewPositionSec(0);
+      return;
+    }
+    try {
+      await sound.pauseAsync();
+    } catch {
+      // Ignore pause failures.
+    }
+    try {
+      await sound.setPositionAsync(startMillis);
+    } catch {
+      // Ignore seek failures.
+    }
+    setIsPlaying(false);
+    setPreviewPositionSec(0);
+  }, [trimStart]);
+
+  const handlePlaybackStatusUpdate = useCallback(
+    (status: AVPlaybackStatus) => {
+      if (!status.isLoaded) return;
+
+      const safeTrimStart = Math.max(0, trimStart);
+      const safeTrimEnd = Math.max(safeTrimStart, trimEnd);
+      const endMillis = Math.round(safeTrimEnd * 1000);
+      const relativeSec = Math.max(0, status.positionMillis / 1000 - safeTrimStart);
+      setPreviewPositionSec(Math.min(relativeSec, safeTrimEnd - safeTrimStart));
+
+      if (
+        status.didJustFinish ||
+        (status.isPlaying && status.positionMillis >= endMillis - 40)
+      ) {
+        if (playbackBusyRef.current) return;
+        playbackBusyRef.current = true;
+        void (async () => {
+          await stopAndResetPreview();
+          playbackBusyRef.current = false;
+        })();
+      }
+    },
+    [trimStart, trimEnd, stopAndResetPreview],
+  );
+
+  const ensurePreviewSound = useCallback(async () => {
+    if (!audioUri) {
+      throw new Error("Missing audio file.");
+    }
+
+    const existingSound = previewSoundRef.current;
+    if (existingSound && previewAudioUriRef.current === audioUri) {
+      existingSound.setOnPlaybackStatusUpdate(handlePlaybackStatusUpdate);
+      return existingSound;
+    }
+
+    await unloadPreviewSound();
+
+    await Audio.setAudioModeAsync({
+      allowsRecordingIOS: false,
+      playsInSilentModeIOS: true,
+      shouldDuckAndroid: true,
+      playThroughEarpieceAndroid: false,
+    });
+
+    const nextSound = new Audio.Sound();
+    await nextSound.loadAsync(
+      { uri: audioUri },
+      {
+        shouldPlay: false,
+        positionMillis: Math.round(Math.max(trimStart, 0) * 1000),
+        progressUpdateIntervalMillis: 80,
+      },
+      false,
+    );
+    nextSound.setOnPlaybackStatusUpdate(handlePlaybackStatusUpdate);
+
+    previewSoundRef.current = nextSound;
+    previewAudioUriRef.current = audioUri;
+    return nextSound;
+  }, [audioUri, handlePlaybackStatusUpdate, trimStart, unloadPreviewSound]);
+
+  const handlePlayPause = useCallback(() => {
+    if (playbackBusyRef.current) return;
+    if (!audioUri || missingFiles.audio) {
+      Alert.alert(
+        "Audio not available",
+        "Select an audio file to preview playback.",
+      );
+      return;
+    }
+
+    playbackBusyRef.current = true;
+    void (async () => {
+      try {
+        if (isPlaying) {
+          await stopAndResetPreview();
+          return;
+        }
+
+        const sound = await ensurePreviewSound();
+        const startMillis = Math.round(Math.max(trimStart, 0) * 1000);
+        await sound.setPositionAsync(startMillis);
+        await sound.playAsync();
+        setPreviewPositionSec(0);
+        setIsPlaying(true);
+      } catch {
+        setIsPlaying(false);
+        setPreviewPositionSec(0);
+        Alert.alert(
+          "Preview unavailable",
+          "Couldn't play this track right now. Try re-selecting the audio file.",
+        );
+      } finally {
+        playbackBusyRef.current = false;
+      }
+    })();
+  }, [
+    audioUri,
+    ensurePreviewSound,
+    isPlaying,
+    missingFiles.audio,
+    stopAndResetPreview,
+    trimStart,
+  ]);
+
+  useEffect(() => {
+    void stopAndResetPreview();
+  }, [trimStart, trimEnd, stopAndResetPreview]);
+
+  useEffect(() => {
+    const sound = previewSoundRef.current;
+    if (!sound) return;
+    sound.setOnPlaybackStatusUpdate(handlePlaybackStatusUpdate);
+  }, [handlePlaybackStatusUpdate]);
+
+  useEffect(() => {
+    void unloadPreviewSound();
+  }, [audioUri, unloadPreviewSound]);
+
+  useEffect(() => {
+    if (missingFiles.audio || !audioUri) {
+      void unloadPreviewSound();
+    }
+  }, [audioUri, missingFiles.audio, unloadPreviewSound]);
+
+  useEffect(() => {
+    return () => {
+      void unloadPreviewSound();
+    };
+  }, [unloadPreviewSound]);
 
   const handleOpenProjectNameModal = useCallback(() => {
     setProjectNameDraft(
@@ -996,98 +1175,22 @@ export default function EditorScreen() {
       )}
 
       <View style={styles.previewContainer}>
-        <View
-          style={[
-            styles.turntableStage,
-            { width: stageWidth, height: stageHeight },
-          ]}
-        >
-          {photoUri && !missingFiles.photo ? (
-            <Image
-              source={{ uri: photoUri }}
-              style={styles.stageBackdropImage}
-              resizeMode="cover"
-              blurRadius={18}
-              accessibilityLabel="Preview backdrop"
-            />
-          ) : null}
-          <View style={styles.stageBackdropTint} />
-          <View style={styles.stageHaloTop} />
-          <View style={styles.stageHaloBottom} />
-          <View style={styles.stageBottomShade} />
-
-          <View
-            style={[
-              styles.stageVinylWrap,
-              {
-                left: -stageVinylSize * 0.5,
-                top: -stageVinylSize * 0.24,
-              },
-            ]}
-          >
-            <VinylPreview
-              imageUri={photoUri && !missingFiles.photo ? photoUri : null}
-              size={stageVinylSize}
-              spinning={isPlaying}
-            />
-          </View>
-
-          <View style={styles.tonearmPivot} />
-          <View style={styles.tonearmArm} />
-          <View style={styles.tonearmHead} />
-
-          <View style={styles.stageTextBlock}>
-            <Text style={styles.nowPlayingLabel}>{playbackLabel}</Text>
-            <Text style={styles.trackTitle} numberOfLines={1}>
-              {trackTitle}
-            </Text>
-            <View style={styles.trackSubtitlePill}>
-              <Text style={styles.trackSubtitle} numberOfLines={1}>
-                {subtitle}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.stageTransport}>
-            <Pressable
-              onPress={handlePlayPause}
-              style={({ pressed }) => [
-                styles.stageControlPill,
-                pressed && styles.stageControlPillPressed,
-              ]}
-              accessibilityLabel={isPlaying ? "Pause preview" : "Play preview"}
-              accessibilityRole="button"
-            >
-              <Ionicons
-                name={isPlaying ? "pause" : "play"}
-                size={16}
-                color={colors.dark.text}
-              />
-            </Pressable>
-            <View style={styles.stageTransportSpacer} />
-            <View style={[styles.stageControlPill, styles.stageControlPillGhost]}>
-              <Ionicons
-                name="play-skip-back"
-                size={16}
-                color="rgba(255,255,255,0.7)"
-              />
-            </View>
-            <View style={[styles.stageControlPill, styles.stageControlPillGhost]}>
-              <Ionicons
-                name="play-skip-forward"
-                size={16}
-                color="rgba(255,255,255,0.7)"
-              />
-            </View>
-          </View>
-        </View>
+        <SpinningCdTemplateStage
+          width={stageWidth}
+          height={stageHeight}
+          vinylSize={stageVinylSize}
+          photoUri={photoUri && !missingFiles.photo ? photoUri : null}
+          isPlaying={isPlaying}
+          playbackLabel={playbackLabel}
+          trackTitle={trackTitle}
+          subtitle={subtitle}
+          onTogglePlay={handlePlayPause}
+        />
       </View>
 
       <View style={styles.controls}>
         <Text style={styles.timestamp}>
-          {/* TODO(phase-2): sync this timestamp to real audio playback position. */}
-          0:00 / {Math.floor(trimmedDuration / 60)}:
-          {String(Math.floor(trimmedDuration % 60)).padStart(2, "0")}
+          {formatClock(previewPositionSec)} / {formatClock(trimmedDuration)}
         </Text>
 
         <AspectRatioToggle value={aspectRatio} onChange={setAspectRatio} />
@@ -1145,6 +1248,7 @@ export default function EditorScreen() {
           endSec={trimEnd}
           onTrimChange={handleTrimChange}
           isPlaying={isPlaying}
+          playbackProgressSec={previewPositionSec}
           onTogglePlay={handlePlayPause}
           minDuration={minTrimDuration}
           maxDuration={maxTrimDuration}

@@ -5,7 +5,7 @@ import {
   StyleSheet,
   Pressable,
   Alert,
-  Animated,
+  Dimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -17,7 +17,7 @@ import Constants from "expo-constants";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
-import { VinylPreview } from "@/components/create/VinylPreview";
+import { SpinningCdTemplateStage } from "@/components/create/SpinningCdTemplateStage";
 import type { EventName } from "@/lib/analytics";
 import { sleep } from "@/lib/utils";
 import { decodeUriParam, encodeUriParam } from "@/lib/uri";
@@ -28,8 +28,9 @@ function isExpoGo(): boolean {
 
 type RenderVideoModule = typeof import("@/lib/renderVideo");
 let renderModule: RenderVideoModule | null = null;
-const PREVIEW_SIZE = 220;
-const PREVIEW_RING_SIZE = PREVIEW_SIZE + 8;
+const SCREEN_WIDTH = Dimensions.get("window").width;
+const SCREEN_HEIGHT = Dimensions.get("window").height;
+const STAGE_HORIZONTAL_PADDING = spacing.lg * 2;
 
 async function getRenderModule(): Promise<RenderVideoModule> {
   if (isExpoGo()) {
@@ -65,6 +66,12 @@ function normalizeTrimBounds(start: number, end: number): [number, number] {
   return [safeStart, safeEnd];
 }
 
+function displayMediaLabel(name: string, fallback: string) {
+  const trimmed = name.trim();
+  if (!trimmed) return fallback;
+  return trimmed.replace(/\.[a-z0-9]{1,8}$/i, "");
+}
+
 function asProjectId(value: string | undefined): Id<"projects"> | null {
   if (!value) return null;
   return value as Id<"projects">;
@@ -95,13 +102,22 @@ export default function RenderingScreen() {
   const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
   const createProject = useMutation(api.projects.create);
   const updateProject = useMutation(api.projects.update);
+  const projectTitle = firstParam(params.title)?.trim() || "New Project";
+  const audioName = firstParam(params.audioName) || "";
+  const aspectRatio = firstParam(params.aspectRatio) === "1:1" ? "1:1" : "9:16";
   const previewPhotoUri = decodeUriParam(firstParam(params.photoUri));
+  const trackTitle = displayMediaLabel(audioName, "Untitled track");
+  const stageWidth = Math.min(SCREEN_WIDTH - STAGE_HORIZONTAL_PADDING, 440);
+  const stageHeight = Math.min(
+    Math.max(stageWidth * (aspectRatio === "9:16" ? 1.4 : 1.2), 460),
+    SCREEN_HEIGHT * 0.72,
+  );
+  const stageVinylSize = stageWidth * 1.42;
 
   const [progress, setProgress] = useState(0);
   const [renderState, setRenderState] = useState<RenderState>("rendering");
   const [errorMessage, setErrorMessage] = useState("");
   const projectIdRef = useRef<Id<"projects"> | null>(null);
-  const animatedProgress = useRef(new Animated.Value(0)).current;
   const hasStarted = useRef(false);
   const isScreenActiveRef = useRef(true);
   const isCanceledRef = useRef(false);
@@ -184,11 +200,6 @@ export default function RenderingScreen() {
         aspectRatio,
         onProgress: (percent) => {
           setProgress(percent);
-          Animated.timing(animatedProgress, {
-            toValue: percent,
-            duration: 300,
-            useNativeDriver: false,
-          }).start();
         },
       });
 
@@ -246,7 +257,6 @@ export default function RenderingScreen() {
     updateProject,
     track,
     router,
-    animatedProgress,
   ]);
 
   useEffect(() => {
@@ -280,12 +290,6 @@ export default function RenderingScreen() {
     hasStarted.current = false;
     startRender();
   }, [startRender]);
-
-  const gradientBorderWidth = animatedProgress.interpolate({
-    inputRange: [0, 100],
-    outputRange: [0, PREVIEW_RING_SIZE],
-    extrapolate: "clamp",
-  });
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
@@ -329,26 +333,22 @@ export default function RenderingScreen() {
           </View>
         ) : (
           <>
-            {/* Percentage */}
+            <Text style={styles.progressLabel}>Exporting</Text>
             <Text style={styles.percentageText}>{progress}%</Text>
 
-            {/* Preview with gradient border */}
-            <View style={styles.previewWrapper}>
-              <View style={styles.gradientBorder}>
-                <Animated.View
-                  style={[styles.gradientFill, { width: gradientBorderWidth }]}
-                />
-              </View>
-              <View style={styles.previewInner}>
-                <VinylPreview
-                  imageUri={previewPhotoUri}
-                  size={PREVIEW_SIZE}
-                  spinning={renderState === "rendering"}
-                />
-              </View>
+            <View style={styles.stageWrap}>
+              <SpinningCdTemplateStage
+                width={stageWidth}
+                height={stageHeight}
+                vinylSize={stageVinylSize}
+                photoUri={previewPhotoUri}
+                isPlaying={renderState === "rendering"}
+                playbackLabel="Now Playing"
+                trackTitle={trackTitle}
+                subtitle={projectTitle}
+              />
             </View>
 
-            {/* Message */}
             <Text style={styles.message}>
               Please don't close the app{"\n"}or lock your screen.
             </Text>
@@ -384,48 +384,35 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: spacing.xl,
+    justifyContent: "flex-start",
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xl,
+  },
+  progressLabel: {
+    ...typography.caption,
+    color: colors.dark.textSecondary,
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    marginTop: spacing.lg,
+    marginBottom: spacing.xs,
   },
   percentageText: {
-    fontSize: 72,
+    fontSize: 64,
     fontWeight: "800",
     color: colors.dark.text,
     fontVariant: ["tabular-nums"],
-    marginBottom: spacing.xl,
+    marginBottom: spacing.lg,
   },
-  previewWrapper: {
-    width: PREVIEW_RING_SIZE,
-    height: PREVIEW_RING_SIZE,
-    borderRadius: PREVIEW_RING_SIZE / 2,
-    padding: 4,
-    overflow: "hidden",
-    backgroundColor: colors.dark.surface,
-    marginBottom: spacing.xl,
-  },
-  gradientBorder: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: PREVIEW_RING_SIZE / 2,
-    overflow: "hidden",
-    backgroundColor: colors.dark.surface,
-  },
-  gradientFill: {
-    height: "100%",
-    backgroundColor: colors.accent.primary,
-    opacity: 0.6,
-  },
-  previewInner: {
-    flex: 1,
-    borderRadius: PREVIEW_SIZE / 2,
-    backgroundColor: colors.dark.background,
+  stageWrap: {
+    width: "100%",
     alignItems: "center",
-    justifyContent: "center",
+    marginBottom: spacing.lg,
   },
   message: {
     ...typography.body,
     color: colors.dark.textSecondary,
     textAlign: "center",
-    lineHeight: 24,
+    lineHeight: 22,
   },
   errorContainer: {
     alignItems: "center",

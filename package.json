@@ -6,6 +6,7 @@
     "start": "expo start --go",
     "start:go:lan": "expo start --go --lan",
     "start:go:tunnel": "expo start --go --tunnel",
+    "start:dev-client:tunnel": "expo start --dev-client --tunnel --scheme musicpromo",
     "start:go:fast": "expo start --go --lan --no-dev --minify",
     "android": "expo run:android",
     "ios": "expo run:ios",

@@ -19,6 +19,7 @@ interface AudioTrimmerProps {
   endSec: number;
   onTrimChange: (start: number, end: number) => void;
   isPlaying?: boolean;
+  playbackProgressSec?: number;
   onTogglePlay?: () => void;
   minDuration?: number;
   maxDuration?: number;
@@ -51,6 +52,7 @@ export function AudioTrimmer({
   endSec,
   onTrimChange,
   isPlaying = false,
+  playbackProgressSec,
   onTogglePlay,
   minDuration = 15,
   maxDuration = Number.POSITIVE_INFINITY,
@@ -237,11 +239,15 @@ export function AudioTrimmer({
   const railProgress = maxStart > 0 ? safeStart / maxStart : 0;
   const waveformTranslateX = -(railProgress * waveformScrollableWidth);
   const railThumbLeft = railWidth > 0 ? railProgress * railWidth : 0;
-  const progressRatio =
-    currentDuration > 0 ? clamp(trimProgressSec / currentDuration, 0, 1) : 0;
-  const selectionProgressWidth = selectionWidth * progressRatio;
-  const selectionProgressHeadLeft = clamp(
-    selectionProgressWidth - 1,
+  const effectiveTrimProgressSec =
+    Number.isFinite(playbackProgressSec)
+      ? clamp(playbackProgressSec ?? 0, 0, currentDuration)
+      : trimProgressSec;
+  const effectiveProgressRatio =
+    currentDuration > 0 ? clamp(effectiveTrimProgressSec / currentDuration, 0, 1) : 0;
+  const effectiveSelectionProgressWidth = selectionWidth * effectiveProgressRatio;
+  const effectiveSelectionProgressHeadLeft = clamp(
+    effectiveSelectionProgressWidth - 1,
     0,
     Math.max(selectionWidth - 2, 0),
   );
@@ -311,6 +317,7 @@ export function AudioTrimmer({
   }, [safeStart, currentDuration]);
 
   useEffect(() => {
+    if (typeof playbackProgressSec === "number") return;
     if (!isPlaying) {
       lastProgressTickRef.current = null;
       return;
@@ -329,9 +336,10 @@ export function AudioTrimmer({
         didAutoPauseRef.current = false;
       }
     }
-  }, [isPlaying, trimProgressSec, currentDuration, onTogglePlay]);
+  }, [isPlaying, trimProgressSec, currentDuration, onTogglePlay, playbackProgressSec]);
 
   useEffect(() => {
+    if (typeof playbackProgressSec === "number") return;
     if (!isPlaying) return;
 
     const interval = setInterval(() => {
@@ -351,7 +359,7 @@ export function AudioTrimmer({
     }, 50);
 
     return () => clearInterval(interval);
-  }, [isPlaying, currentDuration, onTogglePlay]);
+  }, [isPlaying, currentDuration, onTogglePlay, playbackProgressSec]);
 
   return (
     <View style={styles.wrapper}>
@@ -508,13 +516,13 @@ export function AudioTrimmer({
                 <View
                   style={[
                     styles.selectionProgressFill,
-                    { width: selectionProgressWidth },
+                    { width: effectiveSelectionProgressWidth },
                   ]}
                 />
                 <View
                   style={[
                     styles.selectionProgressHead,
-                    { left: selectionProgressHeadLeft },
+                    { left: effectiveSelectionProgressHeadLeft },
                   ]}
                 />
               </View>
