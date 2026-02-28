@@ -110,8 +110,9 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 - Visibility: Private
 - Key fields: `userId`, `title` (optional), `templateId`, `aspectRatio`, `videoLength`, `photoUri` (local), `audioUri` (local), `exportedVideoUri` (local), `status` (draft/exported), `createdAt`, `updatedAt`
 - Relationships: Belongs to User, references Template
-- Typical queries: List projects by userId sorted by recent, get project by ID
-- Permissions: User CRUDs own projects only
+- Typical queries: List projects by userId sorted by recent, get project by ID; in guest mode, list local projects by `updatedAt`
+- Permissions: User CRUDs own projects only (Convex); guest mode uses local-only project persistence on-device
+- Guest local mirror: In local guest mode, projects are stored in AsyncStorage with local IDs (`local-*`) and the same core media/trim/status fields (no cloud sync, no cross-device continuity)
 
 ### Template
 - Owner: System
@@ -219,12 +220,14 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 - **Scope (v1):** List past projects, open to view/edit, re-export with changed settings, and delete a project via quick actions
 - **Non-goals:** Cloud file backup, project duplication/remix, inline rename UI
 - **Key screens/components:** Projects screen (list/grid of past projects), project detail view
-- **Backend/data needs:** Convex query for user's projects sorted by recent, plus ownership-checked delete mutation
+- **Backend/data needs:** Signed-in users use Convex query/mutations (ownership checked); local guest users use AsyncStorage-backed local projects with create/update/delete + list by recency
 - **Analytics/events:** `project_reopened`, `project_actions_opened`, `project_delete_started`, `project_deleted`
 - **Acceptance criteria:**
   - User sees a list of past projects with metadata (date, aspect ratio, template)
   - User can tap a project to re-open it
   - User can set/edit a project name from the editor flow and see it reflected in project history
+  - Entering editor with selected photo+audio creates/updates a draft before export is tapped
+  - Backing out from editor preserves the draft in project history (signed-in via Convex, guest via local storage)
   - User can open a project quick-actions sheet with Rename, Duplicate, and Delete actions
   - Tapping Delete requires a destructive confirmation before any deletion occurs
   - Confirmed deletion removes the project from history immediately
@@ -304,6 +307,7 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 - **Primary intent:** Browse past projects, create new ones
 - **Header:** "Projects" title left, filter icon + profile avatar right
 - **Main sections:** 2-column grid of project cards (thumbnail, title, date/size)
+- **Data source:** Signed-in user = Convex projects; local guest user = AsyncStorage local projects
 - **Primary CTA:** Black "+" FAB button (bottom-right) → create flow
 - **Card actions:** Quick-actions menu with Rename, Duplicate (placeholder), and Delete (destructive + confirm)
 - **List behavior:** Vertical scroll, pull to refresh
@@ -333,6 +337,7 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 - **Main sections:** Video preview (top, centered), play/pause + timestamp + undo/redo (middle), timeline strip with frame thumbnails + scrubber (bottom), aspect ratio toggle
 - **Primary CTA:** "Export" button (top-right)
 - **Secondary actions:** Play/pause, trim handles, aspect ratio toggle (9:16 / 1:1), undo/redo, edit project name
+- **Draft persistence:** Selecting media and entering editor creates/updates a draft immediately; back/close preserves draft before export
 - **Empty/loading/error:** Preview loading skeleton, "Rendering failed" + retry
 - **Theme:** Dark/black
 - **Analytics:** `preview_viewed`
@@ -492,7 +497,7 @@ Primary reference: Meta's Edits app. Secondary: Spotify (profile). Screenshots i
   - Supported audio: MP3, WAV, M4A
   - Video output: MP4
   - Aspect ratios: 9:16 (vertical), 1:1 (square)
-- **Offline / poor network:** Requires internet for auth and Convex sync. Local rendering works regardless. Phase 0: show "You're offline" message, block flows that need connectivity. Phase 1: queue Convex metadata writes locally and sync on reconnect.
+- **Offline / poor network:** Signed-in Convex sync requires internet. Local guest draft editing/history remains available on-device via AsyncStorage. Local rendering works regardless.
 - **Rate limits / spam prevention:** Not needed for v1
 
 ## 13) Risks and Open Questions

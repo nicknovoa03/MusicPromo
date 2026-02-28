@@ -58,6 +58,7 @@ export default function PickerScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{
     projectId?: string;
+    localProjectId?: string;
     title?: string;
     photoUri?: string;
     photoName?: string;
@@ -67,9 +68,11 @@ export default function PickerScreen() {
     trimStart?: string;
     trimEnd?: string;
     initialTab?: Tab;
+    returnToEditor?: string;
   }>();
   const posthog = usePostHog();
   const projectId = firstParam(params.projectId);
+  const localProjectId = firstParam(params.localProjectId);
   const title = firstParam(params.title);
   const aspectRatio = firstParam(params.aspectRatio);
   const trimStart = firstParam(params.trimStart);
@@ -78,6 +81,7 @@ export default function PickerScreen() {
   const initialAudioUri = decodeUriParam(firstParam(params.audioUri));
   const initialTab =
     firstParam(params.initialTab) === "audio" ? "audio" : "photo";
+  const returnToEditor = firstParam(params.returnToEditor) === "1";
   const { isAuthenticated } = useConvexAuth();
   const { isLocalGuest } = useLocalSession();
   const currentUser = useQuery(api.users.current);
@@ -251,6 +255,7 @@ export default function PickerScreen() {
       };
 
       if (projectId) nextParams.projectId = projectId;
+      if (localProjectId) nextParams.localProjectId = localProjectId;
       if (title) nextParams.title = title;
 
       router.push({
@@ -263,11 +268,50 @@ export default function PickerScreen() {
     media,
     router,
     projectId,
+    localProjectId,
     title,
     aspectRatio,
     trimStart,
     trimEnd,
     preferredAspectRatio,
+    preferredVideoLength,
+  ]);
+
+  const handleCancel = useCallback(() => {
+    if (returnToEditor) {
+      router.replace({
+        pathname: "/create/editor" as const,
+        params: {
+          projectId: projectId ?? "",
+          localProjectId: localProjectId ?? "",
+          title: title ?? "",
+          photoUri: firstParam(params.photoUri) ?? "",
+          photoName: firstParam(params.photoName) ?? "",
+          audioUri: firstParam(params.audioUri) ?? "",
+          audioName: firstParam(params.audioName) ?? "",
+          aspectRatio: aspectRatio ?? preferredAspectRatio,
+          trimStart: trimStart ?? "0",
+          trimEnd: trimEnd ?? String(preferredVideoLength),
+        },
+      });
+      return;
+    }
+
+    router.replace("/(tabs)" as const);
+  }, [
+    returnToEditor,
+    router,
+    projectId,
+    localProjectId,
+    title,
+    params.photoUri,
+    params.photoName,
+    params.audioUri,
+    params.audioName,
+    aspectRatio,
+    preferredAspectRatio,
+    trimStart,
+    trimEnd,
     preferredVideoLength,
   ]);
 
@@ -279,13 +323,7 @@ export default function PickerScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Pressable
-          onPress={() => {
-            if (router.canGoBack()) {
-              router.back();
-            } else {
-              router.replace("/(tabs)" as const);
-            }
-          }}
+          onPress={handleCancel}
           style={styles.headerAction}
           accessibilityLabel="Cancel"
           accessibilityRole="button"

@@ -17,7 +17,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { usePostHog } from "posthog-react-native";
-import { useMutation, useQuery } from "convex/react";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
+import { ConvexError } from "convex/values";
 import * as FileSystem from "expo-file-system/legacy";
 import { Audio } from "expo-av";
 import { api } from "../../convex/_generated/api";
@@ -31,6 +32,9 @@ import {
 import { VinylPreview } from "@/components/create/VinylPreview";
 import type { EventName } from "@/lib/analytics";
 import { decodeUriParam, encodeUriParam, fileNameFromUri } from "@/lib/uri";
+import { sleep } from "@/lib/utils";
+import { useLocalSession } from "@/providers/localSession";
+import { upsertLocalProject } from "@/lib/localProjects";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const SCREEN_HEIGHT = Dimensions.get("window").height;
@@ -64,6 +68,13 @@ function parseAspectRatioParam(
 function asProjectId(value?: string) {
   if (!value) return null;
   return value as Id<"projects">;
+}
+
+function isUnauthenticatedConvexError(error: unknown) {
+  if (!(error instanceof ConvexError)) return false;
+  if (!error.data || typeof error.data !== "object") return false;
+  const code = (error.data as { code?: unknown }).code;
+  return code === "UNAUTHENTICATED";
 }
 
 function isGeneratedMediaName(value: string) {
@@ -170,6 +181,7 @@ export default function EditorScreen() {
   const posthog = usePostHog();
   const params = useLocalSearchParams<{
     projectId?: string;
+    localProjectId?: string;
     title?: string;
     photoUri?: string;
     photoName?: string;
@@ -178,10 +190,14 @@ export default function EditorScreen() {
     aspectRatio?: AspectRatio;
     trimStart?: string;
     trimEnd?: string;
+    returnToEditor?: string;
   }>();
 
   const projectId = firstParam(params.projectId);
+  const initialLocalProjectId = firstParam(params.localProjectId) || null;
   const existingProjectId = asProjectId(projectId);
+  const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
+  const { isLocalGuest } = useLocalSession();
   const paramTitle = firstParam(params.title)?.trim() || "";
   const initialProjectTitle =
     paramTitle || DEFAULT_PROJECT_TITLE;
@@ -189,9 +205,15 @@ export default function EditorScreen() {
   const paramAudioUri = decodeUriParam(firstParam(params.audioUri));
   const paramPhotoName = firstParam(params.photoName);
   const paramAudioName = firstParam(params.audioName);
+  const [currentProjectId, setCurrentProjectId] = useState<Id<"projects"> | null>(
+    existingProjectId,
+  );
+  const [currentLocalProjectId, setCurrentLocalProjectId] = useState<string | null>(
+    initialLocalProjectId,
+  );
   const projectDetails = useQuery(
     api.projects.getById,
-    existingProjectId ? { projectId: existingProjectId } : "skip",
+    currentProjectId ? { projectId: currentProjectId } : "skip",
   );
   const photoUri = paramPhotoUri || projectDetails?.photoUri || "";
   const audioUri = paramAudioUri || projectDetails?.audioUri || "";
@@ -211,6 +233,7 @@ export default function EditorScreen() {
       ? initialTrimEndRaw
       : initialTrimStart + 30;
 
+  const createProject = useMutation(api.projects.create);
   const updateProject = useMutation(api.projects.update);
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>(initialAspectRatio);
   const [isPlaying, setIsPlaying] = useState(true);
@@ -237,8 +260,12 @@ export default function EditorScreen() {
   const lastSavedSnapshotRef = useRef<string | null>(null);
   const hasTrackedEditStartedRef = useRef(false);
   const previousMediaUrisRef = useRef<{ photoUri: string; audioUri: string } | null>(null);
+  const draftCreationPromiseRef = useRef<Promise<Id<"projects"> | null> | null>(
+    null,
+  );
+  const localDraftCreationPromiseRef = useRef<Promise<string | null> | null>(null);
   const shouldWaitForProjectMedia =
-    !!existingProjectId &&
+    !!currentProjectId &&
     !paramPhotoUri &&
     !paramAudioUri &&
     projectDetails === undefined;
@@ -251,12 +278,158 @@ export default function EditorScreen() {
   );
 
   useEffect(() => {
+    if (!existingProjectId) return;
+    setCurrentProjectId(existingProjectId);
+  }, [existingProjectId]);
+
+  useEffect(() => {
+    if (!initialLocalProjectId) return;
+    setCurrentLocalProjectId(initialLocalProjectId);
+  }, [initialLocalProjectId]);
+
+  const createDraftProject = useCallback(async () => {
+    if (currentProjectId) return currentProjectId;
+    if (!isAuthenticated || !photoUri || !audioUri) return null;
+
+    if (draftCreationPromiseRef.current) {
+      return await draftCreationPromiseRef.current;
+    }
+
+    const roundedTrimStart = Math.round(trimStart * 100) / 100;
+    const roundedTrimEnd = Math.round(trimEnd * 100) / 100;
+    const normalizedTitle = projectTitle.trim() || DEFAULT_PROJECT_TITLE;
+    const pending = (async (): Promise<Id<"projects"> | null> => {
+      const tryCreate = async (retries = 1): Promise<Id<"projects"> | null> => {
+        try {
+          return await createProject({
+            title: normalizedTitle,
+            aspectRatio,
+            photoUri,
+            photoName,
+            audioUri,
+            audioName,
+            trimStart: roundedTrimStart,
+            trimEnd: roundedTrimEnd,
+            templateId: "spinning-cd",
+          });
+        } catch (error) {
+          if (isUnauthenticatedConvexError(error) && retries > 0) {
+            await sleep(600);
+            return await tryCreate(retries - 1);
+          }
+          return null;
+        }
+      };
+
+      return await tryCreate();
+    })();
+
+    draftCreationPromiseRef.current = pending;
+    try {
+      const createdProjectId = await pending;
+      if (createdProjectId) {
+        setCurrentProjectId(createdProjectId);
+      }
+      return createdProjectId;
+    } finally {
+      draftCreationPromiseRef.current = null;
+    }
+  }, [
+    currentProjectId,
+    isAuthenticated,
+    photoUri,
+    audioUri,
+    projectTitle,
+    aspectRatio,
+    trimStart,
+    trimEnd,
+    photoName,
+    audioName,
+    createProject,
+  ]);
+
+  const createLocalDraftProject = useCallback(async () => {
+    if (currentLocalProjectId) return currentLocalProjectId;
+    if (!isLocalGuest || !photoUri || !audioUri) return null;
+
+    if (localDraftCreationPromiseRef.current) {
+      return await localDraftCreationPromiseRef.current;
+    }
+
+    const roundedTrimStart = Math.round(trimStart * 100) / 100;
+    const roundedTrimEnd = Math.round(trimEnd * 100) / 100;
+    const normalizedTitle = projectTitle.trim() || DEFAULT_PROJECT_TITLE;
+    const pending = (async (): Promise<string | null> => {
+      const project = await upsertLocalProject({
+        title: normalizedTitle,
+        templateId: "spinning-cd",
+        aspectRatio,
+        photoUri,
+        photoName,
+        audioUri,
+        audioName,
+        trimStart: roundedTrimStart,
+        trimEnd: roundedTrimEnd,
+        status: "draft",
+      });
+      return project.id;
+    })();
+
+    localDraftCreationPromiseRef.current = pending;
+    try {
+      const createdLocalProjectId = await pending;
+      if (createdLocalProjectId) {
+        setCurrentLocalProjectId(createdLocalProjectId);
+      }
+      return createdLocalProjectId;
+    } finally {
+      localDraftCreationPromiseRef.current = null;
+    }
+  }, [
+    currentLocalProjectId,
+    isLocalGuest,
+    photoUri,
+    audioUri,
+    projectTitle,
+    aspectRatio,
+    trimStart,
+    trimEnd,
+    photoName,
+    audioName,
+  ]);
+
+  useEffect(() => {
+    if (currentProjectId || isAuthLoading || !isAuthenticated) return;
+    if (!photoUri || !audioUri) return;
+    void createDraftProject();
+  }, [
+    currentProjectId,
+    isAuthLoading,
+    isAuthenticated,
+    photoUri,
+    audioUri,
+    createDraftProject,
+  ]);
+
+  useEffect(() => {
+    if (!isLocalGuest || currentLocalProjectId) return;
+    if (!photoUri || !audioUri) return;
+    void createLocalDraftProject();
+  }, [
+    isLocalGuest,
+    currentLocalProjectId,
+    photoUri,
+    audioUri,
+    createLocalDraftProject,
+  ]);
+
+  useEffect(() => {
     track("preview_viewed", {
       hasPhoto: String(!!photoUri),
       hasAudio: String(!!audioUri),
-      reopened: String(!!projectId),
+      reopened: String(!!projectId || !!currentLocalProjectId),
     });
-  }, [audioUri, photoUri, projectId, track]);
+  }, [audioUri, photoUri, projectId, currentLocalProjectId, track]);
 
   useEffect(() => {
     return () => {
@@ -272,7 +445,7 @@ export default function EditorScreen() {
     async function checkFiles() {
       // Fresh create sessions use newly picked media; "files not found"
       // protection is only needed for reopened historical projects.
-      if (!projectId) {
+      if (!projectId && !currentLocalProjectId) {
         if (!isCancelled) {
           setMissingFiles({ photo: false, audio: false });
           setIsCheckingFiles(false);
@@ -303,7 +476,13 @@ export default function EditorScreen() {
     return () => {
       isCancelled = true;
     };
-  }, [photoUri, audioUri, projectId, shouldWaitForProjectMedia]);
+  }, [
+    photoUri,
+    audioUri,
+    projectId,
+    currentLocalProjectId,
+    shouldWaitForProjectMedia,
+  ]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -384,9 +563,9 @@ export default function EditorScreen() {
     );
     setIsNameModalVisible(true);
     track("project_title_edit_opened", {
-      reopened: String(!!existingProjectId),
+      reopened: String(!!existingProjectId || !!currentLocalProjectId),
     });
-  }, [existingProjectId, projectTitle, track]);
+  }, [existingProjectId, currentLocalProjectId, projectTitle, track]);
 
   const handleCloseProjectNameModal = useCallback(() => {
     setIsNameModalVisible(false);
@@ -398,18 +577,30 @@ export default function EditorScreen() {
     if (nextTitle !== projectTitle) {
       setProjectTitle(nextTitle);
       track("project_title_updated", {
-        reopened: String(!!existingProjectId),
+        reopened: String(!!existingProjectId || !!currentLocalProjectId),
       });
     }
     setIsNameModalVisible(false);
-  }, [existingProjectId, projectNameDraft, projectTitle, track]);
+  }, [
+    existingProjectId,
+    currentLocalProjectId,
+    projectNameDraft,
+    projectTitle,
+    track,
+  ]);
 
   useEffect(() => {
-    if (!existingProjectId || shouldWaitForProjectMedia) return;
+    const hasRemoteProject = !!currentProjectId;
+    const hasLocalProject = !!currentLocalProjectId;
+    if (!hasRemoteProject && !hasLocalProject) return;
+    if (hasRemoteProject && shouldWaitForProjectMedia) return;
 
     const roundedTrimStart = Math.round(trimStart * 100) / 100;
     const roundedTrimEnd = Math.round(trimEnd * 100) / 100;
     const normalizedTitle = projectTitle.trim() || DEFAULT_PROJECT_TITLE;
+    const trackedProjectId = currentProjectId
+      ? String(currentProjectId)
+      : (currentLocalProjectId ?? "local_draft");
     const nextSnapshot = JSON.stringify({
       title: normalizedTitle,
       aspectRatio,
@@ -441,7 +632,7 @@ export default function EditorScreen() {
     ) {
       hasTrackedEditStartedRef.current = true;
       track("project_edit_started", {
-        projectId: String(existingProjectId),
+        projectId: trackedProjectId,
       });
     }
 
@@ -452,26 +643,44 @@ export default function EditorScreen() {
 
     autosaveTimerRef.current = setTimeout(async () => {
       try {
-        await updateProject({
-          projectId: existingProjectId,
-          title: normalizedTitle,
-          aspectRatio,
-          trimStart: roundedTrimStart,
-          trimEnd: roundedTrimEnd,
-          photoUri,
-          photoName,
-          audioUri,
-          audioName,
-        });
+        if (isLocalGuest && currentLocalProjectId) {
+          await upsertLocalProject({
+            id: currentLocalProjectId,
+            title: normalizedTitle,
+            templateId: "spinning-cd",
+            aspectRatio,
+            photoUri,
+            photoName,
+            audioUri,
+            audioName,
+            trimStart: roundedTrimStart,
+            trimEnd: roundedTrimEnd,
+            status: "draft",
+          });
+        } else if (currentProjectId) {
+          await updateProject({
+            projectId: currentProjectId,
+            title: normalizedTitle,
+            aspectRatio,
+            trimStart: roundedTrimStart,
+            trimEnd: roundedTrimEnd,
+            photoUri,
+            photoName,
+            audioUri,
+            audioName,
+          });
+        } else {
+          return;
+        }
         lastSavedSnapshotRef.current = nextSnapshot;
         setEditorSaveStatus("saved");
         track("project_autosave_succeeded", {
-          projectId: String(existingProjectId),
+          projectId: trackedProjectId,
         });
       } catch {
         setEditorSaveStatus("error");
         track("project_autosave_failed", {
-          projectId: String(existingProjectId),
+          projectId: trackedProjectId,
         });
       }
     }, 700);
@@ -482,7 +691,9 @@ export default function EditorScreen() {
       }
     };
   }, [
-    existingProjectId,
+    currentProjectId,
+    currentLocalProjectId,
+    isLocalGuest,
     shouldWaitForProjectMedia,
     forceAutosaveTick,
     projectTitle,
@@ -494,11 +705,15 @@ export default function EditorScreen() {
     audioUri,
     audioName,
     track,
+    upsertLocalProject,
     updateProject,
   ]);
 
   useEffect(() => {
-    if (!existingProjectId) return;
+    const trackedProjectId = currentProjectId
+      ? String(currentProjectId)
+      : currentLocalProjectId;
+    if (!trackedProjectId) return;
 
     if (!previousMediaUrisRef.current) {
       previousMediaUrisRef.current = { photoUri, audioUri };
@@ -513,18 +728,33 @@ export default function EditorScreen() {
     if (!photoChanged && !audioChanged) return;
 
     track("project_media_replaced", {
-      projectId: String(existingProjectId),
+      projectId: trackedProjectId,
       photoChanged: String(photoChanged),
       audioChanged: String(audioChanged),
     });
-  }, [existingProjectId, photoUri, audioUri, track]);
+  }, [currentProjectId, currentLocalProjectId, photoUri, audioUri, track]);
+
+  const handleCloseEditor = useCallback(() => {
+    void (async () => {
+      try {
+        if (isLocalGuest) {
+          await createLocalDraftProject();
+        } else {
+          await createDraftProject();
+        }
+      } finally {
+        router.replace("/(tabs)" as const);
+      }
+    })();
+  }, [isLocalGuest, createLocalDraftProject, createDraftProject, router]);
 
   const handleSwapMedia = useCallback(
     (initialTab: "photo" | "audio") => {
       router.push({
         pathname: "/create/picker",
         params: {
-          projectId: projectId ?? "",
+          projectId: currentProjectId ? String(currentProjectId) : "",
+          localProjectId: currentLocalProjectId ?? "",
           title: projectTitle,
           photoUri: encodeUriParam(photoUri),
           photoName,
@@ -534,12 +764,14 @@ export default function EditorScreen() {
           trimStart: String(trimStart),
           trimEnd: String(trimEnd),
           initialTab,
+          returnToEditor: "1",
         },
       });
     },
     [
       router,
-      projectId,
+      currentProjectId,
+      currentLocalProjectId,
       projectTitle,
       photoUri,
       photoName,
@@ -573,7 +805,8 @@ export default function EditorScreen() {
     router.push({
       pathname: "/create/rendering",
       params: {
-        projectId: projectId ?? "",
+        projectId: currentProjectId ? String(currentProjectId) : "",
+        localProjectId: currentLocalProjectId ?? "",
         title: projectTitle,
         photoUri: encodeUriParam(photoUri),
         photoName,
@@ -587,7 +820,8 @@ export default function EditorScreen() {
   }, [
     canExport,
     router,
-    projectId,
+    currentProjectId,
+    currentLocalProjectId,
     projectTitle,
     photoUri,
     photoName,
@@ -622,7 +856,7 @@ export default function EditorScreen() {
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       <View style={styles.header}>
         <Pressable
-          onPress={() => router.back()}
+          onPress={handleCloseEditor}
           style={styles.headerButton}
           accessibilityLabel="Go back"
           accessibilityRole="button"

@@ -12,7 +12,7 @@ import {
   Modal,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useConvex, useMutation, useQuery } from "convex/react";
 import { Ionicons } from "@expo/vector-icons";
 import { usePostHog } from "posthog-react-native";
@@ -20,8 +20,23 @@ import { api } from "../../convex/_generated/api";
 import type { Doc } from "../../convex/_generated/dataModel";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
 import type { EventName } from "@/lib/analytics";
+import { encodeUriParam } from "@/lib/uri";
+import { useLocalSession } from "@/providers/localSession";
+import {
+  listLocalProjects,
+  removeLocalProject,
+  type LocalProject,
+} from "@/lib/localProjects";
 
-type Project = Doc<"projects">;
+type Project = Doc<"projects"> | LocalProject;
+
+function isLocalProject(project: Project): project is LocalProject {
+  return "id" in project;
+}
+
+function getProjectId(project: Project): string {
+  return isLocalProject(project) ? project.id : String(project._id);
+}
 
 function formatDate(timestamp: number) {
   return new Date(timestamp).toLocaleDateString(undefined, {
@@ -35,8 +50,10 @@ export default function HomeScreen() {
   const router = useRouter();
   const convex = useConvex();
   const posthog = usePostHog();
+  const { isLocalGuest } = useLocalSession();
   const projectsQuery = useQuery(api.projects.listByUser);
   const deleteProject = useMutation(api.projects.remove);
+  const [localProjects, setLocalProjects] = useState<LocalProject[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [actionProject, setActionProject] = useState<Project | null>(null);
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
@@ -49,23 +66,71 @@ export default function HomeScreen() {
     [posthog],
   );
 
+  const refreshLocalProjects = useCallback(async () => {
+    const projects = await listLocalProjects();
+    setLocalProjects(projects);
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!isLocalGuest) {
+        setLocalProjects(null);
+        return;
+      }
+
+      let isActive = true;
+      void (async () => {
+        const projects = await listLocalProjects();
+        if (!isActive) return;
+        setLocalProjects(projects);
+      })();
+
+      return () => {
+        isActive = false;
+      };
+    }, [isLocalGuest]),
+  );
+
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await convex.query(api.projects.listByUser, {});
+      if (isLocalGuest) {
+        await refreshLocalProjects();
+      } else {
+        await convex.query(api.projects.listByUser, {});
+      }
     } finally {
       setRefreshing(false);
     }
-  }, [convex]);
+  }, [convex, isLocalGuest, refreshLocalProjects]);
 
   const openProject = useCallback(
     (project: Project) => {
-      if (longPressProjectIdRef.current === String(project._id)) {
+      const projectKey = getProjectId(project);
+      if (longPressProjectIdRef.current === projectKey) {
         longPressProjectIdRef.current = null;
         return;
       }
-      if (deletingProjectId === String(project._id)) return;
-      track("project_reopened", { projectId: String(project._id) });
+      if (deletingProjectId === projectKey) return;
+      track("project_reopened", { projectId: projectKey });
+
+      if (isLocalProject(project)) {
+        router.push({
+          pathname: "/create/editor",
+          params: {
+            localProjectId: project.id,
+            title: project.title ?? "",
+            photoUri: encodeUriParam(project.photoUri ?? ""),
+            photoName: project.photoName ?? "",
+            audioUri: encodeUriParam(project.audioUri ?? ""),
+            audioName: project.audioName ?? "",
+            aspectRatio: project.aspectRatio,
+            trimStart: String(project.trimStart ?? 0),
+            trimEnd: String(project.trimEnd ?? 30),
+          },
+        });
+        return;
+      }
 
       router.push({
         pathname: "/create/editor",
@@ -90,17 +155,23 @@ export default function HomeScreen() {
   const openProjectActions = useCallback(
     (project: Project) => {
       setActionProject(project);
-      track("project_actions_opened", { projectId: String(project._id) });
+      track("project_actions_opened", { projectId: getProjectId(project) });
     },
     [track],
   );
 
   const runDeleteProject = useCallback(
     async (project: Project) => {
-      setDeletingProjectId(String(project._id));
+      const projectKey = getProjectId(project);
+      setDeletingProjectId(projectKey);
       try {
-        await deleteProject({ projectId: project._id });
-        track("project_deleted", { projectId: String(project._id) });
+        if (isLocalProject(project)) {
+          await removeLocalProject(project.id);
+          await refreshLocalProjects();
+        } else {
+          await deleteProject({ projectId: project._id });
+        }
+        track("project_deleted", { projectId: projectKey });
       } catch {
         Alert.alert(
           "Could not delete project",
@@ -110,7 +181,7 @@ export default function HomeScreen() {
         setDeletingProjectId(null);
       }
     },
-    [deleteProject, track],
+    [deleteProject, refreshLocalProjects, track],
   );
 
   const handleProjectAction = useCallback(
@@ -120,7 +191,7 @@ export default function HomeScreen() {
 
       if (action === "delete") {
         closeProjectActions();
-        track("project_delete_started", { projectId: String(project._id) });
+        track("project_delete_started", { projectId: getProjectId(project) });
         Alert.alert(
           "Delete project?",
           "If you choose to delete, you'll lose this project.",
@@ -147,14 +218,18 @@ export default function HomeScreen() {
     [actionProject, closeProjectActions, runDeleteProject, track],
   );
 
-  const stableProjects = useMemo(() => projectsQuery ?? [], [projectsQuery]);
-  const isLoading = projectsQuery === undefined;
+  const stableProjects = useMemo(() => {
+    if (isLocalGuest) return localProjects ?? [];
+    return projectsQuery ?? [];
+  }, [isLocalGuest, localProjects, projectsQuery]);
+  const isLoading = isLocalGuest ? localProjects === null : projectsQuery === undefined;
   const hasProjects = stableProjects.length > 0;
 
   const renderProjectCard = useCallback(
     ({ item }: { item: Project }) => {
+      const projectKey = getProjectId(item);
       const previewUri = item.photoUri ?? item.exportedVideoUri;
-      const isDeleting = deletingProjectId === String(item._id);
+      const isDeleting = deletingProjectId === projectKey;
 
       return (
         <View style={styles.card}>
@@ -165,7 +240,7 @@ export default function HomeScreen() {
             ]}
             onPress={() => openProject(item)}
             onLongPress={() => {
-              longPressProjectIdRef.current = String(item._id);
+              longPressProjectIdRef.current = projectKey;
               openProjectActions(item);
             }}
             delayLongPress={220}
@@ -222,7 +297,7 @@ export default function HomeScreen() {
   );
 
   const isDeletingSelectedProject =
-    !!actionProject && deletingProjectId === String(actionProject._id);
+    !!actionProject && deletingProjectId === getProjectId(actionProject);
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -245,7 +320,7 @@ export default function HomeScreen() {
       {/* TODO: Add cursor pagination if project history grows beyond v1 size. */}
       <FlatList
         data={isLoading ? [] : stableProjects}
-        keyExtractor={(item) => String(item._id)}
+        keyExtractor={(item) => getProjectId(item)}
         renderItem={renderProjectCard}
         numColumns={2}
         columnWrapperStyle={styles.row}
