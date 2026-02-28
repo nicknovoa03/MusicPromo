@@ -1,4 +1,5 @@
 import { Paths } from "expo-file-system";
+import * as LegacyFileSystem from "expo-file-system/legacy";
 import Constants from "expo-constants";
 
 function isExpoGo(): boolean {
@@ -50,6 +51,70 @@ const SPIN_SPEED = "2*PI*t/4"; // full rotation every 4 seconds
 
 function quoteFfmpegArg(value: string): string {
   return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+}
+
+function extensionFromUri(uri: string): string {
+  const withoutQuery = uri.split("?")[0] ?? uri;
+  const fileName = withoutQuery.split("/").pop() ?? "";
+  const dot = fileName.lastIndexOf(".");
+  if (dot < 0 || dot === fileName.length - 1) return "";
+  const ext = fileName.slice(dot + 1).toLowerCase();
+  return /^[a-z0-9]{1,8}$/.test(ext) ? ext : "";
+}
+
+function formatScheme(uri: string): string {
+  const idx = uri.indexOf(":");
+  return idx > 0 ? uri.slice(0, idx) : "unknown";
+}
+
+async function ensureRenderableInputUri(
+  uri: string,
+  kind: "photo" | "audio",
+): Promise<string> {
+  if (!uri.trim()) {
+    throw new Error(`Missing ${kind} file.`);
+  }
+
+  if (uri.startsWith("file://")) {
+    try {
+      const info = await LegacyFileSystem.getInfoAsync(uri);
+      if (info.exists) {
+        return uri;
+      }
+    } catch {
+      // Fall through and attempt a local copy below.
+    }
+  }
+
+  if (!LegacyFileSystem.cacheDirectory) {
+    throw new Error(
+      `Unable to access app cache while preparing ${kind} media for rendering.`,
+    );
+  }
+
+  const sourceExt = extensionFromUri(uri);
+  const fallbackExt = kind === "photo" ? "jpg" : "m4a";
+  const ext = sourceExt || fallbackExt;
+  const copiedUri = `${LegacyFileSystem.cacheDirectory}render-${kind}-${Date.now()}-${Math.floor(
+    Math.random() * 1_000_000,
+  )}.${ext}`;
+
+  try {
+    await LegacyFileSystem.copyAsync({ from: uri, to: copiedUri });
+  } catch {
+    throw new Error(
+      `Unable to read selected ${kind} for rendering (scheme: ${formatScheme(uri)}). Re-select the ${kind} and try again.`,
+    );
+  }
+
+  const copiedInfo = await LegacyFileSystem.getInfoAsync(copiedUri);
+  if (!copiedInfo.exists) {
+    throw new Error(
+      `Prepared ${kind} file is missing after copy. Re-select the ${kind} and try again.`,
+    );
+  }
+
+  return copiedUri;
 }
 
 function summarizeFfmpegLogs(logs: string): string {
@@ -111,7 +176,12 @@ export async function renderSpinningCdVideo(
   const labelRadius = Math.round(cdRadius * 0.26);
   const holeRadius = Math.max(Math.round(cdRadius * 0.05), 6);
 
-  const outputPath = `${Paths.cache.uri}export_${Date.now()}.mp4`;
+  const [preparedPhotoUri, preparedAudioUri] = await Promise.all([
+    ensureRenderableInputUri(photoUri, "photo"),
+    ensureRenderableInputUri(audioUri, "audio"),
+  ]);
+
+  const outputPath = Paths.join(Paths.cache, `export_${Date.now()}.mp4`);
 
   // Filter graph:
   // [0:v] = photo looped as background, scaled + blurred
@@ -157,13 +227,13 @@ export async function renderSpinningCdVideo(
     "-loop",
     "1",
     "-i",
-    quoteFfmpegArg(photoUri),
+    quoteFfmpegArg(preparedPhotoUri),
     "-ss",
     String(trimStartSec),
     "-t",
     String(duration),
     "-i",
-    quoteFfmpegArg(audioUri),
+    quoteFfmpegArg(preparedAudioUri),
     "-filter_complex",
     `"${filterComplex}"`,
     "-map",
@@ -193,13 +263,13 @@ export async function renderSpinningCdVideo(
     "-loop",
     "1",
     "-i",
-    quoteFfmpegArg(photoUri),
+    quoteFfmpegArg(preparedPhotoUri),
     "-ss",
     String(trimStartSec),
     "-t",
     String(duration),
     "-i",
-    quoteFfmpegArg(audioUri),
+    quoteFfmpegArg(preparedAudioUri),
     "-vf",
     `"scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},format=yuv420p"`,
     "-map",
@@ -313,12 +383,15 @@ export async function renderSpinningCdVideo(
     const details =
       summarizeFfmpegLogs(fallbackResult.logs) ||
       summarizeFfmpegLogs(primaryResult.logs);
+    const diagnostics = `photoScheme=${formatScheme(preparedPhotoUri)} audioScheme=${formatScheme(preparedAudioUri)} outputPath=${outputPath}`;
     if (details) {
       throw new Error(
-        `FFmpeg rendering failed (code ${fallbackResult.returnCode}). ${details}`,
+        `FFmpeg rendering failed (code ${fallbackResult.returnCode}). ${details} | ${diagnostics}`,
       );
     }
-    throw new Error(`FFmpeg rendering failed (code ${fallbackResult.returnCode}).`);
+    throw new Error(
+      `FFmpeg rendering failed (code ${fallbackResult.returnCode}). ${diagnostics}`,
+    );
   } finally {
     if (activeRenderToken === renderToken) {
       activeRenderSessionId = null;
