@@ -15,8 +15,9 @@
     "lint:all": "npx tsc --noEmit && npx tsc --noEmit -p convex/tsconfig.json",
     "start:dev-client": "expo start --dev-client",
     "preflight:ios": "npx expo config --type introspect",
-    "build:ios:preview": "npx eas build -p ios --profile preview",
+    "build:ios:development": "npx eas build -p ios --profile development",
     "build:ios:production": "npx eas build -p ios --profile production",
+    "deploy:ios:testflight": "npx eas build -p ios --profile production --auto-submit",
     "submit:ios:production": "npx eas submit -p ios --profile production"
   },
   "dependencies": {

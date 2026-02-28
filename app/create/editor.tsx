@@ -40,6 +40,7 @@ const SCREEN_WIDTH = Dimensions.get("window").width;
 const SCREEN_HEIGHT = Dimensions.get("window").height;
 const STAGE_HORIZONTAL_PADDING = spacing.lg * 2;
 const FALLBACK_AUDIO_DURATION = 180;
+const DEFAULT_TRIM_DURATION = 15;
 const DEFAULT_PROJECT_TITLE = "New Project";
 
 type MissingFilesState = {
@@ -234,11 +235,11 @@ export default function EditorScreen() {
     fallbackMediaNameFromUri(audioUri, "Audio");
   const initialAspectRatio = parseAspectRatioParam(params.aspectRatio);
   const initialTrimStart = parseNumberParam(params.trimStart, 0);
-  const initialTrimEndRaw = parseNumberParam(params.trimEnd, 30);
+  const initialTrimEndRaw = parseNumberParam(params.trimEnd, DEFAULT_TRIM_DURATION);
   const initialTrimEnd =
     initialTrimEndRaw > initialTrimStart
       ? initialTrimEndRaw
-      : initialTrimStart + 30;
+      : initialTrimStart + DEFAULT_TRIM_DURATION;
 
   const createProject = useMutation(api.projects.create);
   const updateProject = useMutation(api.projects.update);

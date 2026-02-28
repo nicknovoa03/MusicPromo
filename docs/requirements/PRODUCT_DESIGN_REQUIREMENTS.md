@@ -90,8 +90,8 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 2. **Onboarding** — 1-2 walkthrough screens for first-time users. Design TBD.
 3. **Home / Projects** — White background. "Projects" header, profile icon top-right. 2-column grid of project thumbnails with title + metadata. Black "+" FAB bottom-right. Empty state: illustration + "Create your first project."
 4. **Create — Media Picker** — Light background. Tabbed interface (Photo / Audio tabs, same layout for both). Cancel top-left, Add top-right. Search bar. Grid of device items.
-5. **Create — Editor/Trimmer** — Dark background. Video preview centered (top half). Timeline strip at bottom with frame thumbnails and scrubber. Play/pause, timestamp, undo/redo. Aspect ratio toggle. Trim handles. "Export" button top-right.
-6. **Post-Export — Rendering** — Dark background. X top-left. Percentage text. Video preview with gradient border. "Please don't close" messaging.
+5. **Create — Editor/Trimmer** — Dark background. Turntable-style template preview (top), timestamp + aspect ratio controls, selected media chips, and audio trimmer with trim handles + playback progress. "Export" button top-right.
+6. **Post-Export — Rendering** — Dark background. X top-left. "Exporting" + percentage text. Uses the same turntable template preview composition as Create Editor. "Please don't close" messaging.
 7. **Post-Export — Share** — Dark background. X top-left. "Ready to share" heading. Video preview. "Share to Instagram" gradient button. "Share to TikTok" button. "Saved to camera roll" confirmation.
 8. **Profile / Settings** — Spotify-inspired. Profile: large avatar, name, "Edit profile" button. Settings: list rows with chevrons. Sign out + delete account at bottom.
 
@@ -269,7 +269,7 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 - **Acceptance criteria:**
   - User can view their name, email, avatar
   - User can set default aspect ratio (9:16 or 1:1)
-  - User can set default video length
+  - User can set default video length (15, 30, or 60 seconds; default 15 seconds)
   - User can sign out
   - User can delete their account (soft-delete in Convex)
 - **States:**
@@ -334,9 +334,10 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 - **Route:** `/create/editor`
 - **Primary intent:** Preview, trim, and configure the promo video
 - **Header:** X/back (left), editable project name control (center, opens compact name modal), "Export" button (right)
-- **Main sections:** Video preview (top, centered), play/pause + timestamp + undo/redo (middle), timeline strip with frame thumbnails + scrubber (bottom), aspect ratio toggle
+- **Main sections:** Turntable template preview (top), timestamp + aspect ratio controls, selected media chips (photo/audio swap), audio trimmer with handles + playback progress
 - **Primary CTA:** "Export" button (top-right)
-- **Secondary actions:** Play/pause, trim handles, aspect ratio toggle (9:16 / 1:1), undo/redo, edit project name
+- **Secondary actions:** Play/pause, trim handles, aspect ratio toggle (9:16 / 1:1), swap photo/audio, edit project name
+- **Default trim behavior:** Initial trim selection uses saved default video length (15/30/60); fallback default is 15 seconds
 - **Draft persistence:** Selecting media and entering editor creates/updates a draft immediately; back/close preserves draft before export
 - **Empty/loading/error:** Preview loading skeleton, "Rendering failed" + retry
 - **Theme:** Dark/black
@@ -347,7 +348,8 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 - **Route:** `/create/exporting`
 - **Primary intent:** Show rendering progress
 - **Header:** X button (left, to cancel)
-- **Main sections:** Large percentage text, video preview with gradient border, "Please don't close" message
+- **Main sections:** "Exporting" label, large percentage text, shared turntable template preview (same composition as Create Editor), "Please don't close" message
+- **Motion/output target:** Render output targets 60 FPS for smoother spinning vinyl motion
 - **Primary CTA:** None (wait state)
 - **Theme:** Dark/black
 - **Reference:** `post-export/Edits iOS Exporting a video 1.png`
@@ -367,7 +369,7 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 - **Route:** `/profile`
 - **Primary intent:** View/edit profile, manage account and preferences
 - **Header:** Back arrow (left), "Settings" title (center)
-- **Main sections:** Profile card (avatar, name, "Edit profile" button), settings list (rows with chevrons: Account, default aspect ratio, default video length), sign out button, delete account
+- **Main sections:** Profile card (avatar, name, "Edit profile" button), settings list (rows with chevrons: Account, default aspect ratio, default video length with 15/30/60 presets), sign out button, delete account
 - **Primary CTA:** "Edit profile"
 - **Theme:** Dark (Spotify-inspired)
 - **Analytics:** None specific

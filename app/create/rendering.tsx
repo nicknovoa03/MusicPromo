@@ -31,6 +31,7 @@ let renderModule: RenderVideoModule | null = null;
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const SCREEN_HEIGHT = Dimensions.get("window").height;
 const STAGE_HORIZONTAL_PADDING = spacing.lg * 2;
+const DEFAULT_TRIM_DURATION = 15;
 
 async function getRenderModule(): Promise<RenderVideoModule> {
   if (isExpoGo()) {
@@ -62,7 +63,9 @@ function firstParam(param: string | string[] | undefined) {
 function normalizeTrimBounds(start: number, end: number): [number, number] {
   const safeStart = Number.isFinite(start) ? Math.max(0, start) : 0;
   const safeEnd =
-    Number.isFinite(end) && end > safeStart ? end : safeStart + 30;
+    Number.isFinite(end) && end > safeStart
+      ? end
+      : safeStart + DEFAULT_TRIM_DURATION;
   return [safeStart, safeEnd];
 }
 
