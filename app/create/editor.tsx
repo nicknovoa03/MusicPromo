@@ -28,11 +28,13 @@ import {
   AspectRatioToggle,
   type AspectRatio,
 } from "@/components/create/AspectRatioToggle";
+import { VinylPreview } from "@/components/create/VinylPreview";
 import type { EventName } from "@/lib/analytics";
 import { decodeUriParam, encodeUriParam, fileNameFromUri } from "@/lib/uri";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
-const PREVIEW_PADDING = spacing.xl * 2;
+const SCREEN_HEIGHT = Dimensions.get("window").height;
+const STAGE_HORIZONTAL_PADDING = spacing.lg * 2;
 const FALLBACK_AUDIO_DURATION = 180;
 const DEFAULT_PROJECT_TITLE = "New Project";
 
@@ -72,6 +74,12 @@ function fallbackMediaNameFromUri(uri: string, fallback: "Photo" | "Audio") {
   const fromUri = fileNameFromUri(uri);
   if (!fromUri || isGeneratedMediaName(fromUri)) return fallback;
   return fromUri;
+}
+
+function displayMediaLabel(name: string, fallback: string) {
+  const trimmed = name.trim();
+  if (!trimmed) return fallback;
+  return trimmed.replace(/\.[a-z0-9]{1,8}$/i, "");
 }
 
 async function isMissingFile(uri?: string) {
@@ -205,7 +213,7 @@ export default function EditorScreen() {
 
   const updateProject = useMutation(api.projects.update);
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>(initialAspectRatio);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(true);
   const [trimStart, setTrimStart] = useState(initialTrimStart);
   const [trimEnd, setTrimEnd] = useState(initialTrimEnd);
   const [projectTitle, setProjectTitle] = useState(initialProjectTitle);
@@ -323,7 +331,10 @@ export default function EditorScreen() {
   }, [audioUri, missingFiles.audio]);
 
   const minTrimDuration = Math.min(15, Math.max(audioDurationSec, 1));
-  const maxTrimDuration = Math.min(60, Math.max(audioDurationSec, minTrimDuration));
+  const maxTrimDuration = Math.max(
+    minTrimDuration,
+    Math.min(audioDurationSec, 45),
+  );
 
   useEffect(() => {
     const [nextStart, nextEnd] = clampTrimRange(
@@ -343,12 +354,12 @@ export default function EditorScreen() {
     trimEnd,
   ]);
 
-  const previewAspect = aspectRatio === "9:16" ? 9 / 16 : 1;
-  const previewWidth = Math.min(
-    SCREEN_WIDTH - PREVIEW_PADDING,
-    aspectRatio === "1:1" ? 300 : 240,
+  const stageWidth = Math.min(SCREEN_WIDTH - STAGE_HORIZONTAL_PADDING, 440);
+  const stageHeight = Math.min(
+    Math.max(stageWidth * (aspectRatio === "9:16" ? 1.4 : 1.2), 460),
+    SCREEN_HEIGHT * 0.72,
   );
-  const previewHeight = previewWidth / previewAspect;
+  const stageVinylSize = stageWidth * 1.42;
 
   const handleTrimChange = useCallback((start: number, end: number) => {
     const [nextStart, nextEnd] = clampTrimRange(
@@ -592,6 +603,9 @@ export default function EditorScreen() {
 
   const trimmedDuration = Math.max(0, trimEnd - trimStart);
   const showMissingNotice = !isCheckingFiles && (missingFiles.photo || missingFiles.audio);
+  const trackTitle = displayMediaLabel(audioName, "Untitled track");
+  const subtitle = projectTitle.trim() || DEFAULT_PROJECT_TITLE;
+  const playbackLabel = isPlaying ? "Now Playing" : "Paused";
 
   let missingMessage = "The original files may have been moved or deleted. Replace missing files to continue.";
   if (missingFiles.photo && !missingFiles.audio) {
@@ -603,25 +617,6 @@ export default function EditorScreen() {
   }
   const canSaveProjectTitle =
     projectNameDraft.trim().length > 0;
-
-  const saveStatusLabel =
-    editorSaveStatus === "saving"
-      ? "Saving..."
-      : editorSaveStatus === "saved"
-        ? "Saved"
-        : editorSaveStatus === "error"
-          ? "Save failed"
-          : "";
-  const saveStatusIcon =
-    editorSaveStatus === "saving"
-      ? "sync-outline"
-      : editorSaveStatus === "saved"
-        ? "checkmark-circle-outline"
-        : "alert-circle-outline";
-  const saveStatusColor =
-    editorSaveStatus === "error"
-      ? colors.accent.warning
-      : colors.dark.textSecondary;
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
@@ -670,30 +665,6 @@ export default function EditorScreen() {
           )}
         </Pressable>
       </View>
-
-      {existingProjectId ? (
-        <Pressable
-          style={styles.saveStatusRow}
-          onPress={() => {
-            if (editorSaveStatus !== "error") return;
-            setForceAutosaveTick((tick) => tick + 1);
-          }}
-          disabled={editorSaveStatus !== "error"}
-          accessibilityLabel={
-            editorSaveStatus === "error" ? "Retry project save" : "Project saved status"
-          }
-          accessibilityRole={editorSaveStatus === "error" ? "button" : "text"}
-        >
-          <Ionicons
-            name={saveStatusIcon}
-            size={14}
-            color={saveStatusColor}
-          />
-          <Text style={[styles.saveStatusText, { color: saveStatusColor }]}>
-            {saveStatusLabel}
-          </Text>
-        </Pressable>
-      ) : null}
 
       <Modal
         visible={isNameModalVisible}
@@ -793,48 +764,92 @@ export default function EditorScreen() {
       <View style={styles.previewContainer}>
         <View
           style={[
-            styles.preview,
-            { width: previewWidth, height: previewHeight },
+            styles.turntableStage,
+            { width: stageWidth, height: stageHeight },
           ]}
         >
           {photoUri && !missingFiles.photo ? (
             <Image
               source={{ uri: photoUri }}
-              style={styles.previewImage}
+              style={styles.stageBackdropImage}
               resizeMode="cover"
-              accessibilityLabel="Photo preview"
+              blurRadius={18}
+              accessibilityLabel="Preview backdrop"
             />
-          ) : (
-            <Ionicons
-              name="image-outline"
-              size={48}
-              color={colors.dark.textSecondary}
-            />
-          )}
+          ) : null}
+          <View style={styles.stageBackdropTint} />
+          <View style={styles.stageHaloTop} />
+          <View style={styles.stageHaloBottom} />
+          <View style={styles.stageBottomShade} />
 
-          <View style={styles.cdOverlay}>
-            <View style={styles.cdRing}>
-              <View style={styles.cdCenter} />
+          <View
+            style={[
+              styles.stageVinylWrap,
+              {
+                left: -stageVinylSize * 0.5,
+                top: -stageVinylSize * 0.24,
+              },
+            ]}
+          >
+            <VinylPreview
+              imageUri={photoUri && !missingFiles.photo ? photoUri : null}
+              size={stageVinylSize}
+              spinning={isPlaying}
+            />
+          </View>
+
+          <View style={styles.tonearmPivot} />
+          <View style={styles.tonearmArm} />
+          <View style={styles.tonearmHead} />
+
+          <View style={styles.stageTextBlock}>
+            <Text style={styles.nowPlayingLabel}>{playbackLabel}</Text>
+            <Text style={styles.trackTitle} numberOfLines={1}>
+              {trackTitle}
+            </Text>
+            <View style={styles.trackSubtitlePill}>
+              <Text style={styles.trackSubtitle} numberOfLines={1}>
+                {subtitle}
+              </Text>
             </View>
-            <Text style={styles.cdLabel}>Spinning CD preview</Text>
+          </View>
+
+          <View style={styles.stageTransport}>
+            <Pressable
+              onPress={handlePlayPause}
+              style={({ pressed }) => [
+                styles.stageControlPill,
+                pressed && styles.stageControlPillPressed,
+              ]}
+              accessibilityLabel={isPlaying ? "Pause preview" : "Play preview"}
+              accessibilityRole="button"
+            >
+              <Ionicons
+                name={isPlaying ? "pause" : "play"}
+                size={16}
+                color={colors.dark.text}
+              />
+            </Pressable>
+            <View style={styles.stageTransportSpacer} />
+            <View style={[styles.stageControlPill, styles.stageControlPillGhost]}>
+              <Ionicons
+                name="play-skip-back"
+                size={16}
+                color="rgba(255,255,255,0.7)"
+              />
+            </View>
+            <View style={[styles.stageControlPill, styles.stageControlPillGhost]}>
+              <Ionicons
+                name="play-skip-forward"
+                size={16}
+                color="rgba(255,255,255,0.7)"
+              />
+            </View>
           </View>
         </View>
       </View>
 
       <View style={styles.controls}>
-        <Pressable
-          onPress={handlePlayPause}
-          style={styles.playButton}
-          accessibilityLabel={isPlaying ? "Pause" : "Play"}
-          accessibilityRole="button"
-        >
-          <Ionicons
-            name={isPlaying ? "pause" : "play"}
-            size={22}
-            color={colors.dark.text}
-          />
-        </Pressable>
-
         <Text style={styles.timestamp}>
           {/* TODO(phase-2): sync this timestamp to real audio playback position. */}
           0:00 / {Math.floor(trimmedDuration / 60)}:
@@ -895,6 +910,8 @@ export default function EditorScreen() {
           startSec={trimStart}
           endSec={trimEnd}
           onTrimChange={handleTrimChange}
+          isPlaying={isPlaying}
+          onTogglePlay={handlePlayPause}
           minDuration={minTrimDuration}
           maxDuration={maxTrimDuration}
         />
@@ -958,20 +975,6 @@ const styles = StyleSheet.create({
     ...typography.caption,
     fontWeight: "700",
     color: "#FFFFFF",
-  },
-  saveStatusRow: {
-    minHeight: 22,
-    alignSelf: "center",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-    marginTop: -2,
-    marginBottom: spacing.xs,
-    paddingHorizontal: spacing.sm,
-  },
-  saveStatusText: {
-    ...typography.caption,
-    fontWeight: "500",
   },
   projectNameModalRoot: {
     flex: 1,
@@ -1081,57 +1084,172 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xs,
   },
-  preview: {
-    backgroundColor: colors.dark.surface,
+  turntableStage: {
+    width: "100%",
     borderRadius: radius.lg,
     overflow: "hidden",
-    alignItems: "center",
-    justifyContent: "center",
+    backgroundColor: "#BCBEC2",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,255,255,0.2)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.35,
+    shadowRadius: 24,
+    elevation: 10,
   },
-  previewImage: {
+  stageBackdropImage: {
     ...StyleSheet.absoluteFillObject,
-    borderRadius: radius.lg,
+    opacity: 0.26,
   },
-  cdOverlay: {
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm,
+  stageBackdropTint: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(196,198,204,0.88)",
   },
-  cdRing: {
+  stageHaloTop: {
+    position: "absolute",
+    top: -90,
+    right: -72,
+    width: 260,
+    height: 220,
+    borderRadius: 130,
+    backgroundColor: "rgba(255,255,255,0.4)",
+    transform: [{ rotate: "-12deg" }],
+  },
+  stageHaloBottom: {
+    position: "absolute",
+    bottom: -110,
+    left: -40,
+    width: 300,
+    height: 210,
+    borderRadius: 160,
+    backgroundColor: "rgba(255,255,255,0.36)",
+    transform: [{ rotate: "15deg" }],
+  },
+  stageBottomShade: {
+    position: "absolute",
+    left: -70,
+    right: -70,
+    bottom: 0,
+    height: 210,
+    borderTopLeftRadius: 240,
+    borderTopRightRadius: 240,
+    backgroundColor: "rgba(18,18,24,0.18)",
+  },
+  stageVinylWrap: {
+    position: "absolute",
+  },
+  tonearmPivot: {
+    position: "absolute",
+    top: 30,
+    right: 28,
     width: 80,
     height: 80,
     borderRadius: 40,
-    borderWidth: 3,
-    borderColor: "rgba(255,255,255,0.3)",
+    backgroundColor: "rgba(122,123,129,0.25)",
+  },
+  tonearmArm: {
+    position: "absolute",
+    top: 56,
+    right: 58,
+    width: 10,
+    height: 196,
+    borderRadius: radius.full,
+    backgroundColor: "#CED1D4",
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.28)",
+  },
+  tonearmHead: {
+    position: "absolute",
+    top: 244,
+    right: 45,
+    width: 26,
+    height: 40,
+    borderRadius: 8,
+    backgroundColor: "#24252B",
+    transform: [{ rotate: "26deg" }],
+  },
+  stageTextBlock: {
+    position: "absolute",
+    left: spacing.lg,
+    right: spacing.lg,
+    bottom: 94,
+    gap: spacing.xs,
+  },
+  nowPlayingLabel: {
+    ...typography.body,
+    color: "#FFFFFF",
+    fontSize: 32,
+    lineHeight: 34,
+    fontWeight: "700",
+    textShadowColor: "rgba(0,0,0,0.35)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  trackTitle: {
+    ...typography.body,
+    color: "rgba(255,255,255,0.96)",
+    fontSize: 18,
+    fontWeight: "700",
+    textShadowColor: "rgba(0,0,0,0.35)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  trackSubtitlePill: {
+    alignSelf: "flex-start",
+    marginTop: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.full,
+    backgroundColor: "rgba(255,255,255,0.9)",
+  },
+  trackSubtitle: {
+    ...typography.caption,
+    color: "rgba(21,22,26,0.9)",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  stageTransport: {
+    position: "absolute",
+    left: spacing.lg,
+    right: spacing.lg,
+    bottom: spacing.lg,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  stageTransportSpacer: {
+    flex: 1,
+  },
+  stageControlPill: {
+    minWidth: 56,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: "#1E1F24",
     alignItems: "center",
     justifyContent: "center",
+    paddingHorizontal: spacing.md,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  cdCenter: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: "rgba(255,255,255,0.4)",
+  stageControlPillPressed: {
+    opacity: 0.82,
+    transform: [{ scale: 0.97 }],
   },
-  cdLabel: {
-    ...typography.caption,
-    color: "rgba(255,255,255,0.5)",
+  stageControlPillGhost: {
+    marginLeft: spacing.sm,
   },
   controls: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "flex-end",
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-  },
-  playButton: {
-    width: 44,
-    height: 44,
-    borderRadius: radius.full,
-    backgroundColor: colors.dark.surface,
-    alignItems: "center",
-    justifyContent: "center",
+    paddingVertical: spacing.xs,
+    gap: spacing.md,
   },
   timestamp: {
     ...typography.caption,

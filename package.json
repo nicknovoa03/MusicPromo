@@ -4,6 +4,9 @@
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start --go",
+    "start:go:lan": "expo start --go --lan",
+    "start:go:tunnel": "expo start --go --tunnel",
+    "start:go:fast": "expo start --go --lan --no-dev --minify",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "lint": "npx tsc --noEmit",
@@ -19,6 +22,7 @@
     "@clerk/clerk-expo": "^2.19.27",
     "@expo/vector-icons": "^15.1.1",
     "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-picker/picker": "2.11.1",
     "convex": "^1.32.0",
     "expo": "~54.0.33",
     "expo-application": "~7.0.8",

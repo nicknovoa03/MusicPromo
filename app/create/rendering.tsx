@@ -6,7 +6,6 @@ import {
   Pressable,
   Alert,
   Animated,
-  Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -18,6 +17,7 @@ import Constants from "expo-constants";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
+import { VinylPreview } from "@/components/create/VinylPreview";
 import type { EventName } from "@/lib/analytics";
 import { sleep } from "@/lib/utils";
 import { decodeUriParam, encodeUriParam } from "@/lib/uri";
@@ -29,6 +29,7 @@ function isExpoGo(): boolean {
 type RenderVideoModule = typeof import("@/lib/renderVideo");
 let renderModule: RenderVideoModule | null = null;
 const PREVIEW_SIZE = 220;
+const PREVIEW_RING_SIZE = PREVIEW_SIZE + 8;
 
 async function getRenderModule(): Promise<RenderVideoModule> {
   if (isExpoGo()) {
@@ -282,7 +283,7 @@ export default function RenderingScreen() {
 
   const gradientBorderWidth = animatedProgress.interpolate({
     inputRange: [0, 100],
-    outputRange: [0, PREVIEW_SIZE],
+    outputRange: [0, PREVIEW_RING_SIZE],
     extrapolate: "clamp",
   });
 
@@ -339,20 +340,11 @@ export default function RenderingScreen() {
                 />
               </View>
               <View style={styles.previewInner}>
-                {previewPhotoUri ? (
-                  <Image
-                    source={{ uri: previewPhotoUri }}
-                    style={styles.previewImage}
-                    resizeMode="cover"
-                    accessibilityLabel="Video preview"
-                  />
-                ) : (
-                  <Ionicons
-                    name="videocam-outline"
-                    size={48}
-                    color={colors.dark.textSecondary}
-                  />
-                )}
+                <VinylPreview
+                  imageUri={previewPhotoUri}
+                  size={PREVIEW_SIZE}
+                  spinning={renderState === "rendering"}
+                />
               </View>
             </View>
 
@@ -403,17 +395,17 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xl,
   },
   previewWrapper: {
-    width: PREVIEW_SIZE,
-    height: PREVIEW_SIZE,
-    borderRadius: radius.lg + 4,
-    padding: 3,
+    width: PREVIEW_RING_SIZE,
+    height: PREVIEW_RING_SIZE,
+    borderRadius: PREVIEW_RING_SIZE / 2,
+    padding: 4,
     overflow: "hidden",
     backgroundColor: colors.dark.surface,
     marginBottom: spacing.xl,
   },
   gradientBorder: {
     ...StyleSheet.absoluteFillObject,
-    borderRadius: radius.lg + 4,
+    borderRadius: PREVIEW_RING_SIZE / 2,
     overflow: "hidden",
     backgroundColor: colors.dark.surface,
   },
@@ -424,15 +416,10 @@ const styles = StyleSheet.create({
   },
   previewInner: {
     flex: 1,
-    borderRadius: radius.lg,
+    borderRadius: PREVIEW_SIZE / 2,
     backgroundColor: colors.dark.background,
-    overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
-  },
-  previewImage: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: radius.lg,
   },
   message: {
     ...typography.body,

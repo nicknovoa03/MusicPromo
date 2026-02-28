@@ -140,6 +140,10 @@ export default function PickerScreen() {
         mediaTypes: ["images"],
         quality: 1,
         allowsEditing: false,
+        // Prefer iOS-compatible output (e.g. JPEG) to avoid HEIC decode issues
+        // in FFmpeg-based rendering on release builds.
+        preferredAssetRepresentationMode:
+          ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
       });
 
       if (!result.canceled && result.assets[0]) {
