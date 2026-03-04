@@ -29,7 +29,6 @@ import {
   AspectRatioToggle,
   type AspectRatio,
 } from "@/components/create/AspectRatioToggle";
-import { TemplateToggle } from "@/components/create/TemplateToggle";
 import type { EventName } from "@/lib/analytics";
 import { decodeUriParam, encodeUriParam, fileNameFromUri } from "@/lib/uri";
 import { normalizeMediaUri } from "@/lib/mediaUri";
@@ -37,9 +36,8 @@ import { sleep } from "@/lib/utils";
 import { useLocalSession } from "@/providers/localSession";
 import { upsertLocalProject } from "@/lib/localProjects";
 import {
+  DEFAULT_TEMPLATE_ID,
   getTemplateDefinition,
-  listTemplateDefinitions,
-  resolveTemplateId,
 } from "@/lib/templates";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
@@ -48,10 +46,6 @@ const STAGE_HORIZONTAL_PADDING = spacing.lg * 2;
 const FALLBACK_AUDIO_DURATION = 180;
 const DEFAULT_TRIM_DURATION = 15;
 const DEFAULT_PROJECT_TITLE = "New Project";
-const TEMPLATE_OPTIONS = listTemplateDefinitions().map((template, index) => ({
-  id: template.id,
-  label: `T${index + 1}`,
-}));
 
 type MissingFilesState = {
   photo: boolean;
@@ -258,10 +252,7 @@ export default function EditorScreen() {
     projectDetails?.audioName ||
     fallbackMediaNameFromUri(audioUri, "Audio");
   const initialAspectRatio = parseAspectRatioParam(params.aspectRatio);
-  const routeTemplateIdParam = firstParam(params.templateId);
-  const [templateId, setTemplateId] = useState(
-    resolveTemplateId(routeTemplateIdParam),
-  );
+  const templateId = DEFAULT_TEMPLATE_ID;
   const initialTrimStart = parseNumberParam(params.trimStart, 0);
   const initialTrimEndRaw = parseNumberParam(params.trimEnd, DEFAULT_TRIM_DURATION);
   const initialTrimEnd =
@@ -295,7 +286,6 @@ export default function EditorScreen() {
   const forceAutosaveTickRef = useRef(0);
   const initialSnapshotRef = useRef<string | null>(null);
   const lastSavedSnapshotRef = useRef<string | null>(null);
-  const hasManuallySelectedTemplateRef = useRef(false);
   const hasTrackedEditStartedRef = useRef(false);
   const previousMediaUrisRef = useRef<{ photoUri: string; audioUri: string } | null>(null);
   const draftCreationPromiseRef = useRef<Promise<Id<"projects"> | null> | null>(
@@ -327,28 +317,6 @@ export default function EditorScreen() {
     if (!initialLocalProjectId) return;
     setCurrentLocalProjectId(initialLocalProjectId);
   }, [initialLocalProjectId]);
-
-  useEffect(() => {
-    if (!routeTemplateIdParam) return;
-    const resolvedTemplateId = resolveTemplateId(routeTemplateIdParam);
-    setTemplateId((previousTemplateId) =>
-      previousTemplateId === resolvedTemplateId
-        ? previousTemplateId
-        : resolvedTemplateId,
-    );
-    hasManuallySelectedTemplateRef.current = false;
-  }, [routeTemplateIdParam]);
-
-  useEffect(() => {
-    if (routeTemplateIdParam) return;
-    if (hasManuallySelectedTemplateRef.current) return;
-    const projectTemplateId = resolveTemplateId(projectDetails?.templateId);
-    setTemplateId((previousTemplateId) =>
-      previousTemplateId === projectTemplateId
-        ? previousTemplateId
-        : projectTemplateId,
-    );
-  }, [routeTemplateIdParam, projectDetails?.templateId]);
 
   const TemplateStageComponent = getTemplateDefinition(templateId).StageComponent;
 
@@ -618,16 +586,6 @@ export default function EditorScreen() {
     setTrimStart(nextStart);
     setTrimEnd(nextEnd);
   }, [audioDurationSec, minTrimDuration, maxTrimDuration]);
-
-  const handleTemplateChange = useCallback((nextTemplateId: string) => {
-    const resolvedTemplateId = resolveTemplateId(nextTemplateId);
-    hasManuallySelectedTemplateRef.current = true;
-    setTemplateId((previousTemplateId) =>
-      previousTemplateId === resolvedTemplateId
-        ? previousTemplateId
-        : resolvedTemplateId,
-    );
-  }, []);
 
   const unloadPreviewSound = useCallback(async () => {
     const sound = previewSoundRef.current;
@@ -1252,7 +1210,7 @@ export default function EditorScreen() {
           width={stageWidth}
           height={stageHeight}
           aspectRatio={aspectRatio}
-          photoUri={photoUri && !isCheckingFiles && !missingFiles.photo ? photoUri : null}
+          photoUri={photoUri && !missingFiles.photo ? photoUri : null}
           isPlaying={isPlaying}
           playbackLabel={playbackLabel}
           trackTitle={trackTitle}
@@ -1263,11 +1221,6 @@ export default function EditorScreen() {
 
       <View style={styles.controls}>
         <View style={styles.controlsTopRow}>
-          <TemplateToggle
-            value={templateId}
-            options={TEMPLATE_OPTIONS}
-            onChange={handleTemplateChange}
-          />
           <AspectRatioToggle value={aspectRatio} onChange={setAspectRatio} />
         </View>
         <Text style={styles.timestamp}>
@@ -1669,7 +1622,7 @@ const styles = StyleSheet.create({
   controlsTopRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "flex-end",
   },
   timestamp: {
     ...typography.caption,

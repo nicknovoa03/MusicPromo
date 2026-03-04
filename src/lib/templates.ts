@@ -66,5 +66,5 @@ export function getTemplateDefinition(templateId?: string | null): TemplateDefin
 }
 
 export function listTemplateDefinitions(): TemplateDefinition[] {
-  return Object.values(TEMPLATE_DEFINITIONS);
+  return [TEMPLATE_DEFINITIONS[DEFAULT_TEMPLATE_ID]];
 }

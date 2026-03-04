@@ -31,8 +31,8 @@ export function getSimpleSpinTemplateLayout(params: {
   const discScale = aspectRatio === "9:16" ? 0.82 : 0.78;
   const discSize = Math.max(120, toEven(Math.round(basis * discScale)));
   const discRadius = Math.round(discSize / 2);
-  const labelRadius = Math.max(24, Math.round(discSize * 0.18));
-  const holeRadius = Math.max(8, Math.round(discSize * 0.045));
+  const labelRadius = Math.max(28, Math.round(discSize * 0.3));
+  const holeRadius = Math.max(10, Math.round(discSize * 0.065));
   const discX = Math.round((width - discSize) / 2);
   const discY = Math.round(
     (height - discSize) / 2 - (aspectRatio === "9:16" ? height * 0.02 : 0),

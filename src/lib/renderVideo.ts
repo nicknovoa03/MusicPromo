@@ -244,6 +244,18 @@ function extensionFromUri(uri: string): string {
   return /^[a-z0-9]{1,8}$/.test(ext) ? ext : "";
 }
 
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const normalized = hex.trim().replace(/^#/, "");
+  if (!/^[0-9a-fA-F]{6}$/.test(normalized)) {
+    throw new Error(`Invalid hex color "${hex}".`);
+  }
+  return {
+    r: Number.parseInt(normalized.slice(0, 2), 16),
+    g: Number.parseInt(normalized.slice(2, 4), 16),
+    b: Number.parseInt(normalized.slice(4, 6), 16),
+  };
+}
+
 function formatScheme(uri: string): string {
   const idx = uri.indexOf(":");
   return idx > 0 ? uri.slice(0, idx) : "unknown";
@@ -1070,6 +1082,11 @@ export async function renderSimpleSpinVideo(
     glowY,
   } = layout;
   const vinylTone = getVinylToneSpec("simple-spin");
+  const shadeRgb = hexToRgb(vinylTone.shadeHexColor);
+  const holeRgb = hexToRgb(vinylTone.holeHexColor);
+  const cdOuterRingRadius = Math.round(discRadius * 0.84);
+  const cdMidRingRadius = Math.round(discRadius * 0.64);
+  const cdInnerRingRadius = Math.round(discRadius * 0.42);
 
   const [preparedPhotoUri, preparedAudioUri] = await Promise.all([
     ensureRenderableInputUri(photoUri, "photo"),
@@ -1089,13 +1106,16 @@ export async function renderSimpleSpinVideo(
       `[0:v]${buildPhotoScaleCropFilter(discSize, discSize)}[disc_raw]`,
       `[disc_raw]format=rgba,geq='r=r(X,Y):g=g(X,Y):b=b(X,Y):a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${discRadius},2)),255,0)'[disc_circle]`,
       `color=c=${toFfmpegColor(vinylTone.shadeHexColor, 255)}:s=${discSize}x${discSize}:d=${duration}[disc_shade_raw]`,
-      `[disc_shade_raw]format=rgba,geq='r=0:g=0:b=0:a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${discRadius},2)),${vinylTone.shadeAlphaByte},0)'[disc_shade]`,
+      `[disc_shade_raw]format=rgba,geq='r=${shadeRgb.r}:g=${shadeRgb.g}:b=${shadeRgb.b}:a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${discRadius},2)),${vinylTone.shadeAlphaByte},0)'[disc_shade]`,
       `[disc_circle][disc_shade]overlay=0:0:format=auto[disc_dark]`,
+      `color=c=#e8f1ff@1.0:s=${discSize}x${discSize}:d=${duration}[cd_sheen_raw]`,
+      `[cd_sheen_raw]format=rgba,geq='r=232:g=241:b=255:a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${discRadius},2)),if(gte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${cdOuterRingRadius},2)),44,if(gte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${cdMidRingRadius},2)),26,if(gte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${cdInnerRingRadius},2)),14,0))),0)'[cd_sheen]`,
+      `[disc_dark][cd_sheen]overlay=0:0:format=auto[disc_reflective]`,
       `color=c=${toFfmpegColor(vinylTone.labelHexColor, vinylTone.labelAlphaByte)}:s=${discSize}x${discSize}:d=${duration}[label_raw]`,
       `[label_raw]format=rgba,geq='r=r(X,Y):g=g(X,Y):b=b(X,Y):a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${labelRadius},2)),${vinylTone.labelAlphaByte},0)'[label]`,
-      `[disc_dark][label]overlay=0:0:format=auto[disc_labeled]`,
+      `[disc_reflective][label]overlay=0:0:format=auto[disc_labeled]`,
       `color=c=${toFfmpegColor(vinylTone.holeHexColor, vinylTone.holeAlphaByte)}:s=${discSize}x${discSize}:d=${duration}[hole_raw]`,
-      `[hole_raw]format=rgba,geq='r=0:g=0:b=0:a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${holeRadius},2)),${vinylTone.holeAlphaByte},0)'[hole]`,
+      `[hole_raw]format=rgba,geq='r=${holeRgb.r}:g=${holeRgb.g}:b=${holeRgb.b}:a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${holeRadius},2)),${vinylTone.holeAlphaByte},0)'[hole]`,
       `[disc_labeled][hole]overlay=0:0:format=auto,format=rgba,rotate=${SPIN_SPEED}:ow=iw:oh=ih:fillcolor=black@0[disc_rot]`,
       `color=c=${toFfmpegColor(SIMPLE_SPIN_GLOW_HEX, 255)}:s=${glowSize}x${glowSize}:d=${duration}[glow_raw]`,
       `[glow_raw]format=rgba,geq='r=255:g=255:b=255:a=if(lte(pow(X-${glowRadius},2)+pow(Y-${glowRadius},2),pow(${glowRadius},2)),${SIMPLE_SPIN_GLOW_ALPHA_BYTE},0)'[glow]`,

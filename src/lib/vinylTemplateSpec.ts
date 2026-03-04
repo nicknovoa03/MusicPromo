@@ -15,14 +15,14 @@ export interface VinylToneSpec {
 const VINYL_TONES: Record<VinylToneId, VinylToneSpec> = {
   "simple-spin": {
     id: "simple-spin",
-    shadeHexColor: "#000000",
-    shadeAlphaByte: 132,
-    labelHexColor: "#e8e2d5",
-    labelAlphaByte: 238,
-    holeHexColor: "#000000",
-    holeAlphaByte: 255,
+    shadeHexColor: "#d7ddea",
+    shadeAlphaByte: 58,
+    labelHexColor: "#f5f8ff",
+    labelAlphaByte: 92,
+    holeHexColor: "#0e1016",
+    holeAlphaByte: 220,
     showGroovesInPreview: false,
-    showSheenInPreview: false,
+    showSheenInPreview: true,
   },
   "spinning-cd": {
     id: "spinning-cd",

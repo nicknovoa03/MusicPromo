@@ -16,6 +16,13 @@ interface VinylPreviewProps {
 }
 
 const GROOVE_SCALES = [0.92, 0.84, 0.76, 0.68, 0.6, 0.52, 0.44];
+const CD_RING_SCALES = [0.96, 0.82, 0.68, 0.54];
+const CD_RING_COLORS = [
+  "rgba(255,255,255,0.26)",
+  "rgba(198,216,255,0.2)",
+  "rgba(255,201,223,0.18)",
+  "rgba(220,255,244,0.18)",
+];
 const SPIN_DURATION_MS = 4200;
 
 export function VinylPreview({
@@ -26,6 +33,7 @@ export function VinylPreview({
 }: VinylPreviewProps) {
   const spinProgress = useRef(new Animated.Value(0)).current;
   const toneSpec = getVinylToneSpec(tone);
+  const isCdStyleTone = toneSpec.id === "simple-spin";
 
   useEffect(() => {
     if (!spinning) {
@@ -55,8 +63,8 @@ export function VinylPreview({
     outputRange: ["0deg", "360deg"],
   });
 
-  const labelSize = size * 0.28;
-  const holeSize = Math.max(size * 0.05, 6);
+  const labelSize = size * (isCdStyleTone ? 0.36 : 0.28);
+  const holeSize = Math.max(size * (isCdStyleTone ? 0.13 : 0.05), 6);
   const iconSize = Math.max(size * 0.2, 32);
 
   return (
@@ -67,6 +75,7 @@ export function VinylPreview({
           width: size,
           height: size,
           borderRadius: size / 2,
+          backgroundColor: isCdStyleTone ? "#bfc8d6" : "#121212",
         },
       ]}
     >
@@ -78,6 +87,7 @@ export function VinylPreview({
             height: size,
             borderRadius: size / 2,
             transform: [{ rotate: rotation }],
+            backgroundColor: isCdStyleTone ? "#ced7e4" : "#181818",
           },
         ]}
       >
@@ -133,6 +143,27 @@ export function VinylPreview({
             })}
           </View>
         ) : null}
+        {isCdStyleTone ? (
+          <View style={styles.cdRingsLayer}>
+            {CD_RING_SCALES.map((scale, index) => {
+              const ringSize = size * scale;
+              return (
+                <View
+                  key={String(scale)}
+                  style={[
+                    styles.cdRing,
+                    {
+                      width: ringSize,
+                      height: ringSize,
+                      borderRadius: ringSize / 2,
+                      borderColor: CD_RING_COLORS[index] ?? "rgba(255,255,255,0.16)",
+                    },
+                  ]}
+                />
+              );
+            })}
+          </View>
+        ) : null}
 
         <View
           style={[
@@ -162,6 +193,12 @@ export function VinylPreview({
             },
           ]}
         />
+        {isCdStyleTone ? (
+          <>
+            <View style={styles.cdIridescentStripeA} />
+            <View style={styles.cdIridescentStripeB} />
+          </>
+        ) : null}
         {toneSpec.showSheenInPreview ? <View style={styles.sheen} /> : null}
       </Animated.View>
     </View>
@@ -202,6 +239,15 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 0,
   },
+  cdRingsLayer: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cdRing: {
+    position: "absolute",
+    borderWidth: 1,
+  },
   groove: {
     position: "absolute",
     borderWidth: StyleSheet.hairlineWidth,
@@ -225,5 +271,25 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0,
     borderRightWidth: 0,
     transform: [{ rotate: "-18deg" }],
+  },
+  cdIridescentStripeA: {
+    position: "absolute",
+    width: "78%",
+    height: "24%",
+    top: "18%",
+    left: "12%",
+    borderRadius: 9999,
+    backgroundColor: "rgba(176,226,255,0.16)",
+    transform: [{ rotate: "-21deg" }],
+  },
+  cdIridescentStripeB: {
+    position: "absolute",
+    width: "72%",
+    height: "22%",
+    bottom: "16%",
+    right: "10%",
+    borderRadius: 9999,
+    backgroundColor: "rgba(255,194,226,0.14)",
+    transform: [{ rotate: "-24deg" }],
   },
 });

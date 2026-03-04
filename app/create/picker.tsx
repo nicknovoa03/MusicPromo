@@ -27,7 +27,7 @@ import { persistPickedMediaFile } from "@/lib/mediaStorage";
 import { decodeUriParam, encodeUriParam } from "@/lib/uri";
 import { normalizeMediaUri } from "@/lib/mediaUri";
 import { useLocalSession } from "@/providers/localSession";
-import { resolveTemplateId } from "@/lib/templates";
+import { DEFAULT_TEMPLATE_ID } from "@/lib/templates";
 
 type Tab = "photo" | "audio";
 
@@ -68,7 +68,7 @@ export default function PickerScreen() {
   const localProjectId = firstParam(params.localProjectId);
   const title = firstParam(params.title);
   const aspectRatio = firstParam(params.aspectRatio);
-  const templateId = resolveTemplateId(firstParam(params.templateId));
+  const templateId = DEFAULT_TEMPLATE_ID;
   const trimStart = firstParam(params.trimStart);
   const trimEnd = firstParam(params.trimEnd);
   const initialPhotoUri = normalizeMediaUri(decodeUriParam(firstParam(params.photoUri)));

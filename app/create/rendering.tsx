@@ -27,7 +27,7 @@ import {
 import { sleep } from "@/lib/utils";
 import { decodeUriParam, encodeUriParam } from "@/lib/uri";
 import { normalizeMediaUri } from "@/lib/mediaUri";
-import { getTemplateDefinition, resolveTemplateId } from "@/lib/templates";
+import { DEFAULT_TEMPLATE_ID, getTemplateDefinition } from "@/lib/templates";
 
 function isExpoGo(): boolean {
   return Constants.appOwnership === "expo";
@@ -108,7 +108,7 @@ export default function RenderingScreen() {
   const projectTitle = firstParam(params.title)?.trim() || "New Project";
   const audioName = firstParam(params.audioName) || "";
   const aspectRatio = firstParam(params.aspectRatio) === "1:1" ? "1:1" : "9:16";
-  const templateId = resolveTemplateId(firstParam(params.templateId));
+  const templateId = DEFAULT_TEMPLATE_ID;
   const previewTemplateDefinition = getTemplateDefinition(templateId);
   const TemplateStageComponent = previewTemplateDefinition.StageComponent;
   const previewPhotoUri = normalizeMediaUri(
@@ -169,7 +169,7 @@ export default function RenderingScreen() {
         : Math.min(trimEnd, trimStart + FAST_EXPORT_DURATION_SECONDS);
     const aspectRatio =
       firstParam(params.aspectRatio) === "1:1" ? "1:1" : "9:16";
-    const templateId = resolveTemplateId(firstParam(params.templateId));
+    const templateId = DEFAULT_TEMPLATE_ID;
     const selectedEngine = resolveRenderEngine({ templateId });
     activeEngineRef.current = selectedEngine;
     activeTemplateIdRef.current = templateId;
