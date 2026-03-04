@@ -1233,14 +1233,14 @@ export default function EditorScreen() {
       </View>
 
       <View style={styles.controls}>
+        <View style={styles.templateSwitcherWrap}>
+          <TemplateSwitcher
+            options={templateDefinitions}
+            value={templateId}
+            onChange={handleTemplateChange}
+          />
+        </View>
         <View style={styles.controlsTopRow}>
-          <View style={styles.templateSwitcherWrap}>
-            <TemplateSwitcher
-              options={templateDefinitions}
-              value={templateId}
-              onChange={handleTemplateChange}
-            />
-          </View>
           <AspectRatioToggle value={aspectRatio} onChange={setAspectRatio} />
         </View>
         <Text style={styles.timestamp}>
@@ -1486,12 +1486,10 @@ const styles = StyleSheet.create({
   controlsTopRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    gap: spacing.sm,
+    justifyContent: "flex-end",
   },
   templateSwitcherWrap: {
-    flex: 1,
-    alignItems: "flex-start",
+    width: "100%",
   },
   timestamp: {
     ...typography.caption,

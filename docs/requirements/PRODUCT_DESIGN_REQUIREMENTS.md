@@ -6,7 +6,7 @@
 - Doc owner: Nick
 - Stakeholders: Nick (sole developer / product owner)
 - Last updated (YYYY-MM-DD): 2026-03-04
-- Version: 1.1 (Phase 4 MVP pivot + release readiness)
+- Version: 1.2 (Template rail interaction update + release readiness)
 - Links: GitHub repo at `/home/nick/MusicPromo`
 
 ## 1) Product Summary
@@ -90,7 +90,7 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 2. **Onboarding** — 1-2 walkthrough screens for first-time users. Design TBD.
 3. **Home / Projects** — White background. "Projects" header, profile icon top-right. 2-column grid of project thumbnails with title + metadata. Black "+" FAB bottom-right. Empty state: illustration + "Create your first project."
 4. **Create — Media Picker** — Light background. Tabbed interface (Photo / Audio tabs, same layout for both). Cancel top-left, Add top-right. Search bar. Grid of device items.
-5. **Create — Editor/Trimmer** — Dark background. Video preview centered (top half). Timeline strip at bottom with frame thumbnails and scrubber. Play/pause, timestamp, undo/redo. Aspect ratio toggle. Trim handles. "Export" button top-right.
+5. **Create — Editor/Trimmer** — Dark background. Video preview centered (top half). Dedicated centered template rail (horizontal pill scroller with snap-to-center + active label), timeline strip at bottom with frame thumbnails and scrubber. Play/pause, timestamp, undo/redo. Aspect ratio toggle. Trim handles. "Export" button top-right.
 6. **Post-Export — Rendering** — Dark background. X top-left. Percentage text. Video preview with gradient border. "Please don't close" messaging.
 7. **Post-Export — Share** — Dark background. X top-left. "Ready to share" heading. Video preview. "Share to Instagram" gradient button. "Share to TikTok" button. "Saved to camera roll" confirmation.
 8. **Profile / Settings** — Spotify-inspired. Profile: large avatar, name, "Edit profile" button. Settings: list rows with chevrons. Sign out + delete account at bottom.
@@ -120,7 +120,7 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 - Relationships: Referenced by Projects
 - Typical queries: List all templates
 - Permissions: Read-only for users, admin-managed
-- v1: Single locked entry — `simple-spin` (CD-style spinning disc)
+- v1: Curated entries — `simple-spin` (Polished CD-style spinner) and `graphic-pop` (Graphic CD-style spinner)
 
 ### Push Token
 - Owner: User (per device)
@@ -171,9 +171,9 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
   - I can swap the photo without losing my audio selection (and vice versa)
   - I can choose between 9:16 (vertical) and 1:1 (square) aspect ratios
   - I can trim my audio to select which section plays
-- **Scope (v1):** Single locked template (`simple-spin`, CD-style spinner), on-device FFmpeg rendering, MP4 export
-- **Non-goals:** Multiple template selection in-app, AI generation, cloud rendering
-- **Key screens/components:** Create screen (photo picker, audio picker, audio trimmer, aspect ratio selector, preview player, export button)
+- **Scope (v1):** Curated template switching (`simple-spin` + `graphic-pop`), on-device FFmpeg rendering, MP4 export
+- **Non-goals:** AI generation, cloud rendering, open template marketplace
+- **Key screens/components:** Create screen (photo picker, audio picker, centered template rail, audio trimmer, aspect ratio selector, preview player, export button)
 - **Backend/data needs:** Project metadata saved to Convex after export
 - **Permissions/abuse risks:** Minimal — user's own content
 - **Analytics/events:** `create_started`, `photo_selected`, `audio_selected`, `preview_viewed`, `video_exported`
@@ -182,6 +182,7 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
   - User can select an audio file (MP3, WAV, M4A) from device
   - User can trim audio to select playback section
   - User can choose aspect ratio (9:16 or 1:1)
+  - User can switch templates from a dedicated centered rail in the editor
   - User sees a preview of the CD-style spinning disc video with their photo and audio
   - User can swap photo or audio without losing other selections
   - Video renders on-device and completes in under 60 seconds
@@ -324,9 +325,9 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 - **Route:** `/create/editor`
 - **Primary intent:** Preview, trim, and configure the promo video
 - **Header:** X/back (left), project name (center), "Export" button (right)
-- **Main sections:** Video preview (top, centered), play/pause + timestamp + undo/redo (middle), timeline strip with frame thumbnails + scrubber (bottom), aspect ratio toggle
+- **Main sections:** Video preview (top, centered), dedicated template rail (center-snapping pills with active template name), play/pause + timestamp + undo/redo (middle), timeline strip with frame thumbnails + scrubber (bottom), aspect ratio toggle
 - **Primary CTA:** "Export" button (top-right)
-- **Secondary actions:** Play/pause, trim handles, aspect ratio toggle (9:16 / 1:1), undo/redo
+- **Secondary actions:** Template rail swipe/tap selection, play/pause, trim handles, aspect ratio toggle (9:16 / 1:1), undo/redo
 - **Empty/loading/error:** Preview loading skeleton, "Rendering failed" + retry
 - **Theme:** Dark/black
 - **Analytics:** `preview_viewed`
@@ -521,7 +522,7 @@ Primary reference: Meta's Edits app. Secondary: Spotify (profile). Screenshots i
 
 ### Phase 1: MVP Core
 - Create flow (photo picker, audio picker, audio trim)
-- Single CD-style spinning disc template (`simple-spin`) with on-device rendering
+- Curated CD-style template set (`simple-spin`, `graphic-pop`) with on-device rendering
 - Aspect ratio selection (9:16 / 1:1)
 - Preview and export
 - Save to camera roll
@@ -543,12 +544,12 @@ Primary reference: Meta's Edits app. Secondary: Spotify (profile). Screenshots i
 - Tighten copy, interaction polish, and regression coverage
 
 ### Phase 4: MVP Lock + Release Readiness (Current)
-- Freeze MVP scope to one template and ship reliability over breadth
+- Freeze MVP scope to a curated two-template set and ship reliability over breadth
 - Keep local-only export architecture with FFmpeg as the active renderer
-- Defer multi-template authoring/parity work until after MVP release
+- Defer broad template-library authoring/parity work until after MVP release
 - Phase 4 implementation status (2026-03-04):
-  - Editor template selector removed from the MVP flow; app path is effectively single-template
-  - Template resolution is locked to `simple-spin` across picker, editor, and export routes
+  - Editor template selector is a dedicated centered rail (horizontal pills with snap-to-center behavior + active template label)
+  - Template resolution supports `simple-spin` and `graphic-pop` across picker, editor, and export routes
   - Disc visual treatment was updated to read as a CD (preview + export alignment pass)
   - Local FFmpeg export remains the active path; `remotion-local` remains experimental behind feature flag / fallback behavior
   - User-tested export path is working end-to-end for the current MVP slice
