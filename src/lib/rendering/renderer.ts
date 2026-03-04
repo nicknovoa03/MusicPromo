@@ -1,6 +1,4 @@
 import { ffmpegRenderer } from "@/lib/rendering/ffmpegRenderer";
-import { remotionLocalRenderer } from "@/lib/rendering/remotionLocalRenderer";
-import { resolvePreferredRenderEngine } from "@/lib/rendering/runtime";
 import type {
   RenderEngine,
   RenderRequest,
@@ -10,14 +8,13 @@ import type {
 
 const RENDERERS: Record<RenderEngine, Renderer> = {
   ffmpeg: ffmpegRenderer,
-  "remotion-local": remotionLocalRenderer,
 };
 
 export function resolveRenderEngine(request: {
   engine?: RenderEngine;
   templateId?: string;
 }): RenderEngine {
-  return request.engine ?? resolvePreferredRenderEngine(request.templateId);
+  return request.engine ?? "ffmpeg";
 }
 
 export function resolveRenderer(request: {

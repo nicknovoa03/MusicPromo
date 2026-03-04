@@ -1,6 +1,6 @@
 export type RenderAspectRatio = "9:16" | "1:1";
 
-export type RenderEngine = "ffmpeg" | "remotion-local";
+export type RenderEngine = "ffmpeg";
 
 export interface RenderRequest {
   templateId?: string;

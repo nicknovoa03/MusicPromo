@@ -1,4 +1,4 @@
-export type VinylToneId = "simple-spin" | "spinning-cd";
+export type VinylToneId = "simple-spin";
 
 export interface VinylToneSpec {
   id: VinylToneId;
@@ -23,17 +23,6 @@ const VINYL_TONES: Record<VinylToneId, VinylToneSpec> = {
     holeAlphaByte: 220,
     showGroovesInPreview: false,
     showSheenInPreview: true,
-  },
-  "spinning-cd": {
-    id: "spinning-cd",
-    shadeHexColor: "#000000",
-    shadeAlphaByte: 146,
-    labelHexColor: "#e8e2d5",
-    labelAlphaByte: 235,
-    holeHexColor: "#000000",
-    holeAlphaByte: 255,
-    showGroovesInPreview: false,
-    showSheenInPreview: false,
   },
 };
 

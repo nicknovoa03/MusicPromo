@@ -6,7 +6,7 @@
 - Doc owner: Nick
 - Stakeholders: Nick (sole developer / product owner)
 - Last updated (YYYY-MM-DD): 2026-03-04
-- Version: 1.0 (initial intake)
+- Version: 1.1 (Phase 4 MVP pivot + release readiness)
 - Links: GitHub repo at `/home/nick/MusicPromo`
 
 ## 1) Product Summary
@@ -120,7 +120,7 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 - Relationships: Referenced by Projects
 - Typical queries: List all templates
 - Permissions: Read-only for users, admin-managed
-- v1: Single entry — "Spinning CD"
+- v1: Single locked entry — `simple-spin` (CD-style spinning disc)
 
 ### Push Token
 - Owner: User (per device)
@@ -171,8 +171,8 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
   - I can swap the photo without losing my audio selection (and vice versa)
   - I can choose between 9:16 (vertical) and 1:1 (square) aspect ratios
   - I can trim my audio to select which section plays
-- **Scope (v1):** Single template (Spinning CD), on-device rendering, MP4 export
-- **Non-goals:** Multiple templates, AI generation, cloud rendering
+- **Scope (v1):** Single locked template (`simple-spin`, CD-style spinner), on-device FFmpeg rendering, MP4 export
+- **Non-goals:** Multiple template selection in-app, AI generation, cloud rendering
 - **Key screens/components:** Create screen (photo picker, audio picker, audio trimmer, aspect ratio selector, preview player, export button)
 - **Backend/data needs:** Project metadata saved to Convex after export
 - **Permissions/abuse risks:** Minimal — user's own content
@@ -182,7 +182,7 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
   - User can select an audio file (MP3, WAV, M4A) from device
   - User can trim audio to select playback section
   - User can choose aspect ratio (9:16 or 1:1)
-  - User sees a preview of the spinning CD video with their photo and audio
+  - User sees a preview of the CD-style spinning disc video with their photo and audio
   - User can swap photo or audio without losing other selections
   - Video renders on-device and completes in under 60 seconds
   - Rendering continues when app is backgrounded
@@ -381,7 +381,7 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 6. Pick audio file from device
 7. Trim audio to select playback section
 8. Choose aspect ratio (9:16 or 1:1)
-9. Preview spinning CD video
+9. Preview CD-style spinning disc video
 10. Tap Export
 11. Video renders on-device (progress indicator)
 12. Success screen: Save to Camera Roll / Share to Instagram / Share to TikTok / Done
@@ -507,7 +507,7 @@ Primary reference: Meta's Edits app. Secondary: Spotify (profile). Screenshots i
 - Onboarding screen design — still TBD (deferred to Phase 2)
 - User Profile exact fields — before Phase 2
 - Notification content strategy — before Phase 2
-- Can local Remotion rendering meet MVP export reliability/performance targets on real devices?
+- App Store production readiness gaps: do we have final screenshots, App Privacy answers, and required legal/support URLs prepared for submission?
 - ~~If local Remotion fails Phase 4 gates, which maintained FFmpeg fork becomes the long-term local export backend?~~ — RESOLVED (2026-03-04): keep the current FFmpeg backend as the active local export path behind the renderer abstraction while Remotion-native blockers are evaluated
 
 ## 14) Phasing and Milestones
@@ -521,7 +521,7 @@ Primary reference: Meta's Edits app. Secondary: Spotify (profile). Screenshots i
 
 ### Phase 1: MVP Core
 - Create flow (photo picker, audio picker, audio trim)
-- Spinning CD video template (on-device rendering)
+- Single CD-style spinning disc template (`simple-spin`) with on-device rendering
 - Aspect ratio selection (9:16 / 1:1)
 - Preview and export
 - Save to camera roll
@@ -542,18 +542,31 @@ Primary reference: Meta's Edits app. Secondary: Spotify (profile). Screenshots i
 - Improve crash/error observability around create/export/share
 - Tighten copy, interaction polish, and regression coverage
 
-### Phase 4: Template Fidelity + Export Standardization (MVP Final)
-- Standardize template authoring around one canonical template contract
-- Eliminate preview/export drift for migrated templates
-- Implement local Remotion spike with explicit pass/fail gates
-- Keep local-only export architecture (no cloud render dependency)
-- If Remotion fails gates, ship with maintained local FFmpeg fork behind renderer abstraction
-- Migrate existing templates to standardized system and prove fast new-template onboarding
+### Phase 4: MVP Lock + Release Readiness (Current)
+- Freeze MVP scope to one template and ship reliability over breadth
+- Keep local-only export architecture with FFmpeg as the active renderer
+- Defer multi-template authoring/parity work until after MVP release
 - Phase 4 implementation status (2026-03-04):
-  - Renderer runtime selection is wired through abstraction (`ffmpeg` fallback + `remotion-local` feature-flag path)
-  - `spinning-cd` migrated to a shared composition source used by both preview UI and local export settings
-  - `remotion-local` adapter is implemented behind the abstraction but currently falls back to local FFmpeg due missing native Remotion runtime support in this app architecture
-  - Required real-device go/no-go gates (30s export speed, <=100ms sync drift, 10-export crash test, preview/export fidelity) are still pending manual validation
+  - Editor template selector removed from the MVP flow; app path is effectively single-template
+  - Template resolution is locked to `simple-spin` across picker, editor, and export routes
+  - Disc visual treatment was updated to read as a CD (preview + export alignment pass)
+  - Local FFmpeg export remains the active path; `remotion-local` remains experimental behind feature flag / fallback behavior
+  - User-tested export path is working end-to-end for the current MVP slice
+- Next step in this phase: App Store production launch checklist
+  - Finalize App Store Connect metadata (description, keywords, support URL, marketing URL, age rating)
+  - Complete App Privacy questionnaire (tracking/data collection disclosures for Clerk/PostHog usage)
+  - Provide legal URLs required by review (Privacy Policy, Terms if used in app/submission metadata)
+  - Capture and upload final iPhone screenshots and app preview assets for required sizes
+  - Run release QA pass on production build (create -> trim -> preview -> export -> save/share, guest + signed-in paths)
+  - Verify crash-free smoke test on multiple real devices/OS versions and confirm export success rate targets
+  - Submit production build via EAS/App Store Connect and resolve any review feedback loop
+
+### Phase 5: Template System + Export Standardization (Post-MVP)
+- Standardize template authoring around one canonical template contract
+- Eliminate preview/export drift for additional templates
+- Re-evaluate local Remotion viability with explicit pass/fail gates
+- If Remotion remains blocked on-device, continue with maintained local FFmpeg backend behind renderer abstraction
+- Migrate additional templates and prove fast new-template onboarding
 
 ### Deferred (Post-v1)
 - SoundCloud URL audio extraction

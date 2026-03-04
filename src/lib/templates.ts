@@ -1,10 +1,8 @@
 import type { ComponentType } from "react";
 import { SimpleSpinTemplateStage } from "@/components/create/SimpleSpinTemplateStage";
-import { SpinningCdTemplateStage } from "@/components/create/SpinningCdTemplateStage";
 import {
   type RenderOptions,
   renderSimpleSpinVideo,
-  renderSpinningCdVideo,
 } from "@/lib/renderVideo";
 import type { VinylToneId } from "@/lib/vinylTemplateSpec";
 
@@ -42,16 +40,6 @@ const TEMPLATE_DEFINITIONS: Record<string, TemplateDefinition> = {
     parity: {
       layoutSpec: "simpleSpinTemplateSpec",
       vinylTone: "simple-spin",
-    },
-  },
-  "spinning-cd": {
-    id: "spinning-cd",
-    name: "Deck",
-    StageComponent: SpinningCdTemplateStage,
-    renderVideo: renderSpinningCdVideo,
-    parity: {
-      layoutSpec: "spinningCdTemplateSpec",
-      vinylTone: "spinning-cd",
     },
   },
 };

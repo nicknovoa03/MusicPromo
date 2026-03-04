@@ -29,7 +29,7 @@ export function VinylPreview({
   imageUri,
   size,
   spinning = true,
-  tone = "spinning-cd",
+  tone = "simple-spin",
 }: VinylPreviewProps) {
   const spinProgress = useRef(new Animated.Value(0)).current;
   const toneSpec = getVinylToneSpec(tone);
