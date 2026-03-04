@@ -1,0 +1,1 @@
+This is a quick interaction that allows you to delete a project. Also, this shows how you would rename or duplicate a project.

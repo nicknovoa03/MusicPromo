@@ -5,9 +5,9 @@
 - Product name: MusicPromo
 - Doc owner: Nick
 - Stakeholders: Nick (sole developer / product owner)
-- Last updated (YYYY-MM-DD): 2026-02-20
-- Version: 1.0 (initial intake)
-- Links: GitHub repo at `/home/nick/MusicPromo`
+- Last updated (YYYY-MM-DD): 2026-03-04
+- Version: 1.3 (Phase 3 branch wrap-up)
+- Links: GitHub repo at `/home/nick/MusicPromo`, template parity guide at `docs/requirements/TEMPLATE_PARITY_SYSTEM.md`
 
 ## 1) Product Summary
 
@@ -90,8 +90,8 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 2. **Onboarding** — 1-2 walkthrough screens for first-time users. Design TBD.
 3. **Home / Projects** — White background. "Projects" header, profile icon top-right. 2-column grid of project thumbnails with title + metadata. Black "+" FAB bottom-right. Empty state: illustration + "Create your first project."
 4. **Create — Media Picker** — Light background. Tabbed interface (Photo / Audio tabs, same layout for both). Cancel top-left, Add top-right. Search bar. Grid of device items.
-5. **Create — Editor/Trimmer** — Dark background. Video preview centered (top half). Timeline strip at bottom with frame thumbnails and scrubber. Play/pause, timestamp, undo/redo. Aspect ratio toggle. Trim handles. "Export" button top-right.
-6. **Post-Export — Rendering** — Dark background. X top-left. Percentage text. Video preview with gradient border. "Please don't close" messaging.
+5. **Create — Editor/Trimmer** — Dark background. Turntable-style template preview (top) with template toggle, timestamp + aspect ratio controls, selected media chips, project-name editing, autosave feedback, and audio trimmer with trim handles + playback progress. "Export" button top-right.
+6. **Post-Export — Rendering** — Dark background. X top-left. "Exporting" + percentage text. Uses the selected template preview composition from Create Editor. "Please don't close" messaging.
 7. **Post-Export — Share** — Dark background. X top-left. "Ready to share" heading. Video preview. "Share to Instagram" gradient button. "Share to TikTok" button. "Saved to camera roll" confirmation.
 8. **Profile / Settings** — Spotify-inspired. Profile: large avatar, name, "Edit profile" button. Settings: list rows with chevrons. Sign out + delete account at bottom.
 
@@ -110,8 +110,9 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 - Visibility: Private
 - Key fields: `userId`, `title` (optional), `templateId`, `aspectRatio`, `videoLength`, `photoUri` (local), `audioUri` (local), `exportedVideoUri` (local), `status` (draft/exported), `createdAt`, `updatedAt`
 - Relationships: Belongs to User, references Template
-- Typical queries: List projects by userId sorted by recent, get project by ID
-- Permissions: User CRUDs own projects only
+- Typical queries: List projects by userId sorted by recent, get project by ID; in guest mode, list local projects by `updatedAt`
+- Permissions: User CRUDs own projects only (Convex); guest mode uses local-only project persistence on-device
+- Guest local mirror: In local guest mode, projects are stored in AsyncStorage with local IDs (`local-*`) and the same core media/trim/status fields (no cloud sync, no cross-device continuity)
 
 ### Template
 - Owner: System
@@ -120,7 +121,7 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 - Relationships: Referenced by Projects
 - Typical queries: List all templates
 - Permissions: Read-only for users, admin-managed
-- v1: Single entry — "Spinning CD"
+- v1: Two built-in entries — "Simple Spin" and "Deck" (spinning CD)
 
 ### Push Token
 - Owner: User (per device)
@@ -170,19 +171,23 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 - **Secondary stories:**
   - I can swap the photo without losing my audio selection (and vice versa)
   - I can choose between 9:16 (vertical) and 1:1 (square) aspect ratios
+  - I can choose a visual template and keep it consistent from preview to export
   - I can trim my audio to select which section plays
-- **Scope (v1):** Single template (Spinning CD), on-device rendering, MP4 export
-- **Non-goals:** Multiple templates, AI generation, cloud rendering
-- **Key screens/components:** Create screen (photo picker, audio picker, audio trimmer, aspect ratio selector, preview player, export button)
+- **Scope (v1):** Two built-in templates (Simple Spin + Deck), on-device rendering, MP4 export
+- **Non-goals:** User-authored template builders, AI generation, cloud rendering
+- **Key screens/components:** Create screen (photo picker, audio picker, audio trimmer, aspect ratio selector, template selector, preview player, export button)
 - **Backend/data needs:** Project metadata saved to Convex after export
 - **Permissions/abuse risks:** Minimal — user's own content
-- **Analytics/events:** `create_started`, `photo_selected`, `audio_selected`, `preview_viewed`, `video_exported`
+- **Analytics/events:** `create_started`, `photo_selected`, `audio_selected`, `preview_viewed`, `video_export_started`, `video_exported`, `video_export_failed`
 - **Acceptance criteria:**
   - User can select a photo from camera roll
   - User can select an audio file (MP3, WAV, M4A) from device
   - User can trim audio to select playback section
+  - Brand-new projects default to a 15-second initial clip (trimStart=0, trimEnd=15)
   - User can choose aspect ratio (9:16 or 1:1)
-  - User sees a preview of the spinning CD video with their photo and audio
+  - User can choose between built-in templates (Simple Spin / Deck)
+  - User sees a preview of the selected template with their photo and audio
+  - Preview and export stay visually aligned through shared template specs
   - User can swap photo or audio without losing other selections
   - Video renders on-device and completes in under 60 seconds
   - Rendering continues when app is backgrounded
@@ -216,20 +221,30 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 
 - **User problem:** User wants to revisit past projects, re-export, or share again.
 - **Primary user story:** As a creator, I can see my past projects and re-open them to re-export or change settings.
-- **Scope (v1):** List past projects, open to view/edit, re-export with changed settings
-- **Non-goals:** Cloud file backup, project duplication/remix
+- **Scope (v1):** List past projects, open to view/edit, autosave core edits, re-export with changed settings, and delete a project via quick actions
+- **Non-goals:** Cloud file backup, collaborative editing, advanced timeline/effects editing
 - **Key screens/components:** Projects screen (list/grid of past projects), project detail view
-- **Backend/data needs:** Convex query for user's projects sorted by recent
-- **Analytics/events:** `project_reopened`
+- **Backend/data needs:** Signed-in users use Convex query/mutations (ownership checked); local guest users use AsyncStorage-backed local projects with create/update/delete + list by recency
+- **Analytics/events:** `project_reopened`, `project_actions_opened`, `project_delete_started`, `project_deleted`, `project_edit_started`, `project_autosave_succeeded`, `project_autosave_failed`, `project_media_replaced`, `project_title_edit_opened`, `project_title_updated`
 - **Acceptance criteria:**
   - User sees a list of past projects with metadata (date, aspect ratio, template)
   - User can tap a project to re-open it
+  - User can set/edit a project name from the editor flow and see it reflected in project history
+  - User sees autosave feedback while editing (`saving`, `saved`, `save_error`)
+  - Entering editor with selected photo+audio creates/updates a draft before export is tapped
+  - Backing out from editor preserves the draft in project history (signed-in via Convex, guest via local storage)
+  - User can open a project quick-actions sheet with Rename, Duplicate, and Delete actions
+  - Tapping Delete requires a destructive confirmation before any deletion occurs
+  - Confirmed deletion removes the project from history immediately
+  - Replacing photo preserves audio + trims + aspect ratio + title
+  - Replacing audio preserves photo + aspect ratio + title with safe trim clamping
   - User can change settings (aspect ratio, video length) and re-export
-  - If original files were deleted from device, show "Files not found" error gracefully
+  - If original files were deleted from device, show targeted "Files not found" recovery CTAs
 - **States:**
   - Loading: Skeleton/spinner while fetching from Convex
   - Empty: "No projects yet — create your first promo!"
   - Error: "Couldn't load projects" + retry
+  - Deleting: Show in-progress state and prevent duplicate delete actions
   - File-not-found: "Original files no longer on this device"
 
 ### Epic: Push Notifications
@@ -261,7 +276,7 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 - **Acceptance criteria:**
   - User can view their name, email, avatar
   - User can set default aspect ratio (9:16 or 1:1)
-  - User can set default video length
+  - User can set default video length (15, 30, or 60 seconds; default 15 seconds)
   - User can sign out
   - User can delete their account (soft-delete in Convex)
 - **States:**
@@ -299,13 +314,15 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 - **Primary intent:** Browse past projects, create new ones
 - **Header:** "Projects" title left, filter icon + profile avatar right
 - **Main sections:** 2-column grid of project cards (thumbnail, title, date/size)
+- **Data source:** Signed-in user = Convex projects; local guest user = AsyncStorage local projects
 - **Primary CTA:** Black "+" FAB button (bottom-right) → create flow
+- **Card actions:** Quick-actions menu with Rename, Duplicate (placeholder), and Delete (destructive + confirm)
 - **List behavior:** Vertical scroll, pull to refresh
 - **Empty state:** Illustration + "Create your first project" + "Keep track of your drafts and finished videos all in one place."
 - **Loading:** Skeleton grid
 - **Error:** "Couldn't load projects" + retry
 - **Theme:** Light/white
-- **Analytics:** `project_reopened` (on tap)
+- **Analytics:** `project_reopened` (on card tap), `project_actions_opened`, `project_delete_started`, `project_deleted`
 - **Reference:** `projects-history/Edits iOS Projects 0.png`, `Edits iOS Projects 1.png`
 
 ### Create — Media Picker
@@ -323,22 +340,27 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 ### Create — Editor/Trimmer
 - **Route:** `/create/editor`
 - **Primary intent:** Preview, trim, and configure the promo video
-- **Header:** X/back (left), project name (center), "Export" button (right)
-- **Main sections:** Video preview (top, centered), play/pause + timestamp + undo/redo (middle), timeline strip with frame thumbnails + scrubber (bottom), aspect ratio toggle
+- **Header:** X/back (left), editable project name control (center, opens compact name modal), "Export" button (right)
+- **Main sections:** Turntable template preview (top), template toggle, timestamp + aspect ratio controls, selected media chips (photo/audio swap), audio trimmer with handles + playback progress
 - **Primary CTA:** "Export" button (top-right)
-- **Secondary actions:** Play/pause, trim handles, aspect ratio toggle (9:16 / 1:1), undo/redo
+- **Secondary actions:** Play/pause, trim handles, aspect ratio toggle (9:16 / 1:1), template toggle, swap photo/audio, edit project name
+- **Default trim behavior:** Brand-new projects default to 15 seconds; reopened projects preserve last saved trim
+- **Draft persistence:** Selecting media and entering editor creates/updates a draft immediately; back/close preserves draft before export
+- **Save feedback:** Non-blocking autosave states (`saving`, `saved`, `save_error`) are shown in the editor header
 - **Empty/loading/error:** Preview loading skeleton, "Rendering failed" + retry
 - **Theme:** Dark/black
-- **Analytics:** `preview_viewed`
-- **Reference:** `create-flow/Create Flow - final media trimmer - screens 0.png`, `Create Flow - final media trimmer - screens 1.png`, `general-vibe/Edits iOS Creating a project 3.png`
+- **Analytics:** `preview_viewed`, `project_edit_started`, `project_autosave_succeeded`, `project_autosave_failed`, `project_media_replaced`, `project_title_edit_opened`, `project_title_updated`
+- **Reference:** `create-flow/Create Flow - final media trimmer - screens 0.png`, `create-flow/Create Flow - final media trimmer - screens 1.png`, `general-vibe/Edits iOS Creating a project 3.png`, `add-project-name/Edits iOS Adding a project name 0.png`, `add-project-name/Edits iOS Adding a project name 1.png`, `add-project-name/Edits iOS Adding a project name 2.png`, `add-project-name/Edits iOS Adding a project name 3.png`
 
 ### Post-Export — Rendering
-- **Route:** `/create/exporting`
+- **Route:** `/create/rendering`
 - **Primary intent:** Show rendering progress
 - **Header:** X button (left, to cancel)
-- **Main sections:** Large percentage text, video preview with gradient border, "Please don't close" message
+- **Main sections:** "Exporting" label, large percentage text, selected-template preview (same composition as Create Editor), "Please don't close" message
+- **Motion/output target:** High-quality output target is 30 FPS with 1080 base dimensions, ~8 Mbps video, and 256 kbps AAC audio
 - **Primary CTA:** None (wait state)
 - **Theme:** Dark/black
+- **Analytics:** `video_export_started`, `video_exported`, `video_export_failed`
 - **Reference:** `post-export/Edits iOS Exporting a video 1.png`
 
 ### Post-Export — Share
@@ -356,7 +378,7 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 - **Route:** `/profile`
 - **Primary intent:** View/edit profile, manage account and preferences
 - **Header:** Back arrow (left), "Settings" title (center)
-- **Main sections:** Profile card (avatar, name, "Edit profile" button), settings list (rows with chevrons: Account, default aspect ratio, default video length), sign out button, delete account
+- **Main sections:** Profile card (avatar, name, "Edit profile" button), settings list (rows with chevrons: Account, default aspect ratio, default video length with 15/30/60 presets), sign out button, delete account
 - **Primary CTA:** "Edit profile"
 - **Theme:** Dark (Spotify-inspired)
 - **Analytics:** None specific
@@ -381,7 +403,7 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 6. Pick audio file from device
 7. Trim audio to select playback section
 8. Choose aspect ratio (9:16 or 1:1)
-9. Preview spinning CD video
+9. Choose template (Simple Spin or Deck) and preview
 10. Tap Export
 11. Video renders on-device (progress indicator)
 12. Success screen: Save to Camera Roll / Share to Instagram / Share to TikTok / Done
@@ -468,9 +490,10 @@ Primary reference: Meta's Edits app. Secondary: Spotify (profile). Screenshots i
 - **Provider:** PostHog (React Native SDK)
 - **Event taxonomy:**
   - Core funnel: `app_opened`, `sign_in_completed`, `guest_mode_started`, `onboarding_completed`
-  - Create funnel: `create_started`, `photo_selected`, `audio_selected`, `preview_viewed`, `video_exported`
+  - Create funnel: `create_started`, `photo_selected`, `audio_selected`, `preview_viewed`, `video_export_started`, `video_exported`, `video_export_failed`, `project_create_failed_during_export`
   - Distribution: `video_saved_to_camera_roll`, `share_tapped_instagram`, `share_tapped_tiktok`
-  - Retention: `project_reopened`
+  - Project editing/history: `project_reopened`, `project_actions_opened`, `project_delete_started`, `project_deleted`, `project_edit_started`, `project_autosave_succeeded`, `project_autosave_failed`, `project_media_replaced`, `project_title_edit_opened`, `project_title_updated`
+  - Account/profile: `profile_preference_updated`, `account_delete_started`, `account_deleted`, `sign_out_tapped`, `sign_out_completed`
   - Notifications: `notification_received`, `notification_tapped`
 - **Logging for debugging:** Expo default logging + Convex function logs
 - **A/B testing needs:** None for v1
@@ -485,8 +508,10 @@ Primary reference: Meta's Edits app. Secondary: Spotify (profile). Screenshots i
 - **Media guidelines:**
   - Supported audio: MP3, WAV, M4A
   - Video output: MP4
+  - Export target quality: H.264 (~8 Mbps) + AAC (256 kbps)
+  - Output framerate target: 30 FPS
   - Aspect ratios: 9:16 (vertical), 1:1 (square)
-- **Offline / poor network:** Requires internet for auth and Convex sync. Local rendering works regardless. Phase 0: show "You're offline" message, block flows that need connectivity. Phase 1: queue Convex metadata writes locally and sync on reconnect.
+- **Offline / poor network:** Signed-in Convex sync requires internet. Local guest draft editing/history remains available on-device via AsyncStorage. Local rendering works regardless.
 - **Rate limits / spam prevention:** Not needed for v1
 
 ## 13) Risks and Open Questions
@@ -503,9 +528,9 @@ Primary reference: Meta's Edits app. Secondary: Spotify (profile). Screenshots i
 - ~~Create screen flow/layout~~ — RESOLVED: 2 screens (Media Picker + Editor/Trimmer)
 - ~~Visual design system~~ — RESOLVED: Edits-inspired dual theme (light browse / dark edit)
 - ~~Tone of voice~~ — RESOLVED: Casual and clear
-- Onboarding screen design — still TBD (deferred to Phase 2)
-- User Profile exact fields — before Phase 2
-- Notification content strategy — before Phase 2
+- Preview/export frame parity automation strategy (manual visual QA vs automated frame diff tooling)
+- Next built-in template roadmap beyond Simple Spin and Deck
+- Whether to keep duplicate as a placeholder action or ship full duplication behavior in next phase
 
 ## 14) Phasing and Milestones
 
@@ -534,9 +559,17 @@ Primary reference: Meta's Edits app. Secondary: Spotify (profile). Screenshots i
 - Offline queue for Convex metadata writes (local create → sync on reconnect)
 - Account deletion
 
+### Phase 3: Project Management and Fidelity
+- Project quick-actions from Home cards (Rename, Duplicate, Delete) with destructive delete confirmation
+- Core project editing workflow: editable title, autosave states, and draft persistence across signed-in + guest modes
+- Media replacement safety flow (photo/audio swap without losing other edits) with missing-file recovery CTAs
+- Two built-in templates (Simple Spin and Deck) with template selection and template-aware rendering
+- Shared template parity contract (layout + vinyl tone specs) to align editor preview and exported output
+- Export quality hardening: production defaults (no debug overlays, no fast mode), 15-second new-project default clip, and high-quality output settings
+
 ### Deferred (Post-v1)
 - SoundCloud URL audio extraction
-- Additional video templates and styles
+- Additional template families beyond the built-in Simple Spin + Deck set
 - AI-generated templates (Sora, etc.)
 - Label/agency multi-user accounts
 - Template marketplace

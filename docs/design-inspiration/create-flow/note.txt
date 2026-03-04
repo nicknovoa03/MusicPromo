@@ -5,4 +5,4 @@ You can pick both the audio and whatever picture you want to use on one screen, 
 After you pick both of those things, then you would have a different screen pop up of actually editing your newly generated media.
 Essentially, you would have it where you could edit the time and the different features of your generated media.
 
-With the stuff that I attached, I would like the audio picker and the image picker to pretty much look the same, right? You kind of just tab in between them, but they have the same looking interface.
+With the stuff that I attached, I wold like the audio picker and the image picker to pretty much look the same, right? You kind of just tab in between them, but they have the same looking interface.

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -7,25 +7,51 @@ import {
   Image,
   Dimensions,
   ActivityIndicator,
+  Modal,
+  TextInput,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { usePostHog } from "posthog-react-native";
-import * as FileSystem from "expo-file-system";
-import { Audio } from "expo-av";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
+import { ConvexError } from "convex/values";
+import * as FileSystem from "expo-file-system/legacy";
+import { Audio, type AVPlaybackStatus } from "expo-av";
+import { api } from "../../convex/_generated/api";
+import type { Id } from "../../convex/_generated/dataModel";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
 import { AudioTrimmer } from "@/components/create/AudioTrimmer";
 import {
   AspectRatioToggle,
   type AspectRatio,
 } from "@/components/create/AspectRatioToggle";
+import { TemplateToggle } from "@/components/create/TemplateToggle";
 import type { EventName } from "@/lib/analytics";
-import { fileNameFromUri } from "@/lib/uri";
+import { decodeUriParam, encodeUriParam, fileNameFromUri } from "@/lib/uri";
+import { normalizeMediaUri } from "@/lib/mediaUri";
+import { sleep } from "@/lib/utils";
+import { useLocalSession } from "@/providers/localSession";
+import { upsertLocalProject } from "@/lib/localProjects";
+import {
+  getTemplateDefinition,
+  listTemplateDefinitions,
+  resolveTemplateId,
+} from "@/lib/templates";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
-const PREVIEW_PADDING = spacing.xl * 2;
+const SCREEN_HEIGHT = Dimensions.get("window").height;
+const STAGE_HORIZONTAL_PADDING = spacing.lg * 2;
 const FALLBACK_AUDIO_DURATION = 180;
+const DEFAULT_TRIM_DURATION = 15;
+const DEFAULT_PROJECT_TITLE = "New Project";
+const TEMPLATE_OPTIONS = listTemplateDefinitions().map((template, index) => ({
+  id: template.id,
+  label: `T${index + 1}`,
+}));
 
 type MissingFilesState = {
   photo: boolean;
@@ -50,23 +76,80 @@ function parseAspectRatioParam(
   return firstParam(value) === "1:1" ? "1:1" : "9:16";
 }
 
+function asProjectId(value?: string) {
+  if (!value) return null;
+  return value as Id<"projects">;
+}
+
+function isUnauthenticatedConvexError(error: unknown) {
+  if (!(error instanceof ConvexError)) return false;
+  if (!error.data || typeof error.data !== "object") return false;
+  const code = (error.data as { code?: unknown }).code;
+  return code === "UNAUTHENTICATED";
+}
+
+function isGeneratedMediaName(value: string) {
+  return /^media-\d+-\d+(\.[a-z0-9]{1,8})?$/i.test(value.trim());
+}
+
+function fallbackMediaNameFromUri(uri: string, fallback: "Photo" | "Audio") {
+  const fromUri = fileNameFromUri(uri);
+  if (!fromUri || isGeneratedMediaName(fromUri)) return fallback;
+  return fromUri;
+}
+
+function displayMediaLabel(name: string, fallback: string) {
+  const trimmed = name.trim();
+  if (!trimmed) return fallback;
+  return trimmed.replace(/\.[a-z0-9]{1,8}$/i, "");
+}
+
 async function isMissingFile(uri?: string) {
-  if (!uri) return true;
-  if (!uri.startsWith("file://")) return false;
+  const normalizedUri = normalizeMediaUri(uri);
+  if (!normalizedUri) return true;
+  if (!normalizedUri.startsWith("file://")) return false;
 
   try {
-    const info = await FileSystem.getInfoAsync(uri);
-    return !info.exists;
+    const info = await FileSystem.getInfoAsync(normalizedUri);
+    if (info.exists) return false;
   } catch {
-    return true;
+    // Fall through to loader-based checks below.
   }
+
+  // Metadata checks can be wrong on some iOS sandboxed files.
+  // Try actually loading media before declaring "missing".
+  const isLikelyAudio = /\.(mp3|wav|m4a|aac|mp4)$/i.test(normalizedUri);
+  if (isLikelyAudio) {
+    const duration = await getAudioDurationSec(normalizedUri);
+    return !(duration && Number.isFinite(duration) && duration > 0);
+  }
+
+  return await new Promise<boolean>((resolve) => {
+    Image.getSize(
+      normalizedUri,
+      () => resolve(false),
+      () => resolve(true),
+    );
+  });
 }
 
 async function getAudioDurationSec(uri: string): Promise<number | null> {
+  const normalizedUri = normalizeMediaUri(uri);
+  if (!normalizedUri) return null;
+
+  if (normalizedUri.startsWith("file://")) {
+    try {
+      const info = await FileSystem.getInfoAsync(normalizedUri);
+      if (!info.exists) return null;
+    } catch {
+      return null;
+    }
+  }
+
   let sound: Audio.Sound | null = null;
   try {
     const created = await Audio.Sound.createAsync(
-      { uri },
+      { uri: normalizedUri },
       { shouldPlay: false },
       undefined,
       false,
@@ -117,45 +200,116 @@ function clampTrimRange(
   return [nextStart, nextEnd];
 }
 
+function formatClock(seconds: number): string {
+  const safe = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
+  const mins = Math.floor(safe / 60);
+  const secs = Math.floor(safe % 60);
+  return `${mins}:${secs.toString().padStart(2, "0")}`;
+}
+
 export default function EditorScreen() {
   const router = useRouter();
   const posthog = usePostHog();
   const params = useLocalSearchParams<{
     projectId?: string;
+    localProjectId?: string;
     title?: string;
     photoUri?: string;
     photoName?: string;
     audioUri?: string;
     audioName?: string;
     aspectRatio?: AspectRatio;
+    templateId?: string;
     trimStart?: string;
     trimEnd?: string;
+    returnToEditor?: string;
   }>();
 
   const projectId = firstParam(params.projectId);
-  const projectTitle = firstParam(params.title)?.trim() || "New Project";
-  const photoUri = firstParam(params.photoUri) ?? "";
-  const audioUri = firstParam(params.audioUri) ?? "";
-  const photoName = firstParam(params.photoName) || fileNameFromUri(photoUri) || "Photo";
-  const audioName = firstParam(params.audioName) || fileNameFromUri(audioUri) || "Audio";
+  const initialLocalProjectId = firstParam(params.localProjectId) || null;
+  const existingProjectId = asProjectId(projectId);
+  const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
+  const { isLocalGuest } = useLocalSession();
+  const paramTitle = firstParam(params.title)?.trim() || "";
+  const initialProjectTitle =
+    paramTitle || DEFAULT_PROJECT_TITLE;
+  const paramPhotoUri = normalizeMediaUri(decodeUriParam(firstParam(params.photoUri)));
+  const paramAudioUri = normalizeMediaUri(decodeUriParam(firstParam(params.audioUri)));
+  const paramPhotoName = firstParam(params.photoName);
+  const paramAudioName = firstParam(params.audioName);
+  const [currentProjectId, setCurrentProjectId] = useState<Id<"projects"> | null>(
+    existingProjectId,
+  );
+  const [currentLocalProjectId, setCurrentLocalProjectId] = useState<string | null>(
+    initialLocalProjectId,
+  );
+  const projectDetails = useQuery(
+    api.projects.getById,
+    currentProjectId ? { projectId: currentProjectId } : "skip",
+  );
+  const photoUri = paramPhotoUri || normalizeMediaUri(projectDetails?.photoUri) || "";
+  const audioUri = paramAudioUri || normalizeMediaUri(projectDetails?.audioUri) || "";
+  const photoName =
+    paramPhotoName ||
+    projectDetails?.photoName ||
+    fallbackMediaNameFromUri(photoUri, "Photo");
+  const audioName =
+    paramAudioName ||
+    projectDetails?.audioName ||
+    fallbackMediaNameFromUri(audioUri, "Audio");
   const initialAspectRatio = parseAspectRatioParam(params.aspectRatio);
+  const routeTemplateIdParam = firstParam(params.templateId);
+  const [templateId, setTemplateId] = useState(
+    resolveTemplateId(routeTemplateIdParam),
+  );
   const initialTrimStart = parseNumberParam(params.trimStart, 0);
-  const initialTrimEndRaw = parseNumberParam(params.trimEnd, 30);
+  const initialTrimEndRaw = parseNumberParam(params.trimEnd, DEFAULT_TRIM_DURATION);
   const initialTrimEnd =
     initialTrimEndRaw > initialTrimStart
       ? initialTrimEndRaw
-      : initialTrimStart + 30;
+      : initialTrimStart + DEFAULT_TRIM_DURATION;
 
+  const createProject = useMutation(api.projects.create);
+  const updateProject = useMutation(api.projects.update);
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>(initialAspectRatio);
   const [isPlaying, setIsPlaying] = useState(false);
   const [trimStart, setTrimStart] = useState(initialTrimStart);
   const [trimEnd, setTrimEnd] = useState(initialTrimEnd);
+  const [previewPositionSec, setPreviewPositionSec] = useState(0);
+  const [projectTitle, setProjectTitle] = useState(initialProjectTitle);
+  const [isNameModalVisible, setIsNameModalVisible] = useState(false);
+  const [projectNameDraft, setProjectNameDraft] = useState(
+    initialProjectTitle === DEFAULT_PROJECT_TITLE ? "" : initialProjectTitle,
+  );
   const [audioDurationSec, setAudioDurationSec] = useState(FALLBACK_AUDIO_DURATION);
   const [missingFiles, setMissingFiles] = useState<MissingFilesState>({
     photo: false,
     audio: false,
   });
   const [isCheckingFiles, setIsCheckingFiles] = useState(true);
+  const [editorSaveStatus, setEditorSaveStatus] = useState<
+    "idle" | "saving" | "saved" | "error"
+  >("idle");
+  const [forceAutosaveTick, setForceAutosaveTick] = useState(0);
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const forceAutosaveTickRef = useRef(0);
+  const initialSnapshotRef = useRef<string | null>(null);
+  const lastSavedSnapshotRef = useRef<string | null>(null);
+  const hasManuallySelectedTemplateRef = useRef(false);
+  const hasTrackedEditStartedRef = useRef(false);
+  const previousMediaUrisRef = useRef<{ photoUri: string; audioUri: string } | null>(null);
+  const draftCreationPromiseRef = useRef<Promise<Id<"projects"> | null> | null>(
+    null,
+  );
+  const localDraftCreationPromiseRef = useRef<Promise<string | null> | null>(null);
+  const previewSoundRef = useRef<Audio.Sound | null>(null);
+  const previewAudioUriRef = useRef<string | null>(null);
+  const playbackBusyRef = useRef(false);
+  const shouldWaitForProjectMedia =
+    !!currentProjectId &&
+    !paramPhotoUri &&
+    !paramAudioUri &&
+    projectDetails === undefined;
 
   const track = useCallback(
     (event: EventName, props?: Record<string, string>) => {
@@ -165,12 +319,192 @@ export default function EditorScreen() {
   );
 
   useEffect(() => {
+    if (!existingProjectId) return;
+    setCurrentProjectId(existingProjectId);
+  }, [existingProjectId]);
+
+  useEffect(() => {
+    if (!initialLocalProjectId) return;
+    setCurrentLocalProjectId(initialLocalProjectId);
+  }, [initialLocalProjectId]);
+
+  useEffect(() => {
+    if (!routeTemplateIdParam) return;
+    const resolvedTemplateId = resolveTemplateId(routeTemplateIdParam);
+    setTemplateId((previousTemplateId) =>
+      previousTemplateId === resolvedTemplateId
+        ? previousTemplateId
+        : resolvedTemplateId,
+    );
+    hasManuallySelectedTemplateRef.current = false;
+  }, [routeTemplateIdParam]);
+
+  useEffect(() => {
+    if (routeTemplateIdParam) return;
+    if (hasManuallySelectedTemplateRef.current) return;
+    const projectTemplateId = resolveTemplateId(projectDetails?.templateId);
+    setTemplateId((previousTemplateId) =>
+      previousTemplateId === projectTemplateId
+        ? previousTemplateId
+        : projectTemplateId,
+    );
+  }, [routeTemplateIdParam, projectDetails?.templateId]);
+
+  const TemplateStageComponent = getTemplateDefinition(templateId).StageComponent;
+
+  const createDraftProject = useCallback(async () => {
+    if (currentProjectId) return currentProjectId;
+    if (!isAuthenticated || !photoUri || !audioUri) return null;
+
+    if (draftCreationPromiseRef.current) {
+      return await draftCreationPromiseRef.current;
+    }
+
+    const roundedTrimStart = Math.round(trimStart * 100) / 100;
+    const roundedTrimEnd = Math.round(trimEnd * 100) / 100;
+    const normalizedTitle = projectTitle.trim() || DEFAULT_PROJECT_TITLE;
+    const pending = (async (): Promise<Id<"projects"> | null> => {
+      const tryCreate = async (retries = 1): Promise<Id<"projects"> | null> => {
+        try {
+          return await createProject({
+            title: normalizedTitle,
+            aspectRatio,
+            photoUri,
+            photoName,
+            audioUri,
+            audioName,
+            trimStart: roundedTrimStart,
+            trimEnd: roundedTrimEnd,
+            templateId,
+          });
+        } catch (error) {
+          if (isUnauthenticatedConvexError(error) && retries > 0) {
+            await sleep(600);
+            return await tryCreate(retries - 1);
+          }
+          return null;
+        }
+      };
+
+      return await tryCreate();
+    })();
+
+    draftCreationPromiseRef.current = pending;
+    try {
+      const createdProjectId = await pending;
+      if (createdProjectId) {
+        setCurrentProjectId(createdProjectId);
+      }
+      return createdProjectId;
+    } finally {
+      draftCreationPromiseRef.current = null;
+    }
+  }, [
+    currentProjectId,
+    isAuthenticated,
+    photoUri,
+    audioUri,
+    projectTitle,
+    aspectRatio,
+    trimStart,
+    trimEnd,
+    photoName,
+    audioName,
+    templateId,
+    createProject,
+  ]);
+
+  const createLocalDraftProject = useCallback(async () => {
+    if (currentLocalProjectId) return currentLocalProjectId;
+    if (!isLocalGuest || !photoUri || !audioUri) return null;
+
+    if (localDraftCreationPromiseRef.current) {
+      return await localDraftCreationPromiseRef.current;
+    }
+
+    const roundedTrimStart = Math.round(trimStart * 100) / 100;
+    const roundedTrimEnd = Math.round(trimEnd * 100) / 100;
+    const normalizedTitle = projectTitle.trim() || DEFAULT_PROJECT_TITLE;
+    const pending = (async (): Promise<string | null> => {
+      const project = await upsertLocalProject({
+        title: normalizedTitle,
+        templateId,
+        aspectRatio,
+        photoUri,
+        photoName,
+        audioUri,
+        audioName,
+        trimStart: roundedTrimStart,
+        trimEnd: roundedTrimEnd,
+        status: "draft",
+      });
+      return project.id;
+    })();
+
+    localDraftCreationPromiseRef.current = pending;
+    try {
+      const createdLocalProjectId = await pending;
+      if (createdLocalProjectId) {
+        setCurrentLocalProjectId(createdLocalProjectId);
+      }
+      return createdLocalProjectId;
+    } finally {
+      localDraftCreationPromiseRef.current = null;
+    }
+  }, [
+    currentLocalProjectId,
+    isLocalGuest,
+    photoUri,
+    audioUri,
+    projectTitle,
+    aspectRatio,
+    trimStart,
+    trimEnd,
+    photoName,
+    audioName,
+    templateId,
+  ]);
+
+  useEffect(() => {
+    if (currentProjectId || isAuthLoading || !isAuthenticated) return;
+    if (!photoUri || !audioUri) return;
+    void createDraftProject();
+  }, [
+    currentProjectId,
+    isAuthLoading,
+    isAuthenticated,
+    photoUri,
+    audioUri,
+    createDraftProject,
+  ]);
+
+  useEffect(() => {
+    if (!isLocalGuest || currentLocalProjectId) return;
+    if (!photoUri || !audioUri) return;
+    void createLocalDraftProject();
+  }, [
+    isLocalGuest,
+    currentLocalProjectId,
+    photoUri,
+    audioUri,
+    createLocalDraftProject,
+  ]);
+
+  useEffect(() => {
     track("preview_viewed", {
       hasPhoto: String(!!photoUri),
       hasAudio: String(!!audioUri),
-      reopened: String(!!projectId),
+      reopened: String(!!projectId || !!currentLocalProjectId),
     });
-  }, [audioUri, photoUri, projectId, track]);
+  }, [audioUri, photoUri, projectId, currentLocalProjectId, track]);
+
+  useEffect(() => {
+    return () => {
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     let isCancelled = false;
@@ -178,10 +512,17 @@ export default function EditorScreen() {
     async function checkFiles() {
       // Fresh create sessions use newly picked media; "files not found"
       // protection is only needed for reopened historical projects.
-      if (!projectId) {
+      if (!projectId && !currentLocalProjectId) {
         if (!isCancelled) {
           setMissingFiles({ photo: false, audio: false });
           setIsCheckingFiles(false);
+        }
+        return;
+      }
+
+      if (shouldWaitForProjectMedia) {
+        if (!isCancelled) {
+          setIsCheckingFiles(true);
         }
         return;
       }
@@ -202,7 +543,13 @@ export default function EditorScreen() {
     return () => {
       isCancelled = true;
     };
-  }, [photoUri, audioUri, projectId]);
+  }, [
+    photoUri,
+    audioUri,
+    projectId,
+    currentLocalProjectId,
+    shouldWaitForProjectMedia,
+  ]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -230,7 +577,10 @@ export default function EditorScreen() {
   }, [audioUri, missingFiles.audio]);
 
   const minTrimDuration = Math.min(15, Math.max(audioDurationSec, 1));
-  const maxTrimDuration = Math.min(60, Math.max(audioDurationSec, minTrimDuration));
+  const maxTrimDuration = Math.max(
+    minTrimDuration,
+    Math.min(audioDurationSec, 45),
+  );
 
   useEffect(() => {
     const [nextStart, nextEnd] = clampTrimRange(
@@ -250,12 +600,12 @@ export default function EditorScreen() {
     trimEnd,
   ]);
 
-  const previewAspect = aspectRatio === "9:16" ? 9 / 16 : 1;
-  const previewWidth = Math.min(
-    SCREEN_WIDTH - PREVIEW_PADDING,
-    aspectRatio === "1:1" ? 300 : 240,
+  const stageWidth = Math.min(SCREEN_WIDTH - STAGE_HORIZONTAL_PADDING, 440);
+  const targetStageHeight = stageWidth * (aspectRatio === "9:16" ? 1.22 : 1.02);
+  const stageHeight = Math.min(
+    Math.max(targetStageHeight, 300),
+    SCREEN_HEIGHT * (aspectRatio === "9:16" ? 0.52 : 0.48),
   );
-  const previewHeight = previewWidth / previewAspect;
 
   const handleTrimChange = useCallback((start: number, end: number) => {
     const [nextStart, nextEnd] = clampTrimRange(
@@ -269,38 +619,415 @@ export default function EditorScreen() {
     setTrimEnd(nextEnd);
   }, [audioDurationSec, minTrimDuration, maxTrimDuration]);
 
-  const handlePlayPause = useCallback(() => {
-    // TODO(phase-2): replace this placeholder with real audio preview playback state.
-    setIsPlaying((prev) => !prev);
+  const handleTemplateChange = useCallback((nextTemplateId: string) => {
+    const resolvedTemplateId = resolveTemplateId(nextTemplateId);
+    hasManuallySelectedTemplateRef.current = true;
+    setTemplateId((previousTemplateId) =>
+      previousTemplateId === resolvedTemplateId
+        ? previousTemplateId
+        : resolvedTemplateId,
+    );
   }, []);
+
+  const unloadPreviewSound = useCallback(async () => {
+    const sound = previewSoundRef.current;
+    previewSoundRef.current = null;
+    previewAudioUriRef.current = null;
+    setIsPlaying(false);
+    setPreviewPositionSec(0);
+    if (!sound) return;
+    try {
+      sound.setOnPlaybackStatusUpdate(null);
+    } catch {
+      // Ignore cleanup callback detach failures.
+    }
+    try {
+      await sound.unloadAsync();
+    } catch {
+      // Ignore unload failures.
+    }
+  }, []);
+
+  const stopAndResetPreview = useCallback(async () => {
+    const sound = previewSoundRef.current;
+    const startMillis = Math.round(Math.max(trimStart, 0) * 1000);
+    if (!sound) {
+      setIsPlaying(false);
+      setPreviewPositionSec(0);
+      return;
+    }
+    try {
+      await sound.pauseAsync();
+    } catch {
+      // Ignore pause failures.
+    }
+    try {
+      await sound.setPositionAsync(startMillis);
+    } catch {
+      // Ignore seek failures.
+    }
+    setIsPlaying(false);
+    setPreviewPositionSec(0);
+  }, [trimStart]);
+
+  const handlePlaybackStatusUpdate = useCallback(
+    (status: AVPlaybackStatus) => {
+      if (!status.isLoaded) return;
+
+      const safeTrimStart = Math.max(0, trimStart);
+      const safeTrimEnd = Math.max(safeTrimStart, trimEnd);
+      const endMillis = Math.round(safeTrimEnd * 1000);
+      const relativeSec = Math.max(0, status.positionMillis / 1000 - safeTrimStart);
+      setPreviewPositionSec(Math.min(relativeSec, safeTrimEnd - safeTrimStart));
+
+      if (
+        status.didJustFinish ||
+        (status.isPlaying && status.positionMillis >= endMillis - 40)
+      ) {
+        if (playbackBusyRef.current) return;
+        playbackBusyRef.current = true;
+        void (async () => {
+          await stopAndResetPreview();
+          playbackBusyRef.current = false;
+        })();
+      }
+    },
+    [trimStart, trimEnd, stopAndResetPreview],
+  );
+
+  const ensurePreviewSound = useCallback(async () => {
+    if (!audioUri) {
+      throw new Error("Missing audio file.");
+    }
+
+    const existingSound = previewSoundRef.current;
+    if (existingSound && previewAudioUriRef.current === audioUri) {
+      existingSound.setOnPlaybackStatusUpdate(handlePlaybackStatusUpdate);
+      return existingSound;
+    }
+
+    await unloadPreviewSound();
+
+    await Audio.setAudioModeAsync({
+      allowsRecordingIOS: false,
+      playsInSilentModeIOS: true,
+      shouldDuckAndroid: true,
+      playThroughEarpieceAndroid: false,
+    });
+
+    const nextSound = new Audio.Sound();
+    await nextSound.loadAsync(
+      { uri: audioUri },
+      {
+        shouldPlay: false,
+        positionMillis: Math.round(Math.max(trimStart, 0) * 1000),
+        progressUpdateIntervalMillis: 80,
+      },
+      false,
+    );
+    nextSound.setOnPlaybackStatusUpdate(handlePlaybackStatusUpdate);
+
+    previewSoundRef.current = nextSound;
+    previewAudioUriRef.current = audioUri;
+    return nextSound;
+  }, [audioUri, handlePlaybackStatusUpdate, trimStart, unloadPreviewSound]);
+
+  const handlePlayPause = useCallback(() => {
+    if (playbackBusyRef.current) return;
+    if (!audioUri || missingFiles.audio) {
+      Alert.alert(
+        "Audio not available",
+        "Select an audio file to preview playback.",
+      );
+      return;
+    }
+
+    playbackBusyRef.current = true;
+    void (async () => {
+      try {
+        if (isPlaying) {
+          await stopAndResetPreview();
+          return;
+        }
+
+        const sound = await ensurePreviewSound();
+        const startMillis = Math.round(Math.max(trimStart, 0) * 1000);
+        await sound.setPositionAsync(startMillis);
+        await sound.playAsync();
+        setPreviewPositionSec(0);
+        setIsPlaying(true);
+      } catch {
+        setIsPlaying(false);
+        setPreviewPositionSec(0);
+        Alert.alert(
+          "Preview unavailable",
+          "Couldn't play this track right now. Try re-selecting the audio file.",
+        );
+      } finally {
+        playbackBusyRef.current = false;
+      }
+    })();
+  }, [
+    audioUri,
+    ensurePreviewSound,
+    isPlaying,
+    missingFiles.audio,
+    stopAndResetPreview,
+    trimStart,
+  ]);
+
+  useEffect(() => {
+    void stopAndResetPreview();
+  }, [trimStart, trimEnd, stopAndResetPreview]);
+
+  useEffect(() => {
+    const sound = previewSoundRef.current;
+    if (!sound) return;
+    sound.setOnPlaybackStatusUpdate(handlePlaybackStatusUpdate);
+  }, [handlePlaybackStatusUpdate]);
+
+  useEffect(() => {
+    void unloadPreviewSound();
+  }, [audioUri, unloadPreviewSound]);
+
+  useEffect(() => {
+    if (missingFiles.audio || !audioUri) {
+      void unloadPreviewSound();
+    }
+  }, [audioUri, missingFiles.audio, unloadPreviewSound]);
+
+  useEffect(() => {
+    return () => {
+      void unloadPreviewSound();
+    };
+  }, [unloadPreviewSound]);
+
+  const handleOpenProjectNameModal = useCallback(() => {
+    setProjectNameDraft(
+      projectTitle === DEFAULT_PROJECT_TITLE ? "" : projectTitle,
+    );
+    setIsNameModalVisible(true);
+    track("project_title_edit_opened", {
+      reopened: String(!!existingProjectId || !!currentLocalProjectId),
+    });
+  }, [existingProjectId, currentLocalProjectId, projectTitle, track]);
+
+  const handleCloseProjectNameModal = useCallback(() => {
+    setIsNameModalVisible(false);
+  }, []);
+
+  const handleSaveProjectTitle = useCallback(() => {
+    const nextTitle = projectNameDraft.trim();
+    if (!nextTitle) return;
+    if (nextTitle !== projectTitle) {
+      setProjectTitle(nextTitle);
+      track("project_title_updated", {
+        reopened: String(!!existingProjectId || !!currentLocalProjectId),
+      });
+    }
+    setIsNameModalVisible(false);
+  }, [
+    existingProjectId,
+    currentLocalProjectId,
+    projectNameDraft,
+    projectTitle,
+    track,
+  ]);
+
+  useEffect(() => {
+    const hasRemoteProject = !!currentProjectId;
+    const hasLocalProject = !!currentLocalProjectId;
+    if (!hasRemoteProject && !hasLocalProject) return;
+    if (hasRemoteProject && shouldWaitForProjectMedia) return;
+
+    const roundedTrimStart = Math.round(trimStart * 100) / 100;
+    const roundedTrimEnd = Math.round(trimEnd * 100) / 100;
+    const normalizedTitle = projectTitle.trim() || DEFAULT_PROJECT_TITLE;
+    const trackedProjectId = currentProjectId
+      ? String(currentProjectId)
+      : (currentLocalProjectId ?? "local_draft");
+    const nextSnapshot = JSON.stringify({
+      title: normalizedTitle,
+      templateId,
+      aspectRatio,
+      trimStart: roundedTrimStart,
+      trimEnd: roundedTrimEnd,
+      photoUri,
+      audioUri,
+    });
+
+    if (!initialSnapshotRef.current) {
+      initialSnapshotRef.current = nextSnapshot;
+      lastSavedSnapshotRef.current = nextSnapshot;
+      setEditorSaveStatus("saved");
+      return;
+    }
+
+    const forceSave = forceAutosaveTick !== forceAutosaveTickRef.current;
+    if (forceSave) {
+      forceAutosaveTickRef.current = forceAutosaveTick;
+    }
+
+    if (!forceSave && nextSnapshot === lastSavedSnapshotRef.current) {
+      return;
+    }
+
+    if (
+      !hasTrackedEditStartedRef.current &&
+      nextSnapshot !== initialSnapshotRef.current
+    ) {
+      hasTrackedEditStartedRef.current = true;
+      track("project_edit_started", {
+        projectId: trackedProjectId,
+      });
+    }
+
+    if (autosaveTimerRef.current) {
+      clearTimeout(autosaveTimerRef.current);
+    }
+    setEditorSaveStatus("saving");
+
+    autosaveTimerRef.current = setTimeout(async () => {
+      try {
+        if (isLocalGuest && currentLocalProjectId) {
+          await upsertLocalProject({
+            id: currentLocalProjectId,
+            title: normalizedTitle,
+            templateId,
+            aspectRatio,
+            photoUri,
+            photoName,
+            audioUri,
+            audioName,
+            trimStart: roundedTrimStart,
+            trimEnd: roundedTrimEnd,
+            status: "draft",
+          });
+        } else if (currentProjectId) {
+          await updateProject({
+            projectId: currentProjectId,
+            title: normalizedTitle,
+            templateId,
+            aspectRatio,
+            trimStart: roundedTrimStart,
+            trimEnd: roundedTrimEnd,
+            photoUri,
+            photoName,
+            audioUri,
+            audioName,
+          });
+        } else {
+          return;
+        }
+        lastSavedSnapshotRef.current = nextSnapshot;
+        setEditorSaveStatus("saved");
+        track("project_autosave_succeeded", {
+          projectId: trackedProjectId,
+        });
+      } catch {
+        setEditorSaveStatus("error");
+        track("project_autosave_failed", {
+          projectId: trackedProjectId,
+        });
+      }
+    }, 700);
+
+    return () => {
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+      }
+    };
+  }, [
+    currentProjectId,
+    currentLocalProjectId,
+    isLocalGuest,
+    shouldWaitForProjectMedia,
+    forceAutosaveTick,
+    projectTitle,
+    templateId,
+    aspectRatio,
+    trimStart,
+    trimEnd,
+    photoUri,
+    photoName,
+    audioUri,
+    audioName,
+    track,
+    upsertLocalProject,
+    updateProject,
+  ]);
+
+  useEffect(() => {
+    const trackedProjectId = currentProjectId
+      ? String(currentProjectId)
+      : currentLocalProjectId;
+    if (!trackedProjectId) return;
+
+    if (!previousMediaUrisRef.current) {
+      previousMediaUrisRef.current = { photoUri, audioUri };
+      return;
+    }
+
+    const previous = previousMediaUrisRef.current;
+    const photoChanged = previous.photoUri !== photoUri;
+    const audioChanged = previous.audioUri !== audioUri;
+    previousMediaUrisRef.current = { photoUri, audioUri };
+
+    if (!photoChanged && !audioChanged) return;
+
+    track("project_media_replaced", {
+      projectId: trackedProjectId,
+      photoChanged: String(photoChanged),
+      audioChanged: String(audioChanged),
+    });
+  }, [currentProjectId, currentLocalProjectId, photoUri, audioUri, track]);
+
+  const handleCloseEditor = useCallback(() => {
+    void (async () => {
+      try {
+        if (isLocalGuest) {
+          await createLocalDraftProject();
+        } else {
+          await createDraftProject();
+        }
+      } finally {
+        router.replace("/(tabs)" as const);
+      }
+    })();
+  }, [isLocalGuest, createLocalDraftProject, createDraftProject, router]);
 
   const handleSwapMedia = useCallback(
     (initialTab: "photo" | "audio") => {
       router.push({
         pathname: "/create/picker",
         params: {
-          projectId: projectId ?? "",
+          projectId: currentProjectId ? String(currentProjectId) : "",
+          localProjectId: currentLocalProjectId ?? "",
           title: projectTitle,
-          photoUri,
+          photoUri: encodeUriParam(photoUri),
           photoName,
-          audioUri,
+          audioUri: encodeUriParam(audioUri),
           audioName,
           aspectRatio,
+          templateId,
           trimStart: String(trimStart),
           trimEnd: String(trimEnd),
           initialTab,
+          returnToEditor: "1",
         },
       });
     },
     [
       router,
-      projectId,
+      currentProjectId,
+      currentLocalProjectId,
       projectTitle,
       photoUri,
       photoName,
       audioUri,
       audioName,
       aspectRatio,
+      templateId,
       trimStart,
       trimEnd,
     ],
@@ -328,32 +1055,43 @@ export default function EditorScreen() {
     router.push({
       pathname: "/create/rendering",
       params: {
-        projectId: projectId ?? "",
+        projectId: currentProjectId ? String(currentProjectId) : "",
+        localProjectId: currentLocalProjectId ?? "",
         title: projectTitle,
-        photoUri,
-        audioUri,
+        photoUri: encodeUriParam(photoUri),
+        photoName,
+        audioUri: encodeUriParam(audioUri),
+        audioName,
         trimStart: String(safeTrimStart),
         trimEnd: String(safeTrimEnd),
         aspectRatio,
+        templateId,
       },
     });
   }, [
     canExport,
     router,
-    projectId,
+    currentProjectId,
+    currentLocalProjectId,
     projectTitle,
     photoUri,
+    photoName,
     audioUri,
+    audioName,
     trimStart,
     trimEnd,
     audioDurationSec,
     minTrimDuration,
     maxTrimDuration,
     aspectRatio,
+    templateId,
   ]);
 
   const trimmedDuration = Math.max(0, trimEnd - trimStart);
   const showMissingNotice = !isCheckingFiles && (missingFiles.photo || missingFiles.audio);
+  const trackTitle = displayMediaLabel(audioName, "Untitled track");
+  const subtitle = projectTitle.trim() || DEFAULT_PROJECT_TITLE;
+  const playbackLabel = isPlaying ? "Now Playing" : "Paused";
 
   let missingMessage = "The original files may have been moved or deleted. Replace missing files to continue.";
   if (missingFiles.photo && !missingFiles.audio) {
@@ -363,12 +1101,14 @@ export default function EditorScreen() {
     missingMessage =
       "The original audio file is no longer available on this device. Replace it to continue.";
   }
+  const canSaveProjectTitle =
+    projectNameDraft.trim().length > 0;
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       <View style={styles.header}>
         <Pressable
-          onPress={() => router.back()}
+          onPress={handleCloseEditor}
           style={styles.headerButton}
           accessibilityLabel="Go back"
           accessibilityRole="button"
@@ -376,9 +1116,21 @@ export default function EditorScreen() {
           <Ionicons name="close" size={24} color={colors.dark.text} />
         </Pressable>
 
-        <Text style={styles.headerTitle} numberOfLines={1}>
-          {projectTitle}
-        </Text>
+        <Pressable
+          onPress={handleOpenProjectNameModal}
+          style={styles.headerTitleButton}
+          accessibilityLabel="Edit project name"
+          accessibilityRole="button"
+        >
+          <Text style={styles.headerTitle} numberOfLines={1}>
+            {projectTitle}
+          </Text>
+          <Ionicons
+            name="chevron-down"
+            size={14}
+            color={colors.dark.textSecondary}
+          />
+        </Pressable>
 
         <Pressable
           onPress={handleExport}
@@ -400,6 +1152,87 @@ export default function EditorScreen() {
         </Pressable>
       </View>
 
+      <Modal
+        visible={isNameModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={handleCloseProjectNameModal}
+      >
+        <KeyboardAvoidingView
+          style={styles.projectNameModalRoot}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          <Pressable
+            style={styles.projectNameModalBackdrop}
+            onPress={handleCloseProjectNameModal}
+            accessibilityLabel="Close project name editor"
+            accessibilityRole="button"
+          />
+          <View style={styles.projectNameModalSheet}>
+            <View style={styles.projectNameModalHandle} />
+            <View style={styles.projectNameModalHeader}>
+              <Pressable
+                onPress={handleCloseProjectNameModal}
+                style={styles.projectNameHeaderButton}
+                accessibilityLabel="Close project name editor"
+                accessibilityRole="button"
+              >
+                <Ionicons name="close" size={18} color={colors.dark.text} />
+              </Pressable>
+              <Text style={styles.projectNameModalTitle}>Project name</Text>
+              <View style={styles.projectNameHeaderButton} />
+            </View>
+
+            <View style={styles.projectNameInputWrap}>
+              <TextInput
+                autoFocus
+                value={projectNameDraft}
+                onChangeText={setProjectNameDraft}
+                placeholder="Name your project..."
+                placeholderTextColor={colors.dark.textSecondary}
+                style={styles.projectNameInput}
+                maxLength={60}
+                returnKeyType="done"
+                onSubmitEditing={() => {
+                  if (!canSaveProjectTitle) return;
+                  void handleSaveProjectTitle();
+                }}
+              />
+              {projectNameDraft.length > 0 ? (
+                <Pressable
+                  onPress={() => setProjectNameDraft("")}
+                  accessibilityLabel="Clear project name"
+                  accessibilityRole="button"
+                >
+                  <Ionicons
+                    name="close-circle"
+                    size={18}
+                    color={colors.dark.textSecondary}
+                  />
+                </Pressable>
+              ) : null}
+            </View>
+
+            <Pressable
+              onPress={() => {
+                handleSaveProjectTitle();
+              }}
+              disabled={!canSaveProjectTitle}
+              style={({ pressed }) => [
+                styles.projectNameDoneButton,
+                !canSaveProjectTitle && styles.projectNameDoneButtonDisabled,
+                pressed && canSaveProjectTitle && styles.projectNameDoneButtonPressed,
+              ]}
+              accessibilityLabel="Save project name"
+              accessibilityRole="button"
+              accessibilityState={{ disabled: !canSaveProjectTitle }}
+            >
+              <Text style={styles.projectNameDoneText}>Done</Text>
+            </Pressable>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
       {showMissingNotice && (
         <View style={styles.missingNotice}>
           <Ionicons
@@ -415,57 +1248,31 @@ export default function EditorScreen() {
       )}
 
       <View style={styles.previewContainer}>
-        <View
-          style={[
-            styles.preview,
-            { width: previewWidth, height: previewHeight },
-          ]}
-        >
-          {photoUri && !missingFiles.photo ? (
-            <Image
-              source={{ uri: photoUri }}
-              style={styles.previewImage}
-              resizeMode="cover"
-              accessibilityLabel="Photo preview"
-            />
-          ) : (
-            <Ionicons
-              name="image-outline"
-              size={48}
-              color={colors.dark.textSecondary}
-            />
-          )}
-
-          <View style={styles.cdOverlay}>
-            <View style={styles.cdRing}>
-              <View style={styles.cdCenter} />
-            </View>
-            <Text style={styles.cdLabel}>Spinning CD preview</Text>
-          </View>
-        </View>
+        <TemplateStageComponent
+          width={stageWidth}
+          height={stageHeight}
+          aspectRatio={aspectRatio}
+          photoUri={photoUri && !isCheckingFiles && !missingFiles.photo ? photoUri : null}
+          isPlaying={isPlaying}
+          playbackLabel={playbackLabel}
+          trackTitle={trackTitle}
+          subtitle={subtitle}
+          onTogglePlay={handlePlayPause}
+        />
       </View>
 
       <View style={styles.controls}>
-        <Pressable
-          onPress={handlePlayPause}
-          style={styles.playButton}
-          accessibilityLabel={isPlaying ? "Pause" : "Play"}
-          accessibilityRole="button"
-        >
-          <Ionicons
-            name={isPlaying ? "pause" : "play"}
-            size={22}
-            color={colors.dark.text}
+        <View style={styles.controlsTopRow}>
+          <TemplateToggle
+            value={templateId}
+            options={TEMPLATE_OPTIONS}
+            onChange={handleTemplateChange}
           />
-        </Pressable>
-
+          <AspectRatioToggle value={aspectRatio} onChange={setAspectRatio} />
+        </View>
         <Text style={styles.timestamp}>
-          {/* TODO(phase-2): sync this timestamp to real audio playback position. */}
-          0:00 / {Math.floor(trimmedDuration / 60)}:
-          {String(Math.floor(trimmedDuration % 60)).padStart(2, "0")}
+          {formatClock(previewPositionSec)} / {formatClock(trimmedDuration)}
         </Text>
-
-        <AspectRatioToggle value={aspectRatio} onChange={setAspectRatio} />
       </View>
 
       <View style={styles.mediaChips}>
@@ -519,6 +1326,9 @@ export default function EditorScreen() {
           startSec={trimStart}
           endSec={trimEnd}
           onTrimChange={handleTrimChange}
+          isPlaying={isPlaying}
+          playbackProgressSec={previewPositionSec}
+          onTogglePlay={handlePlayPause}
           minDuration={minTrimDuration}
           maxDuration={maxTrimDuration}
         />
@@ -551,7 +1361,14 @@ const styles = StyleSheet.create({
     ...typography.body,
     fontWeight: "600",
     color: colors.dark.text,
+    maxWidth: "88%",
+  },
+  headerTitleButton: {
     flex: 1,
+    minHeight: 40,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     textAlign: "center",
     marginHorizontal: spacing.sm,
   },
@@ -575,6 +1392,82 @@ const styles = StyleSheet.create({
     ...typography.caption,
     fontWeight: "700",
     color: "#FFFFFF",
+  },
+  projectNameModalRoot: {
+    flex: 1,
+    justifyContent: "flex-end",
+  },
+  projectNameModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.45)",
+  },
+  projectNameModalSheet: {
+    backgroundColor: "#111318",
+    borderTopLeftRadius: radius.lg,
+    borderTopRightRadius: radius.lg,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.lg,
+    gap: spacing.sm,
+  },
+  projectNameModalHandle: {
+    alignSelf: "center",
+    width: 44,
+    height: 4,
+    borderRadius: radius.full,
+    backgroundColor: "rgba(255,255,255,0.25)",
+    marginBottom: spacing.xs,
+  },
+  projectNameModalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  projectNameHeaderButton: {
+    width: 30,
+    height: 30,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  projectNameModalTitle: {
+    ...typography.body,
+    color: colors.dark.text,
+    fontWeight: "700",
+  },
+  projectNameInputWrap: {
+    minHeight: 46,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.35)",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    paddingHorizontal: spacing.sm,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  projectNameInput: {
+    flex: 1,
+    ...typography.body,
+    color: colors.dark.text,
+    paddingVertical: spacing.sm,
+  },
+  projectNameDoneButton: {
+    minHeight: 46,
+    borderRadius: radius.md,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFFFFF",
+  },
+  projectNameDoneButtonDisabled: {
+    opacity: 0.35,
+  },
+  projectNameDoneButtonPressed: {
+    opacity: 0.85,
+  },
+  projectNameDoneText: {
+    ...typography.button,
+    color: colors.dark.background,
+    fontWeight: "700",
   },
   missingNotice: {
     marginHorizontal: spacing.lg,
@@ -608,62 +1501,181 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xs,
   },
-  preview: {
-    backgroundColor: colors.dark.surface,
+  turntableStage: {
+    width: "100%",
     borderRadius: radius.lg,
     overflow: "hidden",
-    alignItems: "center",
-    justifyContent: "center",
+    backgroundColor: "#BCBEC2",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,255,255,0.2)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.35,
+    shadowRadius: 24,
+    elevation: 10,
   },
-  previewImage: {
+  stageBackdropImage: {
     ...StyleSheet.absoluteFillObject,
-    borderRadius: radius.lg,
+    opacity: 0.26,
   },
-  cdOverlay: {
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm,
+  stageBackdropTint: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(196,198,204,0.88)",
   },
-  cdRing: {
+  stageHaloTop: {
+    position: "absolute",
+    top: -90,
+    right: -72,
+    width: 260,
+    height: 220,
+    borderRadius: 130,
+    backgroundColor: "rgba(255,255,255,0.4)",
+    transform: [{ rotate: "-12deg" }],
+  },
+  stageHaloBottom: {
+    position: "absolute",
+    bottom: -110,
+    left: -40,
+    width: 300,
+    height: 210,
+    borderRadius: 160,
+    backgroundColor: "rgba(255,255,255,0.36)",
+    transform: [{ rotate: "15deg" }],
+  },
+  stageBottomShade: {
+    position: "absolute",
+    left: -70,
+    right: -70,
+    bottom: 0,
+    height: 210,
+    borderTopLeftRadius: 240,
+    borderTopRightRadius: 240,
+    backgroundColor: "rgba(18,18,24,0.18)",
+  },
+  stageVinylWrap: {
+    position: "absolute",
+  },
+  tonearmPivot: {
+    position: "absolute",
+    top: 30,
+    right: 28,
     width: 80,
     height: 80,
     borderRadius: 40,
-    borderWidth: 3,
-    borderColor: "rgba(255,255,255,0.3)",
+    backgroundColor: "rgba(122,123,129,0.25)",
+  },
+  tonearmArm: {
+    position: "absolute",
+    top: 56,
+    right: 58,
+    width: 10,
+    height: 196,
+    borderRadius: radius.full,
+    backgroundColor: "#CED1D4",
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.28)",
+  },
+  tonearmHead: {
+    position: "absolute",
+    top: 244,
+    right: 45,
+    width: 26,
+    height: 40,
+    borderRadius: 8,
+    backgroundColor: "#24252B",
+    transform: [{ rotate: "26deg" }],
+  },
+  stageTextBlock: {
+    position: "absolute",
+    left: spacing.lg,
+    right: spacing.lg,
+    bottom: 94,
+    gap: spacing.xs,
+  },
+  nowPlayingLabel: {
+    ...typography.body,
+    color: "#FFFFFF",
+    fontSize: 32,
+    lineHeight: 34,
+    fontWeight: "700",
+    textShadowColor: "rgba(0,0,0,0.35)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  trackTitle: {
+    ...typography.body,
+    color: "rgba(255,255,255,0.96)",
+    fontSize: 18,
+    fontWeight: "700",
+    textShadowColor: "rgba(0,0,0,0.35)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  trackSubtitlePill: {
+    alignSelf: "flex-start",
+    marginTop: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.full,
+    backgroundColor: "rgba(255,255,255,0.9)",
+  },
+  trackSubtitle: {
+    ...typography.caption,
+    color: "rgba(21,22,26,0.9)",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  stageTransport: {
+    position: "absolute",
+    left: spacing.lg,
+    right: spacing.lg,
+    bottom: spacing.lg,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  stageTransportSpacer: {
+    flex: 1,
+  },
+  stageControlPill: {
+    minWidth: 56,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: "#1E1F24",
     alignItems: "center",
     justifyContent: "center",
+    paddingHorizontal: spacing.md,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  cdCenter: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: "rgba(255,255,255,0.4)",
+  stageControlPillPressed: {
+    opacity: 0.82,
+    transform: [{ scale: 0.97 }],
   },
-  cdLabel: {
-    ...typography.caption,
-    color: "rgba(255,255,255,0.5)",
+  stageControlPillGhost: {
+    marginLeft: spacing.sm,
   },
   controls: {
+    alignItems: "stretch",
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xs,
+    gap: spacing.sm,
+  },
+  controlsTopRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-  },
-  playButton: {
-    width: 44,
-    height: 44,
-    borderRadius: radius.full,
-    backgroundColor: colors.dark.surface,
-    alignItems: "center",
-    justifyContent: "center",
   },
   timestamp: {
     ...typography.caption,
     color: colors.dark.textSecondary,
     fontVariant: ["tabular-nums"],
+    textAlign: "center",
   },
   mediaChips: {
     flexDirection: "row",

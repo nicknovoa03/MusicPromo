@@ -3,6 +3,13 @@
     "name": "MusicPromo",
     "slug": "music-promo",
     "version": "1.0.0",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/7aca913d-9634-4d4a-b76e-edfc31229af9",
+      "fallbackToCacheTimeout": 0
+    },
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -40,7 +47,7 @@
         "expo-notifications",
         {
           "defaultChannel": "general",
-          "mode": "development",
+          "mode": "production",
           "enableBackgroundRemoteNotifications": true
         }
       ],
@@ -58,19 +65,15 @@
         }
       ],
       [
-        "@config-plugins/ffmpeg-kit-react-native",
-        {
-          "package": "min"
-        }
-      ],
-      [
         "expo-media-library",
         {
           "photosPermission": "MusicPromo saves exported videos to your camera roll.",
           "savePhotosPermission": "MusicPromo saves exported videos to your camera roll.",
           "isAccessMediaLocationEnabled": true
         }
-      ]
+      ],
+      "./plugins/withFfmpegBitcodeStrip",
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true

@@ -22,7 +22,12 @@ import {
   DEFAULT_LOCAL_PROFILE_PREFERENCES,
   getLocalProfilePreferences,
 } from "@/lib/localProfile";
+import { extractEmbeddedAudioArtworkUri } from "@/lib/audioArtwork";
+import { persistPickedMediaFile } from "@/lib/mediaStorage";
+import { decodeUriParam, encodeUriParam } from "@/lib/uri";
+import { normalizeMediaUri } from "@/lib/mediaUri";
 import { useLocalSession } from "@/providers/localSession";
+import { resolveTemplateId } from "@/lib/templates";
 
 type Tab = "photo" | "audio";
 
@@ -31,47 +36,46 @@ interface MediaSelection {
   photoName: string | null;
   audioUri: string | null;
   audioName: string | null;
+  audioArtworkUri: string | null;
 }
 
 const VIDEO_LENGTH_PRESETS = [15, 30, 60] as const;
+const DEFAULT_NEW_PROJECT_TRIM_END = 15;
 
 function firstParam(param: string | string[] | undefined) {
   return Array.isArray(param) ? param[0] : param;
-}
-
-function normalizeDefaultVideoLength(value: number | undefined) {
-  if (!Number.isFinite(value)) return VIDEO_LENGTH_PRESETS[0];
-  const safe = Math.max(15, Math.min(60, Math.round(value ?? 0)));
-
-  return VIDEO_LENGTH_PRESETS.reduce((closest, candidate) => {
-    return Math.abs(candidate - safe) < Math.abs(closest - safe)
-      ? candidate
-      : closest;
-  }, VIDEO_LENGTH_PRESETS[0]);
 }
 
 export default function PickerScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{
     projectId?: string;
+    localProjectId?: string;
     title?: string;
     photoUri?: string;
     photoName?: string;
     audioUri?: string;
     audioName?: string;
     aspectRatio?: "9:16" | "1:1";
+    templateId?: string;
     trimStart?: string;
     trimEnd?: string;
     initialTab?: Tab;
+    returnToEditor?: string;
   }>();
   const posthog = usePostHog();
   const projectId = firstParam(params.projectId);
+  const localProjectId = firstParam(params.localProjectId);
   const title = firstParam(params.title);
   const aspectRatio = firstParam(params.aspectRatio);
+  const templateId = resolveTemplateId(firstParam(params.templateId));
   const trimStart = firstParam(params.trimStart);
   const trimEnd = firstParam(params.trimEnd);
+  const initialPhotoUri = normalizeMediaUri(decodeUriParam(firstParam(params.photoUri)));
+  const initialAudioUri = normalizeMediaUri(decodeUriParam(firstParam(params.audioUri)));
   const initialTab =
     firstParam(params.initialTab) === "audio" ? "audio" : "photo";
+  const returnToEditor = firstParam(params.returnToEditor) === "1";
   const { isAuthenticated } = useConvexAuth();
   const { isLocalGuest } = useLocalSession();
   const currentUser = useQuery(api.users.current);
@@ -81,10 +85,11 @@ export default function PickerScreen() {
 
   const [activeTab, setActiveTab] = useState<Tab>(initialTab);
   const [media, setMedia] = useState<MediaSelection>({
-    photoUri: firstParam(params.photoUri) || null,
+    photoUri: initialPhotoUri || null,
     photoName: firstParam(params.photoName) || null,
-    audioUri: firstParam(params.audioUri) || null,
+    audioUri: initialAudioUri || null,
     audioName: firstParam(params.audioName) || null,
+    audioArtworkUri: null,
   });
   const [loading, setLoading] = useState(false);
 
@@ -106,9 +111,6 @@ export default function PickerScreen() {
   const preferredAspectRatio = useLocalDefaults
     ? localPreferences.defaultAspectRatio
     : currentUser?.preferences?.defaultAspectRatio ?? "9:16";
-  const preferredVideoLength = useLocalDefaults
-    ? localPreferences.defaultVideoLength
-    : normalizeDefaultVideoLength(currentUser?.preferences?.defaultVideoLength);
 
   const track = useCallback(
     (event: EventName, props?: Record<string, string>) => {
@@ -133,15 +135,23 @@ export default function PickerScreen() {
         mediaTypes: ["images"],
         quality: 1,
         allowsEditing: false,
+        // Prefer iOS-compatible output (e.g. JPEG) to avoid HEIC decode issues
+        // in FFmpeg-based rendering on release builds.
+        preferredAssetRepresentationMode:
+          ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
       });
 
       if (!result.canceled && result.assets[0]) {
         const asset = result.assets[0];
         const name =
           asset.fileName ?? asset.uri.split("/").pop() ?? "Photo";
+        const photoUri = await persistPickedMediaFile({
+          sourceUri: asset.uri,
+          fileNameHint: name,
+        });
         setMedia((prev) => ({
           ...prev,
-          photoUri: asset.uri,
+          photoUri,
           photoName: name,
         }));
         track("photo_selected", { source: "camera_roll" });
@@ -161,10 +171,21 @@ export default function PickerScreen() {
 
       if (!result.canceled && result.assets[0]) {
         const asset = result.assets[0];
+        const audioUri = await persistPickedMediaFile({
+          sourceUri: asset.uri,
+          fileNameHint: asset.name,
+        });
+        const audioArtworkUri = await extractEmbeddedAudioArtworkUri({
+          audioUri,
+          name: asset.name,
+          mimeType: asset.mimeType,
+          size: asset.size,
+        });
         setMedia((prev) => ({
           ...prev,
-          audioUri: asset.uri,
+          audioUri,
           audioName: asset.name,
+          audioArtworkUri,
         }));
         track("audio_selected", { format: asset.mimeType ?? "unknown" });
       }
@@ -172,6 +193,30 @@ export default function PickerScreen() {
       setLoading(false);
     }
   }, [track]);
+
+  useEffect(() => {
+    let isActive = true;
+    const audioUri = media.audioUri;
+
+    if (!audioUri || media.audioArtworkUri) return;
+
+    (async () => {
+      const artworkUri = await extractEmbeddedAudioArtworkUri({
+        audioUri,
+        name: media.audioName ?? undefined,
+      });
+      if (!isActive || !artworkUri) return;
+      setMedia((prev) =>
+        prev.audioUri === audioUri
+          ? { ...prev, audioArtworkUri: artworkUri }
+          : prev
+      );
+    })();
+
+    return () => {
+      isActive = false;
+    };
+  }, [media.audioUri, media.audioArtworkUri, media.audioName]);
 
   const handleAdd = useCallback(() => {
     if (activeTab === "photo") {
@@ -189,18 +234,20 @@ export default function PickerScreen() {
     if (media.photoUri && media.audioUri) {
       const nextAspectRatio = aspectRatio ?? preferredAspectRatio;
       const nextTrimStart = trimStart ?? "0";
-      const nextTrimEnd = trimEnd ?? String(preferredVideoLength);
+      const nextTrimEnd = trimEnd ?? String(DEFAULT_NEW_PROJECT_TRIM_END);
       const nextParams: Record<string, string> = {
-        photoUri: media.photoUri,
+        photoUri: encodeUriParam(media.photoUri),
         photoName: media.photoName ?? "Photo",
-        audioUri: media.audioUri,
+        audioUri: encodeUriParam(media.audioUri),
         audioName: media.audioName ?? "Audio",
         aspectRatio: nextAspectRatio,
+        templateId,
         trimStart: nextTrimStart,
         trimEnd: nextTrimEnd,
       };
 
       if (projectId) nextParams.projectId = projectId;
+      if (localProjectId) nextParams.localProjectId = localProjectId;
       if (title) nextParams.title = title;
 
       router.push({
@@ -213,12 +260,52 @@ export default function PickerScreen() {
     media,
     router,
     projectId,
+    localProjectId,
     title,
     aspectRatio,
     trimStart,
     trimEnd,
+    templateId,
     preferredAspectRatio,
-    preferredVideoLength,
+  ]);
+
+  const handleCancel = useCallback(() => {
+    if (returnToEditor) {
+      router.replace({
+        pathname: "/create/editor" as const,
+        params: {
+          projectId: projectId ?? "",
+          localProjectId: localProjectId ?? "",
+          title: title ?? "",
+          photoUri: firstParam(params.photoUri) ?? "",
+          photoName: firstParam(params.photoName) ?? "",
+          audioUri: firstParam(params.audioUri) ?? "",
+          audioName: firstParam(params.audioName) ?? "",
+          aspectRatio: aspectRatio ?? preferredAspectRatio,
+          templateId,
+          trimStart: trimStart ?? "0",
+          trimEnd: trimEnd ?? String(DEFAULT_NEW_PROJECT_TRIM_END),
+        },
+      });
+      return;
+    }
+
+    router.replace("/(tabs)" as const);
+  }, [
+    returnToEditor,
+    router,
+    projectId,
+    localProjectId,
+    title,
+    params.photoUri,
+    params.photoName,
+    params.audioUri,
+    params.audioName,
+    aspectRatio,
+    templateId,
+    preferredAspectRatio,
+    trimStart,
+    trimEnd,
   ]);
 
   const canAdd = activeTab === "photo" ? !!media.photoUri : !!media.audioUri;
@@ -229,13 +316,7 @@ export default function PickerScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Pressable
-          onPress={() => {
-            if (router.canGoBack()) {
-              router.back();
-            } else {
-              router.replace("/(tabs)" as const);
-            }
-          }}
+          onPress={handleCancel}
           style={styles.headerAction}
           accessibilityLabel="Cancel"
           accessibilityRole="button"
@@ -356,14 +437,51 @@ export default function PickerScreen() {
         </View>
       ) : (
         <View style={styles.content}>
+          {media.photoUri ? (
+            <Pressable
+              style={({ pressed }) => [
+                styles.linkedMediaCard,
+                pressed && styles.linkedMediaCardPressed,
+              ]}
+              onPress={() => setActiveTab("photo")}
+              accessibilityLabel="View selected photo"
+              accessibilityRole="button"
+            >
+              <Image
+                source={{ uri: media.photoUri }}
+                style={styles.linkedMediaThumb}
+                accessibilityLabel="Selected photo thumbnail"
+              />
+              <View style={styles.linkedMediaInfo}>
+                <Text style={styles.linkedMediaLabel}>Selected Photo</Text>
+                <Text style={styles.linkedMediaName} numberOfLines={1}>
+                  {media.photoName ?? "Photo"}
+                </Text>
+              </View>
+              <Ionicons
+                name="chevron-forward"
+                size={16}
+                color={colors.light.textSecondary}
+              />
+            </Pressable>
+          ) : null}
+
           {media.audioUri ? (
             <View style={styles.selectedMedia}>
               <View style={styles.audioThumb}>
-                <Ionicons
-                  name="musical-note"
-                  size={32}
-                  color={colors.accent.primary}
-                />
+                {media.audioArtworkUri ? (
+                  <Image
+                    source={{ uri: media.audioArtworkUri }}
+                    style={styles.audioArtwork}
+                    accessibilityLabel="Audio album artwork"
+                  />
+                ) : (
+                  <Ionicons
+                    name="musical-note"
+                    size={32}
+                    color={colors.accent.primary}
+                  />
+                )}
               </View>
               <View style={styles.selectedInfo}>
                 <View style={styles.selectedRow}>
@@ -527,6 +645,38 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: spacing.lg,
   },
+  linkedMediaCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.light.surface,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.light.border,
+    padding: spacing.sm,
+    marginBottom: spacing.md,
+    gap: spacing.sm,
+  },
+  linkedMediaCardPressed: {
+    opacity: 0.85,
+  },
+  linkedMediaThumb: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.sm,
+  },
+  linkedMediaInfo: {
+    flex: 1,
+  },
+  linkedMediaLabel: {
+    ...typography.caption,
+    color: colors.light.textSecondary,
+    marginBottom: 2,
+  },
+  linkedMediaName: {
+    ...typography.body,
+    color: colors.light.text,
+    fontWeight: "600",
+  },
   pickArea: {
     flex: 1,
     alignItems: "center",
@@ -576,6 +726,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.light.border,
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
+  },
+  audioArtwork: {
+    width: "100%",
+    height: "100%",
   },
   selectedInfo: {
     flexDirection: "row",

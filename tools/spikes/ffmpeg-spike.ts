@@ -16,7 +16,7 @@ export async function runFfmpegSpike(
   imageUri: string,
   audioUri: string,
 ): Promise<string> {
-  const outputPath = `${Paths.cache.uri}spike_output.mp4`;
+  const outputPath = Paths.join(Paths.cache, "spike_output.mp4");
 
   const cmd = [
     "-y",
