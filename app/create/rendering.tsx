@@ -19,32 +19,19 @@ import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
 import type { EventName } from "@/lib/analytics";
+import { cancelRendererWork, renderVideoWithRenderer } from "@/lib/rendering";
 import { sleep } from "@/lib/utils";
 
 function isExpoGo(): boolean {
   return Constants.appOwnership === "expo";
 }
 
-type RenderVideoModule = typeof import("@/lib/renderVideo");
-let renderModule: RenderVideoModule | null = null;
 const PREVIEW_SIZE = 220;
 
-async function getRenderModule(): Promise<RenderVideoModule> {
-  if (isExpoGo()) {
-    throw new Error(
-      "Video rendering requires a development build.\n\nIt cannot run in Expo Go. Run 'npx expo run:android' or 'npx expo run:ios' to test.",
-    );
-  }
-  if (!renderModule) {
-    renderModule = await import("@/lib/renderVideo");
-  }
-  return renderModule;
-}
-
 async function cancelCurrentRender(): Promise<void> {
-  if (isExpoGo() || !renderModule) return;
+  if (isExpoGo()) return;
   try {
-    await renderModule.cancelCurrentRender();
+    await cancelRendererWork("ffmpeg");
   } catch {
     // Ignore
   }
@@ -166,8 +153,15 @@ export default function RenderingScreen() {
     }
 
     try {
-      const { renderSpinningCdVideo } = await getRenderModule();
-      const videoUri = await renderSpinningCdVideo({
+      if (isExpoGo()) {
+        throw new Error(
+          "Video rendering requires a development build.\n\nIt cannot run in Expo Go. Run 'npx expo run:android' or 'npx expo run:ios' to test.",
+        );
+      }
+
+      const renderResult = await renderVideoWithRenderer({
+        engine: "ffmpeg",
+        templateId: "spinning-cd",
         photoUri,
         audioUri,
         trimStart,
@@ -182,6 +176,7 @@ export default function RenderingScreen() {
           }).start();
         },
       });
+      const videoUri = renderResult.videoUri;
 
       if (!isScreenActiveRef.current || isCanceledRef.current) return;
 
