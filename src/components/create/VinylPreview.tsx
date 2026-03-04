@@ -7,6 +7,7 @@ import {
   toRgba,
   type VinylToneId,
 } from "@/lib/vinylTemplateSpec";
+import { getCenterTextureSpec } from "@/lib/simpleSpinTemplateSpec";
 
 interface VinylPreviewProps {
   imageUri?: string | null;
@@ -15,13 +16,13 @@ interface VinylPreviewProps {
   tone?: VinylToneId;
 }
 
-const GROOVE_SCALES = [0.92, 0.84, 0.76, 0.68, 0.6, 0.52, 0.44];
-const CD_RING_SCALES = [0.96, 0.82, 0.68, 0.54];
+const GROOVE_SCALES = [0.95, 0.89, 0.83, 0.77, 0.71, 0.65, 0.59, 0.53, 0.47];
+const CD_RING_SCALES = [0.93, 0.78, 0.62, 0.46];
 const CD_RING_COLORS = [
-  "rgba(255,255,255,0.26)",
-  "rgba(198,216,255,0.2)",
-  "rgba(255,201,223,0.18)",
-  "rgba(220,255,244,0.18)",
+  "rgba(255,255,255,0.3)",
+  "rgba(188,214,255,0.24)",
+  "rgba(255,201,223,0.2)",
+  "rgba(220,255,244,0.2)",
 ];
 const SPIN_DURATION_MS = 4200;
 
@@ -34,6 +35,7 @@ export function VinylPreview({
   const spinProgress = useRef(new Animated.Value(0)).current;
   const toneSpec = getVinylToneSpec(tone);
   const isCdStyleTone = toneSpec.id === "simple-spin";
+  const isGraphicTone = toneSpec.id === "graphic-pop";
 
   useEffect(() => {
     if (!spinning) {
@@ -63,8 +65,20 @@ export function VinylPreview({
     outputRange: ["0deg", "360deg"],
   });
 
-  const labelSize = size * (isCdStyleTone ? 0.36 : 0.28);
-  const holeSize = Math.max(size * (isCdStyleTone ? 0.13 : 0.05), 6);
+  const labelSize = size * (isCdStyleTone ? 0.36 : isGraphicTone ? 0.19 : 0.28);
+  const holeSize = Math.max(
+    size * (isCdStyleTone ? 0.13 : isGraphicTone ? 0.085 : 0.05),
+    6,
+  );
+  const spindleRingSize = Math.max(holeSize * (isGraphicTone ? 1.7 : 2.3), 14);
+  const outerRimWidth = Math.max(size * 0.017, 1.2);
+  const innerRimSize = size * 0.955;
+  const centerTexture = getCenterTextureSpec(size);
+  const graphicInnerRingSize = centerTexture.ringRadius * 2;
+  const graphicInnerRingBorderWidth = centerTexture.ringThickness;
+  const graphicInnerShadowSize = centerTexture.shadowOuterRadius * 2;
+  const graphicInnerShadowOffsetX = centerTexture.shadowOffsetX;
+  const graphicInnerShadowOffsetY = centerTexture.shadowOffsetY;
   const iconSize = Math.max(size * 0.2, 32);
 
   return (
@@ -75,7 +89,11 @@ export function VinylPreview({
           width: size,
           height: size,
           borderRadius: size / 2,
-          backgroundColor: isCdStyleTone ? "#bfc8d6" : "#121212",
+          backgroundColor: isGraphicTone
+            ? "#bcc3cd"
+            : isCdStyleTone
+              ? "#bfc8d6"
+              : "#121212",
         },
       ]}
     >
@@ -87,7 +105,11 @@ export function VinylPreview({
             height: size,
             borderRadius: size / 2,
             transform: [{ rotate: rotation }],
-            backgroundColor: isCdStyleTone ? "#ced7e4" : "#181818",
+            backgroundColor: isGraphicTone
+              ? "#d4d9e0"
+              : isCdStyleTone
+                ? "#ced7e4"
+                : "#181818",
           },
         ]}
       >
@@ -116,6 +138,27 @@ export function VinylPreview({
                 toneSpec.shadeHexColor,
                 toneSpec.shadeAlphaByte,
               ),
+            },
+          ]}
+        />
+        <View
+          style={[
+            styles.outerRim,
+            {
+              borderRadius: size / 2,
+              borderWidth: outerRimWidth,
+            },
+          ]}
+        />
+        <View
+          style={[
+            styles.innerRim,
+            {
+              width: innerRimSize,
+              height: innerRimSize,
+              borderRadius: innerRimSize / 2,
+              top: (size - innerRimSize) / 2,
+              left: (size - innerRimSize) / 2,
             },
           ]}
         />
@@ -179,6 +222,50 @@ export function VinylPreview({
             },
           ]}
         />
+        {isGraphicTone ? (
+          <>
+            <View
+              style={[
+                styles.graphicInnerShadowRing,
+                {
+                  width: graphicInnerShadowSize,
+                  height: graphicInnerShadowSize,
+                  borderRadius: graphicInnerShadowSize / 2,
+                  borderWidth: graphicInnerRingBorderWidth + 0.8,
+                  top:
+                    (size - graphicInnerShadowSize) / 2 + graphicInnerShadowOffsetY,
+                  left:
+                    (size - graphicInnerShadowSize) / 2 + graphicInnerShadowOffsetX,
+                },
+              ]}
+            />
+            <View
+              style={[
+                styles.graphicInnerRing,
+                {
+                  width: graphicInnerRingSize,
+                  height: graphicInnerRingSize,
+                  borderRadius: graphicInnerRingSize / 2,
+                  borderWidth: graphicInnerRingBorderWidth,
+                  top: (size - graphicInnerRingSize) / 2,
+                  left: (size - graphicInnerRingSize) / 2,
+                },
+              ]}
+            />
+          </>
+        ) : null}
+        {isGraphicTone ? null : (
+          <View
+            style={[
+              styles.spindleRing,
+              {
+                width: spindleRingSize,
+                height: spindleRingSize,
+                borderRadius: spindleRingSize / 2,
+              },
+            ]}
+          />
+        )}
         <View
           style={[
             styles.hole,
@@ -201,6 +288,36 @@ export function VinylPreview({
         ) : null}
         {toneSpec.showSheenInPreview ? <View style={styles.sheen} /> : null}
       </Animated.View>
+      {isGraphicTone ? null : (
+        <>
+          <View
+            pointerEvents="none"
+            style={[
+              styles.staticSpecular,
+              {
+                width: size * 0.84,
+                height: size * 0.32,
+                borderRadius: size * 0.42,
+                top: size * 0.11,
+                left: size * 0.08,
+              },
+            ]}
+          />
+          <View
+            pointerEvents="none"
+            style={[
+              styles.staticEdgeShadow,
+              {
+                width: size * 0.88,
+                height: size * 0.24,
+                borderRadius: size * 0.44,
+                bottom: size * 0.1,
+                left: size * 0.06,
+              },
+            ]}
+          />
+        </>
+      )}
     </View>
   );
 }
@@ -211,9 +328,9 @@ const styles = StyleSheet.create({
     backgroundColor: "#121212",
     shadowColor: "#000000",
     shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.35,
-    shadowRadius: 20,
-    elevation: 14,
+    shadowOpacity: 0.42,
+    shadowRadius: 24,
+    elevation: 16,
   },
   surface: {
     overflow: "hidden",
@@ -232,6 +349,15 @@ const styles = StyleSheet.create({
   },
   darken: {
     ...StyleSheet.absoluteFillObject,
+  },
+  outerRim: {
+    ...StyleSheet.absoluteFillObject,
+    borderColor: "rgba(10,14,22,0.38)",
+  },
+  innerRim: {
+    position: "absolute",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
   },
   groovesLayer: {
     ...StyleSheet.absoluteFillObject,
@@ -254,6 +380,26 @@ const styles = StyleSheet.create({
   },
   label: {
     borderWidth: 0,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 4,
+  },
+  graphicInnerRing: {
+    position: "absolute",
+    borderColor: "rgba(246,248,251,0.48)",
+    backgroundColor: "transparent",
+  },
+  graphicInnerShadowRing: {
+    position: "absolute",
+    borderColor: "rgba(0,0,0,0.0)",
+    backgroundColor: "transparent",
+  },
+  spindleRing: {
+    position: "absolute",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.28)",
+    backgroundColor: "rgba(14,17,27,0.3)",
   },
   hole: {
     position: "absolute",
@@ -291,5 +437,17 @@ const styles = StyleSheet.create({
     borderRadius: 9999,
     backgroundColor: "rgba(255,194,226,0.14)",
     transform: [{ rotate: "-24deg" }],
+  },
+  staticSpecular: {
+    position: "absolute",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    transform: [{ rotate: "-20deg" }],
+  },
+  staticEdgeShadow: {
+    position: "absolute",
+    backgroundColor: "rgba(0,0,0,0.13)",
+    transform: [{ rotate: "14deg" }],
   },
 });

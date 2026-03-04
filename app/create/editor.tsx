@@ -29,6 +29,7 @@ import {
   AspectRatioToggle,
   type AspectRatio,
 } from "@/components/create/AspectRatioToggle";
+import { TemplateSwitcher } from "@/components/create/TemplateSwitcher";
 import type { EventName } from "@/lib/analytics";
 import { decodeUriParam, encodeUriParam, fileNameFromUri } from "@/lib/uri";
 import { normalizeMediaUri } from "@/lib/mediaUri";
@@ -36,8 +37,9 @@ import { sleep } from "@/lib/utils";
 import { useLocalSession } from "@/providers/localSession";
 import { upsertLocalProject } from "@/lib/localProjects";
 import {
-  DEFAULT_TEMPLATE_ID,
   getTemplateDefinition,
+  listTemplateDefinitions,
+  resolveTemplateId,
 } from "@/lib/templates";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
@@ -252,7 +254,7 @@ export default function EditorScreen() {
     projectDetails?.audioName ||
     fallbackMediaNameFromUri(audioUri, "Audio");
   const initialAspectRatio = parseAspectRatioParam(params.aspectRatio);
-  const templateId = DEFAULT_TEMPLATE_ID;
+  const initialTemplateId = resolveTemplateId(firstParam(params.templateId));
   const initialTrimStart = parseNumberParam(params.trimStart, 0);
   const initialTrimEndRaw = parseNumberParam(params.trimEnd, DEFAULT_TRIM_DURATION);
   const initialTrimEnd =
@@ -263,6 +265,7 @@ export default function EditorScreen() {
   const createProject = useMutation(api.projects.create);
   const updateProject = useMutation(api.projects.update);
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>(initialAspectRatio);
+  const [templateId, setTemplateId] = useState(initialTemplateId);
   const [isPlaying, setIsPlaying] = useState(false);
   const [trimStart, setTrimStart] = useState(initialTrimStart);
   const [trimEnd, setTrimEnd] = useState(initialTrimEnd);
@@ -318,6 +321,11 @@ export default function EditorScreen() {
     setCurrentLocalProjectId(initialLocalProjectId);
   }, [initialLocalProjectId]);
 
+  useEffect(() => {
+    setTemplateId(resolveTemplateId(firstParam(params.templateId)));
+  }, [params.templateId]);
+
+  const templateDefinitions = listTemplateDefinitions();
   const TemplateStageComponent = getTemplateDefinition(templateId).StageComponent;
 
   const createDraftProject = useCallback(async () => {
@@ -1045,6 +1053,11 @@ export default function EditorScreen() {
     templateId,
   ]);
 
+  const handleTemplateChange = useCallback((nextTemplateId: string) => {
+    const resolvedId = resolveTemplateId(nextTemplateId);
+    setTemplateId((prev) => (prev === resolvedId ? prev : resolvedId));
+  }, []);
+
   const trimmedDuration = Math.max(0, trimEnd - trimStart);
   const showMissingNotice = !isCheckingFiles && (missingFiles.photo || missingFiles.audio);
   const trackTitle = displayMediaLabel(audioName, "Untitled track");
@@ -1221,6 +1234,13 @@ export default function EditorScreen() {
 
       <View style={styles.controls}>
         <View style={styles.controlsTopRow}>
+          <View style={styles.templateSwitcherWrap}>
+            <TemplateSwitcher
+              options={templateDefinitions}
+              value={templateId}
+              onChange={handleTemplateChange}
+            />
+          </View>
           <AspectRatioToggle value={aspectRatio} onChange={setAspectRatio} />
         </View>
         <Text style={styles.timestamp}>
@@ -1457,162 +1477,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.xs,
   },
-  turntableStage: {
-    width: "100%",
-    borderRadius: radius.lg,
-    overflow: "hidden",
-    backgroundColor: "#BCBEC2",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(255,255,255,0.2)",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 14 },
-    shadowOpacity: 0.35,
-    shadowRadius: 24,
-    elevation: 10,
-  },
-  stageBackdropImage: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.26,
-  },
-  stageBackdropTint: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(196,198,204,0.88)",
-  },
-  stageHaloTop: {
-    position: "absolute",
-    top: -90,
-    right: -72,
-    width: 260,
-    height: 220,
-    borderRadius: 130,
-    backgroundColor: "rgba(255,255,255,0.4)",
-    transform: [{ rotate: "-12deg" }],
-  },
-  stageHaloBottom: {
-    position: "absolute",
-    bottom: -110,
-    left: -40,
-    width: 300,
-    height: 210,
-    borderRadius: 160,
-    backgroundColor: "rgba(255,255,255,0.36)",
-    transform: [{ rotate: "15deg" }],
-  },
-  stageBottomShade: {
-    position: "absolute",
-    left: -70,
-    right: -70,
-    bottom: 0,
-    height: 210,
-    borderTopLeftRadius: 240,
-    borderTopRightRadius: 240,
-    backgroundColor: "rgba(18,18,24,0.18)",
-  },
-  stageVinylWrap: {
-    position: "absolute",
-  },
-  tonearmPivot: {
-    position: "absolute",
-    top: 30,
-    right: 28,
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: "rgba(122,123,129,0.25)",
-  },
-  tonearmArm: {
-    position: "absolute",
-    top: 56,
-    right: 58,
-    width: 10,
-    height: 196,
-    borderRadius: radius.full,
-    backgroundColor: "#CED1D4",
-    borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.28)",
-  },
-  tonearmHead: {
-    position: "absolute",
-    top: 244,
-    right: 45,
-    width: 26,
-    height: 40,
-    borderRadius: 8,
-    backgroundColor: "#24252B",
-    transform: [{ rotate: "26deg" }],
-  },
-  stageTextBlock: {
-    position: "absolute",
-    left: spacing.lg,
-    right: spacing.lg,
-    bottom: 94,
-    gap: spacing.xs,
-  },
-  nowPlayingLabel: {
-    ...typography.body,
-    color: "#FFFFFF",
-    fontSize: 32,
-    lineHeight: 34,
-    fontWeight: "700",
-    textShadowColor: "rgba(0,0,0,0.35)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
-  },
-  trackTitle: {
-    ...typography.body,
-    color: "rgba(255,255,255,0.96)",
-    fontSize: 18,
-    fontWeight: "700",
-    textShadowColor: "rgba(0,0,0,0.35)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
-  },
-  trackSubtitlePill: {
-    alignSelf: "flex-start",
-    marginTop: spacing.xs,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.full,
-    backgroundColor: "rgba(255,255,255,0.9)",
-  },
-  trackSubtitle: {
-    ...typography.caption,
-    color: "rgba(21,22,26,0.9)",
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  stageTransport: {
-    position: "absolute",
-    left: spacing.lg,
-    right: spacing.lg,
-    bottom: spacing.lg,
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  stageTransportSpacer: {
-    flex: 1,
-  },
-  stageControlPill: {
-    minWidth: 56,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: "#1E1F24",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: spacing.md,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  stageControlPillPressed: {
-    opacity: 0.82,
-    transform: [{ scale: 0.97 }],
-  },
-  stageControlPillGhost: {
-    marginLeft: spacing.sm,
-  },
   controls: {
     alignItems: "stretch",
     paddingHorizontal: spacing.lg,
@@ -1622,7 +1486,12 @@ const styles = StyleSheet.create({
   controlsTopRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "flex-end",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
+  templateSwitcherWrap: {
+    flex: 1,
+    alignItems: "flex-start",
   },
   timestamp: {
     ...typography.caption,

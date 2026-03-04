@@ -27,7 +27,7 @@ import { persistPickedMediaFile } from "@/lib/mediaStorage";
 import { decodeUriParam, encodeUriParam } from "@/lib/uri";
 import { normalizeMediaUri } from "@/lib/mediaUri";
 import { useLocalSession } from "@/providers/localSession";
-import { DEFAULT_TEMPLATE_ID } from "@/lib/templates";
+import { resolveTemplateId } from "@/lib/templates";
 
 type Tab = "photo" | "audio";
 
@@ -39,11 +39,14 @@ interface MediaSelection {
   audioArtworkUri: string | null;
 }
 
-const VIDEO_LENGTH_PRESETS = [15, 30, 60] as const;
 const DEFAULT_NEW_PROJECT_TRIM_END = 15;
 
 function firstParam(param: string | string[] | undefined) {
   return Array.isArray(param) ? param[0] : param;
+}
+
+function countSelectedMedia(media: MediaSelection) {
+  return Number(Boolean(media.photoUri)) + Number(Boolean(media.audioUri));
 }
 
 export default function PickerScreen() {
@@ -68,7 +71,7 @@ export default function PickerScreen() {
   const localProjectId = firstParam(params.localProjectId);
   const title = firstParam(params.title);
   const aspectRatio = firstParam(params.aspectRatio);
-  const templateId = DEFAULT_TEMPLATE_ID;
+  const templateId = resolveTemplateId(firstParam(params.templateId));
   const trimStart = firstParam(params.trimStart);
   const trimEnd = firstParam(params.trimEnd);
   const initialPhotoUri = normalizeMediaUri(decodeUriParam(firstParam(params.photoUri)));
@@ -154,12 +157,15 @@ export default function PickerScreen() {
           photoUri,
           photoName: name,
         }));
+        if (!media.audioUri) {
+          setActiveTab("audio");
+        }
         track("photo_selected", { source: "camera_roll" });
       }
     } finally {
       setLoading(false);
     }
-  }, [track]);
+  }, [media.audioUri, track]);
 
   const pickAudio = useCallback(async () => {
     setLoading(true);
@@ -187,12 +193,15 @@ export default function PickerScreen() {
           audioName: asset.name,
           audioArtworkUri,
         }));
+        if (!media.photoUri) {
+          setActiveTab("photo");
+        }
         track("audio_selected", { format: asset.mimeType ?? "unknown" });
       }
     } finally {
       setLoading(false);
     }
-  }, [track]);
+  }, [media.photoUri, track]);
 
   useEffect(() => {
     let isActive = true;
@@ -218,28 +227,17 @@ export default function PickerScreen() {
     };
   }, [media.audioUri, media.audioArtworkUri, media.audioName]);
 
-  const handleAdd = useCallback(() => {
-    if (activeTab === "photo") {
-      if (media.photoUri && !media.audioUri) {
-        setActiveTab("audio");
-        return;
-      }
-    } else {
-      if (media.audioUri && !media.photoUri) {
-        setActiveTab("photo");
-        return;
-      }
-    }
-
-    if (media.photoUri && media.audioUri) {
+  const navigateToEditor = useCallback(
+    (selection: MediaSelection) => {
+      if (!selection.photoUri || !selection.audioUri) return;
       const nextAspectRatio = aspectRatio ?? preferredAspectRatio;
       const nextTrimStart = trimStart ?? "0";
       const nextTrimEnd = trimEnd ?? String(DEFAULT_NEW_PROJECT_TRIM_END);
       const nextParams: Record<string, string> = {
-        photoUri: encodeUriParam(media.photoUri),
-        photoName: media.photoName ?? "Photo",
-        audioUri: encodeUriParam(media.audioUri),
-        audioName: media.audioName ?? "Audio",
+        photoUri: encodeUriParam(selection.photoUri),
+        photoName: selection.photoName ?? "Photo",
+        audioUri: encodeUriParam(selection.audioUri),
+        audioName: selection.audioName ?? "Audio",
         aspectRatio: nextAspectRatio,
         templateId,
         trimStart: nextTrimStart,
@@ -254,20 +252,48 @@ export default function PickerScreen() {
         pathname: "/create/editor" as const,
         params: nextParams,
       });
+    },
+    [
+      aspectRatio,
+      preferredAspectRatio,
+      trimStart,
+      trimEnd,
+      templateId,
+      projectId,
+      localProjectId,
+      title,
+      router,
+    ],
+  );
+
+  const handleUseArtworkAsPhoto = useCallback(() => {
+    if (!media.audioArtworkUri) return;
+    setMedia((prev) => ({
+      ...prev,
+      photoUri: media.audioArtworkUri,
+      photoName: "Album Artwork",
+    }));
+    setActiveTab("audio");
+    track("photo_selected", { source: "audio_artwork" });
+  }, [media.audioArtworkUri, track]);
+
+  const handleAdd = useCallback(() => {
+    if (activeTab === "photo") {
+      if (media.photoUri && !media.audioUri) {
+        setActiveTab("audio");
+        return;
+      }
+    } else {
+      if (media.audioUri && !media.photoUri) {
+        setActiveTab("photo");
+        return;
+      }
     }
-  }, [
-    activeTab,
-    media,
-    router,
-    projectId,
-    localProjectId,
-    title,
-    aspectRatio,
-    trimStart,
-    trimEnd,
-    templateId,
-    preferredAspectRatio,
-  ]);
+
+    if (media.photoUri && media.audioUri) {
+      navigateToEditor(media);
+    }
+  }, [activeTab, media, navigateToEditor]);
 
   const handleCancel = useCallback(() => {
     if (returnToEditor) {
@@ -310,6 +336,25 @@ export default function PickerScreen() {
 
   const canAdd = activeTab === "photo" ? !!media.photoUri : !!media.audioUri;
   const bothSelected = !!media.photoUri && !!media.audioUri;
+  const selectedCount = countSelectedMedia(media);
+  const progressRatio = selectedCount / 2;
+  const showArtworkQuickFill =
+    activeTab === "photo" && !media.photoUri && !!media.audioArtworkUri;
+  const momentumTitle = bothSelected
+    ? "Everything loaded. Ready to edit."
+    : activeTab === "photo"
+      ? "Pick a cover image to start your promo."
+      : "Add a track and we will spin it instantly.";
+  const momentumHint = bothSelected
+    ? "Your next screen is the live editor preview."
+    : selectedCount === 0
+      ? "Two quick picks. Usually under 30 seconds."
+      : "One more pick and you are in the editor.";
+  const bottomCtaLabel = bothSelected
+    ? "Open Editor"
+    : activeTab === "photo"
+      ? "Pick a photo to continue"
+      : "Pick audio to continue";
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -373,6 +418,18 @@ export default function PickerScreen() {
         </Pressable>
       </View>
 
+      <View style={styles.momentumCard}>
+        <View style={styles.momentumHeader}>
+          <Text style={styles.momentumEyebrow}>Time to fun</Text>
+          <Text style={styles.momentumMeta}>{selectedCount}/2 selected</Text>
+        </View>
+        <Text style={styles.momentumTitle}>{momentumTitle}</Text>
+        <Text style={styles.momentumHint}>{momentumHint}</Text>
+        <View style={styles.progressTrack}>
+          <View style={[styles.progressFill, { width: `${progressRatio * 100}%` }]} />
+        </View>
+      </View>
+
       {/* Content */}
       {activeTab === "photo" ? (
         <View style={styles.content}>
@@ -434,6 +491,34 @@ export default function PickerScreen() {
               )}
             </Pressable>
           )}
+          {showArtworkQuickFill ? (
+            <Pressable
+              style={({ pressed }) => [
+                styles.quickFillCard,
+                pressed && styles.quickFillCardPressed,
+              ]}
+              onPress={handleUseArtworkAsPhoto}
+              accessibilityLabel="Use detected album artwork as cover image"
+              accessibilityRole="button"
+            >
+              <Image
+                source={{ uri: media.audioArtworkUri ?? undefined }}
+                style={styles.quickFillArtwork}
+                accessibilityLabel="Detected album artwork"
+              />
+              <View style={styles.quickFillTextWrap}>
+                <Text style={styles.quickFillTitle}>Fast path</Text>
+                <Text style={styles.quickFillHint}>
+                  Use album artwork as your cover and keep moving.
+                </Text>
+              </View>
+              <Ionicons
+                name="flash"
+                size={18}
+                color={colors.accent.primary}
+              />
+            </Pressable>
+          ) : null}
         </View>
       ) : (
         <View style={styles.content}>
@@ -537,45 +622,65 @@ export default function PickerScreen() {
 
       {/* Bottom status bar */}
       <View style={styles.statusBar}>
-        <View style={styles.statusItem}>
-          <Ionicons
-            name={media.photoUri ? "checkmark-circle" : "ellipse-outline"}
-            size={16}
-            color={
-              media.photoUri
-                ? colors.accent.success
-                : colors.light.textSecondary
-            }
-          />
-          <Text
-            style={[
-              styles.statusText,
-              media.photoUri && styles.statusTextDone,
-            ]}
-          >
-            Photo
-          </Text>
+        <View style={styles.statusRow}>
+          <View style={styles.statusItem}>
+            <Ionicons
+              name={media.photoUri ? "checkmark-circle" : "ellipse-outline"}
+              size={16}
+              color={
+                media.photoUri
+                  ? colors.accent.success
+                  : colors.light.textSecondary
+              }
+            />
+            <Text
+              style={[
+                styles.statusText,
+                media.photoUri && styles.statusTextDone,
+              ]}
+            >
+              Photo
+            </Text>
+          </View>
+          <View style={styles.statusDivider} />
+          <View style={styles.statusItem}>
+            <Ionicons
+              name={media.audioUri ? "checkmark-circle" : "ellipse-outline"}
+              size={16}
+              color={
+                media.audioUri
+                  ? colors.accent.success
+                  : colors.light.textSecondary
+              }
+            />
+            <Text
+              style={[
+                styles.statusText,
+                media.audioUri && styles.statusTextDone,
+              ]}
+            >
+              Audio
+            </Text>
+          </View>
         </View>
-        <View style={styles.statusDivider} />
-        <View style={styles.statusItem}>
-          <Ionicons
-            name={media.audioUri ? "checkmark-circle" : "ellipse-outline"}
-            size={16}
-            color={
-              media.audioUri
-                ? colors.accent.success
-                : colors.light.textSecondary
-            }
-          />
+        <Pressable
+          onPress={handleAdd}
+          style={({ pressed }) => [
+            styles.bottomCta,
+            !bothSelected && styles.bottomCtaDisabled,
+            pressed && bothSelected && styles.bottomCtaPressed,
+          ]}
+          disabled={!bothSelected}
+          accessibilityLabel="Open editor"
+          accessibilityRole="button"
+          accessibilityState={{ disabled: !bothSelected }}
+        >
           <Text
-            style={[
-              styles.statusText,
-              media.audioUri && styles.statusTextDone,
-            ]}
+            style={[styles.bottomCtaText, !bothSelected && styles.bottomCtaTextDisabled]}
           >
-            Audio
+            {bottomCtaLabel}
           </Text>
-        </View>
+        </Pressable>
       </View>
     </SafeAreaView>
   );
@@ -641,9 +746,61 @@ const styles = StyleSheet.create({
   tabTextActive: {
     color: colors.light.text,
   },
+  momentumCard: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: "#0F1016",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(149,187,255,0.45)",
+    gap: spacing.xs,
+  },
+  momentumHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  momentumEyebrow: {
+    ...typography.caption,
+    color: "#9FC3FF",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+    fontWeight: "700",
+  },
+  momentumMeta: {
+    ...typography.caption,
+    color: "rgba(255,255,255,0.76)",
+    fontWeight: "600",
+  },
+  momentumTitle: {
+    ...typography.body,
+    color: "#FFFFFF",
+    fontWeight: "700",
+  },
+  momentumHint: {
+    ...typography.caption,
+    color: "rgba(255,255,255,0.74)",
+    lineHeight: 18,
+  },
+  progressTrack: {
+    marginTop: spacing.xs,
+    height: 6,
+    borderRadius: radius.full,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: "100%",
+    borderRadius: radius.full,
+    backgroundColor: "#9FC3FF",
+  },
   content: {
     flex: 1,
     padding: spacing.lg,
+    paddingTop: spacing.md,
+    gap: spacing.md,
   },
   linkedMediaCard: {
     flexDirection: "row",
@@ -686,6 +843,40 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.light.border,
     borderStyle: "dashed",
+  },
+  quickFillCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(88,86,214,0.35)",
+    backgroundColor: "rgba(88,86,214,0.08)",
+    padding: spacing.sm,
+  },
+  quickFillCardPressed: {
+    opacity: 0.88,
+  },
+  quickFillArtwork: {
+    width: 52,
+    height: 52,
+    borderRadius: radius.sm,
+  },
+  quickFillTextWrap: {
+    flex: 1,
+    gap: 2,
+  },
+  quickFillTitle: {
+    ...typography.caption,
+    color: colors.accent.primary,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  quickFillHint: {
+    ...typography.caption,
+    color: colors.light.text,
+    lineHeight: 17,
   },
   pickAreaPressed: {
     opacity: 0.7,
@@ -763,14 +954,18 @@ const styles = StyleSheet.create({
     color: colors.accent.primary,
   },
   statusBar: {
+    paddingTop: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.lg,
+    gap: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.light.border,
+  },
+  statusRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: spacing.md,
-    paddingBottom: spacing.lg,
     gap: spacing.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.light.border,
   },
   statusItem: {
     flexDirection: "row",
@@ -789,5 +984,27 @@ const styles = StyleSheet.create({
     width: 24,
     height: StyleSheet.hairlineWidth,
     backgroundColor: colors.light.border,
+  },
+  bottomCta: {
+    minHeight: 50,
+    borderRadius: radius.full,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#12141e",
+  },
+  bottomCtaDisabled: {
+    backgroundColor: colors.light.border,
+  },
+  bottomCtaPressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.985 }],
+  },
+  bottomCtaText: {
+    ...typography.button,
+    fontWeight: "700",
+    color: "#FFFFFF",
+  },
+  bottomCtaTextDisabled: {
+    color: colors.light.textSecondary,
   },
 });

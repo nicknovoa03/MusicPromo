@@ -1,7 +1,9 @@
 import type { ComponentType } from "react";
 import { SimpleSpinTemplateStage } from "@/components/create/SimpleSpinTemplateStage";
+import { GraphicPopTemplateStage } from "@/components/create/GraphicPopTemplateStage";
 import {
   type RenderOptions,
+  renderGraphicPopVideo,
   renderSimpleSpinVideo,
 } from "@/lib/renderVideo";
 import type { VinylToneId } from "@/lib/vinylTemplateSpec";
@@ -34,12 +36,22 @@ export const DEFAULT_TEMPLATE_ID = "simple-spin";
 const TEMPLATE_DEFINITIONS: Record<string, TemplateDefinition> = {
   "simple-spin": {
     id: "simple-spin",
-    name: "Simple Spin",
+    name: "Polished",
     StageComponent: SimpleSpinTemplateStage,
     renderVideo: renderSimpleSpinVideo,
     parity: {
       layoutSpec: "simpleSpinTemplateSpec",
       vinylTone: "simple-spin",
+    },
+  },
+  "graphic-pop": {
+    id: "graphic-pop",
+    name: "Graphic",
+    StageComponent: GraphicPopTemplateStage,
+    renderVideo: renderGraphicPopVideo,
+    parity: {
+      layoutSpec: "graphicPopTemplateSpec",
+      vinylTone: "graphic-pop",
     },
   },
 };
@@ -54,5 +66,8 @@ export function getTemplateDefinition(templateId?: string | null): TemplateDefin
 }
 
 export function listTemplateDefinitions(): TemplateDefinition[] {
-  return [TEMPLATE_DEFINITIONS[DEFAULT_TEMPLATE_ID]];
+  return [
+    TEMPLATE_DEFINITIONS["simple-spin"],
+    TEMPLATE_DEFINITIONS["graphic-pop"],
+  ];
 }

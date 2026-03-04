@@ -3,16 +3,16 @@ import { radius } from "@/constants/tokens";
 import { VinylPreview } from "@/components/create/VinylPreview";
 import type { TemplateStageProps } from "@/lib/templates";
 import {
-  SIMPLE_SPIN_AMBIENT_GLOW_ALPHA_BYTE,
-  SIMPLE_SPIN_AMBIENT_GLOW_HEX,
-  getSimpleSpinTemplateLayout,
-  SIMPLE_SPIN_GLOW_ALPHA_BYTE,
-  SIMPLE_SPIN_GLOW_HEX,
-  SIMPLE_SPIN_STAGE_BACKGROUND_HEX,
-} from "@/lib/simpleSpinTemplateSpec";
+  GRAPHIC_POP_AMBIENT_GLOW_ALPHA_BYTE,
+  GRAPHIC_POP_AMBIENT_GLOW_HEX,
+  GRAPHIC_POP_GLOW_ALPHA_BYTE,
+  GRAPHIC_POP_GLOW_HEX,
+  GRAPHIC_POP_STAGE_BACKGROUND_HEX,
+  getGraphicPopTemplateLayout,
+} from "@/lib/graphicPopTemplateSpec";
 import { toRgba } from "@/lib/vinylTemplateSpec";
 
-export function SimpleSpinTemplateStage({
+export function GraphicPopTemplateStage({
   width,
   height,
   aspectRatio,
@@ -23,7 +23,7 @@ export function SimpleSpinTemplateStage({
   subtitle,
   onTogglePlay,
 }: TemplateStageProps) {
-  const layout = getSimpleSpinTemplateLayout({ width, height, aspectRatio });
+  const layout = getGraphicPopTemplateLayout({ width, height, aspectRatio });
 
   return (
     <View
@@ -32,12 +32,12 @@ export function SimpleSpinTemplateStage({
         {
           width,
           height,
-          backgroundColor: SIMPLE_SPIN_STAGE_BACKGROUND_HEX,
+          backgroundColor: GRAPHIC_POP_STAGE_BACKGROUND_HEX,
         },
       ]}
       accessibilityLabel={`${playbackLabel}. ${trackTitle}. ${subtitle}`}
     >
-      {SIMPLE_SPIN_AMBIENT_GLOW_ALPHA_BYTE > 0 ? (
+      {GRAPHIC_POP_AMBIENT_GLOW_ALPHA_BYTE > 0 ? (
         <View
           style={[
             styles.ambientGlow,
@@ -48,15 +48,15 @@ export function SimpleSpinTemplateStage({
               height: layout.ambientGlowSize,
               borderRadius: layout.ambientGlowRadius,
               backgroundColor: toRgba(
-                SIMPLE_SPIN_AMBIENT_GLOW_HEX,
-                SIMPLE_SPIN_AMBIENT_GLOW_ALPHA_BYTE,
+                GRAPHIC_POP_AMBIENT_GLOW_HEX,
+                GRAPHIC_POP_AMBIENT_GLOW_ALPHA_BYTE,
               ),
             },
           ]}
         />
       ) : null}
 
-      {SIMPLE_SPIN_GLOW_ALPHA_BYTE > 0 ? (
+      {GRAPHIC_POP_GLOW_ALPHA_BYTE > 0 ? (
         <View
           style={[
             styles.glow,
@@ -67,8 +67,8 @@ export function SimpleSpinTemplateStage({
               height: layout.glowSize,
               borderRadius: layout.glowRadius,
               backgroundColor: toRgba(
-                SIMPLE_SPIN_GLOW_HEX,
-                SIMPLE_SPIN_GLOW_ALPHA_BYTE,
+                GRAPHIC_POP_GLOW_HEX,
+                GRAPHIC_POP_GLOW_ALPHA_BYTE,
               ),
             },
           ]}
@@ -88,7 +88,7 @@ export function SimpleSpinTemplateStage({
           imageUri={photoUri ?? null}
           size={layout.discSize}
           spinning={isPlaying}
-          tone="simple-spin"
+          tone="graphic-pop"
         />
       </View>
 

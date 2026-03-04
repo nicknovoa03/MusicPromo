@@ -27,7 +27,7 @@ import {
 import { sleep } from "@/lib/utils";
 import { decodeUriParam, encodeUriParam } from "@/lib/uri";
 import { normalizeMediaUri } from "@/lib/mediaUri";
-import { DEFAULT_TEMPLATE_ID, getTemplateDefinition } from "@/lib/templates";
+import { getTemplateDefinition, resolveTemplateId } from "@/lib/templates";
 
 function isExpoGo(): boolean {
   return Constants.appOwnership === "expo";
@@ -38,7 +38,7 @@ const SCREEN_HEIGHT = Dimensions.get("window").height;
 const STAGE_HORIZONTAL_PADDING = spacing.lg * 2;
 const DEFAULT_TRIM_DURATION = 15;
 const ENABLE_RENDER_MODE_BADGE = false;
-const FAST_EXPORT_DURATION_SECONDS: number | null = null;
+const FAST_EXPORT_DURATION_SECONDS: number | null = 3;
 const ENABLE_FAST_RENDER_MODE = false;
 
 async function cancelCurrentRender(params: {
@@ -108,7 +108,7 @@ export default function RenderingScreen() {
   const projectTitle = firstParam(params.title)?.trim() || "New Project";
   const audioName = firstParam(params.audioName) || "";
   const aspectRatio = firstParam(params.aspectRatio) === "1:1" ? "1:1" : "9:16";
-  const templateId = DEFAULT_TEMPLATE_ID;
+  const templateId = resolveTemplateId(firstParam(params.templateId));
   const previewTemplateDefinition = getTemplateDefinition(templateId);
   const TemplateStageComponent = previewTemplateDefinition.StageComponent;
   const previewPhotoUri = normalizeMediaUri(
@@ -169,7 +169,7 @@ export default function RenderingScreen() {
         : Math.min(trimEnd, trimStart + FAST_EXPORT_DURATION_SECONDS);
     const aspectRatio =
       firstParam(params.aspectRatio) === "1:1" ? "1:1" : "9:16";
-    const templateId = DEFAULT_TEMPLATE_ID;
+    const templateId = resolveTemplateId(firstParam(params.templateId));
     const selectedEngine = resolveRenderEngine({ templateId });
     activeEngineRef.current = selectedEngine;
     activeTemplateIdRef.current = templateId;
