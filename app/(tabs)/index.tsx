@@ -20,6 +20,7 @@ import { api } from "../../convex/_generated/api";
 import type { Doc } from "../../convex/_generated/dataModel";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
 import type { EventName } from "@/lib/analytics";
+import { normalizeMediaUri } from "@/lib/mediaUri";
 import { encodeUriParam } from "@/lib/uri";
 import { useLocalSession } from "@/providers/localSession";
 import {
@@ -27,6 +28,7 @@ import {
   removeLocalProject,
   type LocalProject,
 } from "@/lib/localProjects";
+import { resolveTemplateId } from "@/lib/templates";
 
 type Project = Doc<"projects"> | LocalProject;
 
@@ -125,6 +127,7 @@ export default function HomeScreen() {
             audioUri: encodeUriParam(project.audioUri ?? ""),
             audioName: project.audioName ?? "",
             aspectRatio: project.aspectRatio,
+            templateId: resolveTemplateId(project.templateId),
             trimStart: String(project.trimStart ?? 0),
             trimEnd: String(project.trimEnd ?? 30),
           },
@@ -140,6 +143,7 @@ export default function HomeScreen() {
           photoName: project.photoName ?? "",
           audioName: project.audioName ?? "",
           aspectRatio: project.aspectRatio,
+          templateId: resolveTemplateId(project.templateId),
           trimStart: String(project.trimStart ?? 0),
           trimEnd: String(project.trimEnd ?? 30),
         },
@@ -228,7 +232,7 @@ export default function HomeScreen() {
   const renderProjectCard = useCallback(
     ({ item }: { item: Project }) => {
       const projectKey = getProjectId(item);
-      const previewUri = item.photoUri ?? item.exportedVideoUri;
+      const previewUri = normalizeMediaUri(item.photoUri ?? item.exportedVideoUri);
       const isDeleting = deletingProjectId === projectKey;
 
       return (

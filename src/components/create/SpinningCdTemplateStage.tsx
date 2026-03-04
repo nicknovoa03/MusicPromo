@@ -1,33 +1,29 @@
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { colors, radius, spacing, typography } from "@/constants/tokens";
+import { Image, Pressable, StyleSheet, View } from "react-native";
+import { radius } from "@/constants/tokens";
 import { VinylPreview } from "@/components/create/VinylPreview";
-
-interface SpinningCdTemplateStageProps {
-  width: number;
-  height: number;
-  vinylSize: number;
-  photoUri?: string | null;
-  isPlaying: boolean;
-  playbackLabel: string;
-  trackTitle: string;
-  subtitle: string;
-  onTogglePlay?: () => void;
-}
+import {
+  getSpinningCdTemplateLayout,
+} from "@/lib/spinningCdTemplateSpec";
+import type { TemplateStageProps } from "@/lib/templates";
 
 export function SpinningCdTemplateStage({
   width,
   height,
-  vinylSize,
+  aspectRatio,
   photoUri,
   isPlaying,
   playbackLabel,
   trackTitle,
   subtitle,
   onTogglePlay,
-}: SpinningCdTemplateStageProps) {
+}: TemplateStageProps) {
+  const layout = getSpinningCdTemplateLayout({ width, height, aspectRatio });
+
   return (
-    <View style={[styles.turntableStage, { width, height }]}>
+    <View
+      style={[styles.turntableStage, { width, height }]}
+      accessibilityLabel={`${playbackLabel}. ${trackTitle}. ${subtitle}`}
+    >
       {photoUri ? (
         <Image
           source={{ uri: photoUri }}
@@ -38,80 +34,286 @@ export function SpinningCdTemplateStage({
         />
       ) : null}
       <View style={styles.stageBackdropTint} />
-      <View style={styles.stageHaloTop} />
-      <View style={styles.stageHaloBottom} />
-      <View style={styles.stageBottomShade} />
+
+      <View
+        style={[
+          styles.haloTop,
+          {
+            left: layout.haloTopX,
+            top: layout.haloTopY,
+            width: layout.haloTopWidth,
+            height: layout.haloTopHeight,
+            borderRadius: layout.haloTopRadiusX,
+          },
+        ]}
+      />
+      <View
+        style={[
+          styles.haloBottom,
+          {
+            left: layout.haloBottomX,
+            top: layout.haloBottomY,
+            width: layout.haloBottomWidth,
+            height: layout.haloBottomHeight,
+            borderRadius: layout.haloBottomRadiusX,
+          },
+        ]}
+      />
+      <View
+        style={[
+          styles.bottomShade,
+          {
+            left: layout.bottomShadeX,
+            top: layout.bottomShadeY,
+            width: layout.bottomShadeWidth,
+            height: layout.bottomShadeHeight,
+            borderRadius: layout.bottomShadeRadiusX,
+          },
+        ]}
+      />
+
+      <View
+        style={[
+          styles.arcTop,
+          {
+            left: layout.arcTopX,
+            top: layout.arcTopY,
+            width: layout.arcTopSize,
+            height: layout.arcTopSize,
+            borderRadius: layout.arcTopRadius,
+          },
+        ]}
+      />
+      <View
+        style={[
+          styles.arcMid,
+          {
+            left: layout.arcMidX,
+            top: layout.arcMidY,
+            width: layout.arcMidSize,
+            height: layout.arcMidSize,
+            borderRadius: layout.arcMidRadius,
+          },
+        ]}
+      />
+      <View
+        style={[
+          styles.arcBottom,
+          {
+            left: layout.arcBottomX,
+            top: layout.arcBottomY,
+            width: layout.arcBottomSize,
+            height: layout.arcBottomSize,
+            borderRadius: layout.arcBottomRadius,
+          },
+        ]}
+      />
 
       <View
         style={[
           styles.stageVinylWrap,
           {
-            left: -vinylSize * 0.5,
-            top: -vinylSize * 0.24,
+            left: layout.recordX,
+            top: layout.recordY,
           },
         ]}
       >
-        <VinylPreview imageUri={photoUri ?? null} size={vinylSize} spinning={isPlaying} />
+        <VinylPreview
+          imageUri={photoUri ?? null}
+          size={layout.recordSize}
+          spinning={isPlaying}
+        />
       </View>
 
-      <View style={styles.tonearmPivot} />
-      <View style={styles.tonearmArm} />
-      <View style={styles.tonearmHead} />
+      <View
+        style={[
+          styles.tonearmPivot,
+          {
+            left: layout.tonearmPivotX,
+            top: layout.tonearmPivotY,
+            width: layout.tonearmPivotSize,
+            height: layout.tonearmPivotSize,
+            borderRadius: layout.tonearmPivotRadius,
+          },
+        ]}
+      />
+      <View
+        style={[
+          styles.tonearmShadow,
+          {
+            left: layout.armShadowX,
+            top: layout.armShadowY,
+            width: layout.armShadowWidth,
+            height: layout.armShadowHeight,
+          },
+        ]}
+      />
+      <View
+        style={[
+          styles.tonearmArm,
+          {
+            left: layout.armX,
+            top: layout.armY,
+            width: layout.armWidth,
+            height: layout.armHeight,
+            borderRadius: layout.armWidth,
+          },
+        ]}
+      />
+      <View
+        style={[
+          styles.tonearmCap,
+          {
+            left: layout.armCapX,
+            top: layout.armCapY,
+            width: layout.armCapWidth,
+            height: layout.armCapHeight,
+          },
+        ]}
+      />
+      <View
+        style={[
+          styles.tonearmHead,
+          {
+            left: layout.armHeadX,
+            top: layout.armHeadY,
+            width: layout.armHeadWidth,
+            height: layout.armHeadHeight,
+          },
+        ]}
+      />
 
-      <View style={styles.stageTextBlock}>
-        <Text style={styles.nowPlayingLabel}>{playbackLabel}</Text>
-        <Text style={styles.trackTitle} numberOfLines={1}>
-          {trackTitle}
-        </Text>
-        <View style={styles.trackSubtitlePill}>
-          <Text style={styles.trackSubtitle} numberOfLines={1}>
-            {subtitle}
-          </Text>
-        </View>
-      </View>
+      <View
+        style={[
+          styles.textBarPrimary,
+          {
+            left: layout.textBlockX,
+            top: layout.textNowY,
+            width: layout.textNowWidth,
+            height: layout.textNowHeight,
+          },
+        ]}
+      />
+      <View
+        style={[
+          styles.textBarSecondary,
+          {
+            left: layout.textBlockX,
+            top: layout.textTitleY,
+            width: layout.textTitleWidth,
+            height: layout.textTitleHeight,
+          },
+        ]}
+      />
+      <View
+        style={[
+          styles.textPill,
+          {
+            left: layout.textBlockX,
+            top: layout.textPillY,
+            width: layout.textPillWidth,
+            height: layout.textPillHeight,
+            borderRadius: layout.textPillHeight / 2,
+          },
+        ]}
+      />
 
-      <View style={styles.stageTransport}>
-        {onTogglePlay ? (
-          <Pressable
-            onPress={onTogglePlay}
-            style={({ pressed }) => [
-              styles.stageControlPill,
-              pressed && styles.stageControlPillPressed,
-            ]}
-            accessibilityLabel={isPlaying ? "Pause preview" : "Play preview"}
-            accessibilityRole="button"
-          >
-            <Ionicons
-              name={isPlaying ? "pause" : "play"}
-              size={16}
-              color={colors.dark.text}
-            />
-          </Pressable>
-        ) : (
-          <View style={styles.stageControlPill}>
-            <Ionicons
-              name={isPlaying ? "pause" : "play"}
-              size={16}
-              color={colors.dark.text}
-            />
-          </View>
-        )}
-        <View style={styles.stageTransportSpacer} />
-        <View style={[styles.stageControlPill, styles.stageControlPillGhost]}>
-          <Ionicons
-            name="play-skip-back"
-            size={16}
-            color="rgba(255,255,255,0.7)"
-          />
-        </View>
-        <View style={[styles.stageControlPill, styles.stageControlPillGhost]}>
-          <Ionicons
-            name="play-skip-forward"
-            size={16}
-            color="rgba(255,255,255,0.7)"
-          />
-        </View>
-      </View>
+      <View
+        style={[
+          styles.controlPrimary,
+          {
+            left: layout.leftControlX,
+            top: layout.controlsY,
+            width: layout.controlWidth,
+            height: layout.controlHeight,
+          },
+        ]}
+      />
+      <View
+        style={[
+          styles.controlGhost,
+          {
+            left: layout.middleControlX,
+            top: layout.controlsY,
+            width: layout.controlWidth,
+            height: layout.controlHeight,
+          },
+        ]}
+      />
+      <View
+        style={[
+          styles.controlGhost,
+          {
+            left: layout.rightControlX,
+            top: layout.controlsY,
+            width: layout.controlWidth,
+            height: layout.controlHeight,
+          },
+        ]}
+      />
+
+      <View
+        style={[
+          styles.iconBarStrong,
+          {
+            left: layout.leftControlX + layout.iconInset,
+            top: layout.controlsY + layout.iconInset,
+            width: layout.iconBarWidth,
+            height: layout.iconBarHeight,
+          },
+        ]}
+      />
+      <View
+        style={[
+          styles.iconBarStrong,
+          {
+            left: layout.leftControlX + layout.iconInset + layout.iconBarWidth + 4,
+            top: layout.controlsY + layout.iconInset,
+            width: layout.iconBarWidth,
+            height: layout.iconBarHeight,
+          },
+        ]}
+      />
+      <View
+        style={[
+          styles.iconBarSoft,
+          {
+            left: layout.middleControlX + layout.iconInset + 8,
+            top: layout.controlsY + layout.iconInset + 2,
+            width: layout.iconBarWidth,
+            height: layout.iconBarHeight,
+          },
+        ]}
+      />
+      <View
+        style={[
+          styles.iconBarSoft,
+          {
+            left: layout.rightControlX + layout.iconInset + 8,
+            top: layout.controlsY + layout.iconInset + 2,
+            width: layout.iconBarWidth,
+            height: layout.iconBarHeight,
+          },
+        ]}
+      />
+
+      {onTogglePlay ? (
+        <Pressable
+          onPress={onTogglePlay}
+          style={({ pressed }) => [
+            styles.controlHitArea,
+            {
+              left: layout.leftControlX,
+              top: layout.controlsY,
+              width: layout.controlWidth,
+              height: layout.controlHeight,
+              opacity: pressed ? 0.82 : 1,
+            },
+          ]}
+          accessibilityLabel={isPlaying ? "Pause preview" : "Play preview"}
+          accessibilityRole="button"
+        />
+      ) : null}
     </View>
   );
 }
@@ -137,139 +339,85 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(196,198,204,0.88)",
   },
-  stageHaloTop: {
+  haloTop: {
     position: "absolute",
-    top: -90,
-    right: -72,
-    width: 260,
-    height: 220,
-    borderRadius: 130,
     backgroundColor: "rgba(255,255,255,0.4)",
     transform: [{ rotate: "-12deg" }],
   },
-  stageHaloBottom: {
+  haloBottom: {
     position: "absolute",
-    bottom: -110,
-    left: -40,
-    width: 300,
-    height: 210,
-    borderRadius: 160,
     backgroundColor: "rgba(255,255,255,0.36)",
     transform: [{ rotate: "15deg" }],
   },
-  stageBottomShade: {
+  bottomShade: {
     position: "absolute",
-    left: -70,
-    right: -70,
-    bottom: 0,
-    height: 210,
-    borderTopLeftRadius: 240,
-    borderTopRightRadius: 240,
     backgroundColor: "rgba(18,18,24,0.18)",
+  },
+  arcTop: {
+    position: "absolute",
+    backgroundColor: "rgba(255,255,255,0.33)",
+  },
+  arcMid: {
+    position: "absolute",
+    backgroundColor: "rgba(255,255,255,0.23)",
+  },
+  arcBottom: {
+    position: "absolute",
+    backgroundColor: "rgba(0,0,0,0.2)",
   },
   stageVinylWrap: {
     position: "absolute",
   },
   tonearmPivot: {
     position: "absolute",
-    top: 30,
-    right: 28,
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: "rgba(122,123,129,0.25)",
+    backgroundColor: "rgba(122,123,129,0.26)",
+  },
+  tonearmShadow: {
+    position: "absolute",
+    backgroundColor: "rgba(127,129,136,0.22)",
   },
   tonearmArm: {
     position: "absolute",
-    top: 56,
-    right: 58,
-    width: 10,
-    height: 196,
-    borderRadius: radius.full,
-    backgroundColor: "#CED1D4",
-    borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.28)",
+    backgroundColor: "rgba(223,225,232,0.92)",
+  },
+  tonearmCap: {
+    position: "absolute",
+    backgroundColor: "rgba(31,32,40,0.96)",
   },
   tonearmHead: {
     position: "absolute",
-    top: 244,
-    right: 45,
-    width: 26,
-    height: 40,
-    borderRadius: 8,
-    backgroundColor: "#24252B",
-    transform: [{ rotate: "26deg" }],
+    backgroundColor: "rgba(25,26,32,0.98)",
   },
-  stageTextBlock: {
+  textBarPrimary: {
     position: "absolute",
-    left: spacing.lg,
-    right: spacing.lg,
-    bottom: 94,
-    gap: spacing.xs,
+    backgroundColor: "rgba(255,255,255,0.96)",
   },
-  nowPlayingLabel: {
-    ...typography.body,
-    color: "#FFFFFF",
-    fontSize: 32,
-    lineHeight: 34,
-    fontWeight: "700",
-    textShadowColor: "rgba(0,0,0,0.35)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
-  },
-  trackTitle: {
-    ...typography.body,
-    color: "rgba(255,255,255,0.96)",
-    fontSize: 18,
-    fontWeight: "700",
-    textShadowColor: "rgba(0,0,0,0.35)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
-  },
-  trackSubtitlePill: {
-    alignSelf: "flex-start",
-    marginTop: spacing.xs,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.full,
-    backgroundColor: "rgba(255,255,255,0.9)",
-  },
-  trackSubtitle: {
-    ...typography.caption,
-    color: "rgba(21,22,26,0.9)",
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  stageTransport: {
+  textBarSecondary: {
     position: "absolute",
-    left: spacing.lg,
-    right: spacing.lg,
-    bottom: spacing.lg,
-    flexDirection: "row",
-    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.86)",
   },
-  stageTransportSpacer: {
-    flex: 1,
+  textPill: {
+    position: "absolute",
+    backgroundColor: "rgba(242,242,242,0.96)",
   },
-  stageControlPill: {
-    minWidth: 56,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: "#1E1F24",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: spacing.md,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 4,
+  controlPrimary: {
+    position: "absolute",
+    backgroundColor: "rgba(30,31,36,1)",
   },
-  stageControlPillPressed: {
-    opacity: 0.82,
-    transform: [{ scale: 0.97 }],
+  controlGhost: {
+    position: "absolute",
+    backgroundColor: "rgba(30,31,36,0.96)",
   },
-  stageControlPillGhost: {
-    marginLeft: spacing.sm,
+  iconBarStrong: {
+    position: "absolute",
+    backgroundColor: "rgba(255,255,255,0.94)",
+  },
+  iconBarSoft: {
+    position: "absolute",
+    backgroundColor: "rgba(255,255,255,0.84)",
+  },
+  controlHitArea: {
+    position: "absolute",
+    backgroundColor: "transparent",
   },
 });

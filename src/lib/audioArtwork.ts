@@ -1,5 +1,6 @@
 import * as FileSystem from "expo-file-system/legacy";
 import { fromByteArray, toByteArray } from "base64-js";
+import { normalizeMediaUri } from "@/lib/mediaUri";
 
 type ArtworkResult = {
   mimeType: string;
@@ -139,12 +140,16 @@ export async function extractEmbeddedAudioArtworkUri(params: {
   size?: number;
 }) {
   const { audioUri, name, mimeType, size } = params;
-  if (!audioUri.startsWith("file://")) return null;
+  const normalizedAudioUri = normalizeMediaUri(audioUri);
+  if (!normalizedAudioUri.startsWith("file://")) return null;
   if (!isLikelyMp3(name, mimeType)) return null;
   if (typeof size === "number" && size > MAX_AUDIO_BYTES_FOR_ARTWORK) return null;
 
   try {
-    const audioBase64 = await FileSystem.readAsStringAsync(audioUri, {
+    const info = await FileSystem.getInfoAsync(normalizedAudioUri);
+    if (!info.exists) return null;
+
+    const audioBase64 = await FileSystem.readAsStringAsync(normalizedAudioUri, {
       encoding: FileSystem.EncodingType.Base64,
     });
     const audioBytes = toByteArray(audioBase64);

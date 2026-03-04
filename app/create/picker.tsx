@@ -25,7 +25,9 @@ import {
 import { extractEmbeddedAudioArtworkUri } from "@/lib/audioArtwork";
 import { persistPickedMediaFile } from "@/lib/mediaStorage";
 import { decodeUriParam, encodeUriParam } from "@/lib/uri";
+import { normalizeMediaUri } from "@/lib/mediaUri";
 import { useLocalSession } from "@/providers/localSession";
+import { resolveTemplateId } from "@/lib/templates";
 
 type Tab = "photo" | "audio";
 
@@ -38,20 +40,10 @@ interface MediaSelection {
 }
 
 const VIDEO_LENGTH_PRESETS = [15, 30, 60] as const;
+const DEFAULT_NEW_PROJECT_TRIM_END = 15;
 
 function firstParam(param: string | string[] | undefined) {
   return Array.isArray(param) ? param[0] : param;
-}
-
-function normalizeDefaultVideoLength(value: number | undefined) {
-  if (!Number.isFinite(value)) return VIDEO_LENGTH_PRESETS[0];
-  const safe = Math.max(15, Math.min(60, Math.round(value ?? 0)));
-
-  return VIDEO_LENGTH_PRESETS.reduce((closest, candidate) => {
-    return Math.abs(candidate - safe) < Math.abs(closest - safe)
-      ? candidate
-      : closest;
-  }, VIDEO_LENGTH_PRESETS[0]);
 }
 
 export default function PickerScreen() {
@@ -65,6 +57,7 @@ export default function PickerScreen() {
     audioUri?: string;
     audioName?: string;
     aspectRatio?: "9:16" | "1:1";
+    templateId?: string;
     trimStart?: string;
     trimEnd?: string;
     initialTab?: Tab;
@@ -75,10 +68,11 @@ export default function PickerScreen() {
   const localProjectId = firstParam(params.localProjectId);
   const title = firstParam(params.title);
   const aspectRatio = firstParam(params.aspectRatio);
+  const templateId = resolveTemplateId(firstParam(params.templateId));
   const trimStart = firstParam(params.trimStart);
   const trimEnd = firstParam(params.trimEnd);
-  const initialPhotoUri = decodeUriParam(firstParam(params.photoUri));
-  const initialAudioUri = decodeUriParam(firstParam(params.audioUri));
+  const initialPhotoUri = normalizeMediaUri(decodeUriParam(firstParam(params.photoUri)));
+  const initialAudioUri = normalizeMediaUri(decodeUriParam(firstParam(params.audioUri)));
   const initialTab =
     firstParam(params.initialTab) === "audio" ? "audio" : "photo";
   const returnToEditor = firstParam(params.returnToEditor) === "1";
@@ -117,9 +111,6 @@ export default function PickerScreen() {
   const preferredAspectRatio = useLocalDefaults
     ? localPreferences.defaultAspectRatio
     : currentUser?.preferences?.defaultAspectRatio ?? "9:16";
-  const preferredVideoLength = useLocalDefaults
-    ? localPreferences.defaultVideoLength
-    : normalizeDefaultVideoLength(currentUser?.preferences?.defaultVideoLength);
 
   const track = useCallback(
     (event: EventName, props?: Record<string, string>) => {
@@ -243,13 +234,14 @@ export default function PickerScreen() {
     if (media.photoUri && media.audioUri) {
       const nextAspectRatio = aspectRatio ?? preferredAspectRatio;
       const nextTrimStart = trimStart ?? "0";
-      const nextTrimEnd = trimEnd ?? String(preferredVideoLength);
+      const nextTrimEnd = trimEnd ?? String(DEFAULT_NEW_PROJECT_TRIM_END);
       const nextParams: Record<string, string> = {
         photoUri: encodeUriParam(media.photoUri),
         photoName: media.photoName ?? "Photo",
         audioUri: encodeUriParam(media.audioUri),
         audioName: media.audioName ?? "Audio",
         aspectRatio: nextAspectRatio,
+        templateId,
         trimStart: nextTrimStart,
         trimEnd: nextTrimEnd,
       };
@@ -273,8 +265,8 @@ export default function PickerScreen() {
     aspectRatio,
     trimStart,
     trimEnd,
+    templateId,
     preferredAspectRatio,
-    preferredVideoLength,
   ]);
 
   const handleCancel = useCallback(() => {
@@ -290,8 +282,9 @@ export default function PickerScreen() {
           audioUri: firstParam(params.audioUri) ?? "",
           audioName: firstParam(params.audioName) ?? "",
           aspectRatio: aspectRatio ?? preferredAspectRatio,
+          templateId,
           trimStart: trimStart ?? "0",
-          trimEnd: trimEnd ?? String(preferredVideoLength),
+          trimEnd: trimEnd ?? String(DEFAULT_NEW_PROJECT_TRIM_END),
         },
       });
       return;
@@ -309,10 +302,10 @@ export default function PickerScreen() {
     params.audioUri,
     params.audioName,
     aspectRatio,
+    templateId,
     preferredAspectRatio,
     trimStart,
     trimEnd,
-    preferredVideoLength,
   ]);
 
   const canAdd = activeTab === "photo" ? !!media.photoUri : !!media.audioUri;

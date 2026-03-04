@@ -2,6 +2,8 @@ import { Paths } from "expo-file-system";
 import * as LegacyFileSystem from "expo-file-system/legacy";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
+import { getSpinningCdTemplateLayout } from "@/lib/spinningCdTemplateSpec";
+import { normalizeMediaUri } from "@/lib/mediaUri";
 
 function isExpoGo(): boolean {
   return Constants.appOwnership === "expo";
@@ -14,11 +16,14 @@ export interface RenderOptions {
   trimEnd: number;
   aspectRatio: "9:16" | "1:1";
   onProgress?: (percent: number) => void;
+  debugRenderModeBadge?: boolean;
+  fastMode?: boolean;
 }
 
 type FFmpegKitModule = typeof import("ffmpeg-kit-react-native");
 type FFmpegSession = import("ffmpeg-kit-react-native").FFmpegSession;
 type Statistics = import("ffmpeg-kit-react-native").Statistics;
+type RenderPath = "primary" | "fallback" | "safe_fallback";
 let ffmpegModule: FFmpegKitModule | null = null;
 let activeRenderSessionId: number | null = null;
 let activeRenderToken: symbol | null = null;
@@ -48,15 +53,168 @@ const OUTPUT_DIMENSIONS = {
 } as const;
 
 const FPS = 30;
+const FAST_MODE_FPS = 15;
+const FAST_MODE_DIMENSION_SCALE = 0.34;
+const HIGH_QUALITY_VIDEO_BITRATE = "8M";
+const FAST_MODE_VIDEO_BITRATE = "1.2M";
+const AUDIO_BITRATE = "256k";
+const PHOTO_INPUT_RANGE = "pc";
+const VIDEO_OUTPUT_RANGE = "tv";
 const SPIN_SPEED = "2*PI*t/4"; // full rotation every 4 seconds
 
-function buildVideoEncodeArgs(mode: "hardware" | "software"): string[] {
+const RENDER_PATH_COLORS: Record<RenderPath, string> = {
+  primary: "#38d17b",
+  fallback: "#f5b941",
+  safe_fallback: "#f06767",
+};
+
+const RENDER_PATH_BARS: Record<RenderPath, number> = {
+  primary: 1,
+  fallback: 2,
+  safe_fallback: 3,
+};
+
+type RenderModeBadgeGeometry = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  dotSize: number;
+  dotX: number;
+  dotY: number;
+  barWidth: number;
+  barHeight: number;
+  barGap: number;
+  barStartX: number;
+  barY: number;
+};
+
+function getRenderModeBadgeGeometry(
+  width: number,
+  height: number,
+): RenderModeBadgeGeometry {
+  const badgeWidth = Math.max(Math.round(width * 0.24), 188);
+  const badgeHeight = Math.max(Math.round(height * 0.042), 46);
+  const badgeX = Math.max(Math.round(width * 0.03), 16);
+  const badgeY = Math.max(Math.round(height * 0.024), 16);
+  const dotSize = Math.max(Math.round(badgeHeight * 0.34), 14);
+  const dotX = badgeX + Math.round(badgeHeight * 0.28);
+  const dotY = badgeY + Math.round((badgeHeight - dotSize) / 2);
+  const barWidth = Math.max(Math.round(badgeHeight * 0.12), 6);
+  const barGap = Math.max(Math.round(barWidth * 0.7), 4);
+  const barHeight = Math.max(Math.round(badgeHeight * 0.42), 16);
+  const barStartX = dotX + dotSize + Math.round(badgeHeight * 0.28);
+  const barY = badgeY + Math.round((badgeHeight - barHeight) / 2);
+
+  return {
+    x: badgeX,
+    y: badgeY,
+    width: badgeWidth,
+    height: badgeHeight,
+    dotSize,
+    dotX,
+    dotY,
+    barWidth,
+    barHeight,
+    barGap,
+    barStartX,
+    barY,
+  };
+}
+
+function buildRenderModeBadgeFilterGraph(params: {
+  inputLabel: string;
+  width: number;
+  height: number;
+  mode: RenderPath;
+  enabled: boolean;
+}): string[] {
+  const { inputLabel, width, height, mode, enabled } = params;
+  if (!enabled) {
+    return [`${inputLabel}format=yuv420p[out]`];
+  }
+
+  const geometry = getRenderModeBadgeGeometry(width, height);
+  const color = RENDER_PATH_COLORS[mode];
+  const bars = RENDER_PATH_BARS[mode];
+  const lines = [
+    `${inputLabel}drawbox=x=${geometry.x}:y=${geometry.y}:w=${geometry.width}:h=${geometry.height}:color=black@0.45:t=fill[mode_badge_0]`,
+    `[mode_badge_0]drawbox=x=${geometry.dotX}:y=${geometry.dotY}:w=${geometry.dotSize}:h=${geometry.dotSize}:color=${color}@0.98:t=fill[mode_badge_1]`,
+  ];
+
+  let currentLabel = "[mode_badge_1]";
+  for (let index = 0; index < bars; index += 1) {
+    const nextLabel = `[mode_badge_${index + 2}]`;
+    const barX = geometry.barStartX + index * (geometry.barWidth + geometry.barGap);
+    lines.push(
+      `${currentLabel}drawbox=x=${barX}:y=${geometry.barY}:w=${geometry.barWidth}:h=${geometry.barHeight}:color=white@0.92:t=fill${nextLabel}`,
+    );
+    currentLabel = nextLabel;
+  }
+
+  lines.push(
+    `${currentLabel}drawbox=x=${geometry.x}:y=${geometry.y}:w=${geometry.width}:h=${geometry.height}:color=white@0.28:t=2[mode_badge_out]`,
+  );
+  lines.push("[mode_badge_out]format=yuv420p[out]");
+  return lines;
+}
+
+function buildPhotoScaleCropFilter(width: number, height: number): string {
+  return (
+    `scale=${width}:${height}:force_original_aspect_ratio=increase:` +
+    `in_range=${PHOTO_INPUT_RANGE}:out_range=${VIDEO_OUTPUT_RANGE},` +
+    `crop=${width}:${height}`
+  );
+}
+
+function buildSafeFallbackVideoFilter(params: {
+  width: number;
+  height: number;
+  mode: RenderPath;
+  enabled: boolean;
+}): string {
+  const { width, height, mode, enabled } = params;
+  const filters = [buildPhotoScaleCropFilter(width, height)];
+
+  if (enabled) {
+    const geometry = getRenderModeBadgeGeometry(width, height);
+    const color = RENDER_PATH_COLORS[mode];
+    const bars = RENDER_PATH_BARS[mode];
+
+    filters.push(
+      `drawbox=x=${geometry.x}:y=${geometry.y}:w=${geometry.width}:h=${geometry.height}:color=black@0.45:t=fill`,
+      `drawbox=x=${geometry.dotX}:y=${geometry.dotY}:w=${geometry.dotSize}:h=${geometry.dotSize}:color=${color}@0.98:t=fill`,
+    );
+
+    for (let index = 0; index < bars; index += 1) {
+      const barX = geometry.barStartX + index * (geometry.barWidth + geometry.barGap);
+      filters.push(
+        `drawbox=x=${barX}:y=${geometry.barY}:w=${geometry.barWidth}:h=${geometry.barHeight}:color=white@0.92:t=fill`,
+      );
+    }
+
+    filters.push(
+      `drawbox=x=${geometry.x}:y=${geometry.y}:w=${geometry.width}:h=${geometry.height}:color=white@0.28:t=2`,
+    );
+  }
+
+  filters.push("format=yuv420p");
+  return filters.join(",");
+}
+
+function buildVideoEncodeArgs(
+  mode: "hardware" | "software",
+  options?: { fastMode?: boolean },
+): string[] {
+  const videoBitrate = options?.fastMode
+    ? FAST_MODE_VIDEO_BITRATE
+    : HIGH_QUALITY_VIDEO_BITRATE;
   if (mode === "hardware" && Platform.OS === "ios") {
     return [
       "-c:v",
       "h264_videotoolbox",
       "-b:v",
-      "4M",
+      videoBitrate,
       "-pix_fmt",
       "yuv420p",
       "-tag:v",
@@ -64,7 +222,7 @@ function buildVideoEncodeArgs(mode: "hardware" | "software"): string[] {
     ];
   }
 
-  return ["-c:v", "mpeg4", "-b:v", "4M"];
+  return ["-c:v", "mpeg4", "-b:v", videoBitrate];
 }
 
 function extensionFromUri(uri: string): string {
@@ -85,15 +243,16 @@ async function ensureRenderableInputUri(
   uri: string,
   kind: "photo" | "audio",
 ): Promise<string> {
-  if (!uri.trim()) {
+  const normalizedUri = normalizeMediaUri(uri);
+  if (!normalizedUri.trim()) {
     throw new Error(`Missing ${kind} file.`);
   }
 
-  if (uri.startsWith("file://")) {
+  if (normalizedUri.startsWith("file://")) {
     try {
-      const info = await LegacyFileSystem.getInfoAsync(uri);
+      const info = await LegacyFileSystem.getInfoAsync(normalizedUri);
       if (info.exists) {
-        return uri;
+        return normalizedUri;
       }
     } catch {
       // Fall through and attempt a local copy below.
@@ -106,7 +265,7 @@ async function ensureRenderableInputUri(
     );
   }
 
-  const sourceExt = extensionFromUri(uri);
+  const sourceExt = extensionFromUri(normalizedUri);
   const fallbackExt = kind === "photo" ? "jpg" : "m4a";
   const ext = sourceExt || fallbackExt;
   const copiedUri = `${LegacyFileSystem.cacheDirectory}render-${kind}-${Date.now()}-${Math.floor(
@@ -114,10 +273,10 @@ async function ensureRenderableInputUri(
   )}.${ext}`;
 
   try {
-    await LegacyFileSystem.copyAsync({ from: uri, to: copiedUri });
+    await LegacyFileSystem.copyAsync({ from: normalizedUri, to: copiedUri });
   } catch {
     throw new Error(
-      `Unable to read selected ${kind} for rendering (scheme: ${formatScheme(uri)}). Re-select the ${kind} and try again.`,
+      `Unable to read selected ${kind} for rendering (scheme: ${formatScheme(normalizedUri)}). Re-select the ${kind} and try again.`,
     );
   }
 
@@ -161,8 +320,16 @@ export async function cancelCurrentRender() {
 export async function renderSpinningCdVideo(
   options: RenderOptions,
 ): Promise<string> {
-  const { photoUri, audioUri, trimStart, trimEnd, aspectRatio, onProgress } =
-    options;
+  const {
+    photoUri,
+    audioUri,
+    trimStart,
+    trimEnd,
+    aspectRatio,
+    onProgress,
+    debugRenderModeBadge = false,
+    fastMode = false,
+  } = options;
 
   if (!Number.isFinite(trimStart) || !Number.isFinite(trimEnd)) {
     throw new Error("Invalid trim range.");
@@ -174,9 +341,22 @@ export async function renderSpinningCdVideo(
     throw new Error("Invalid trim range.");
   }
 
-  const { width, height } = OUTPUT_DIMENSIONS[aspectRatio];
-  const duration = Math.max(trimEndSec - trimStartSec, 1 / FPS);
-  const totalFrames = Math.max(Math.round(duration * FPS), 1);
+  const baseDimensions = OUTPUT_DIMENSIONS[aspectRatio];
+  const width = fastMode
+    ? Math.max(
+        2,
+        Math.round((baseDimensions.width * FAST_MODE_DIMENSION_SCALE) / 2) * 2,
+      )
+    : baseDimensions.width;
+  const height = fastMode
+    ? Math.max(
+        2,
+        Math.round((baseDimensions.height * FAST_MODE_DIMENSION_SCALE) / 2) * 2,
+      )
+    : baseDimensions.height;
+  const fps = fastMode ? FAST_MODE_FPS : FPS;
+  const duration = Math.max(trimEndSec - trimStartSec, 1 / fps);
+  const totalFrames = Math.max(Math.round(duration * fps), 1);
 
   if (activeRenderToken !== null) {
     throw new Error("A video render is already in progress.");
@@ -185,101 +365,90 @@ export async function renderSpinningCdVideo(
   const renderToken = Symbol("render");
   activeRenderToken = renderToken;
 
-  const isPortraitLayout = aspectRatio === "9:16";
-  const recordSize = isPortraitLayout
-    ? Math.round(width * 1.42)
-    : Math.round(Math.min(width, height) * 1.18);
-  const recordRadius = Math.round(recordSize / 2);
-  const labelRadius = Math.round(recordRadius * 0.28);
-  const holeRadius = Math.max(Math.round(recordRadius * 0.05), 6);
-  const recordX = isPortraitLayout
-    ? -Math.round(recordSize * 0.5)
-    : Math.round((width - recordSize) / 2);
-  const recordY = isPortraitLayout
-    ? Math.round(height * 0.08)
-    : Math.round((height - recordSize) / 2 - height * 0.07);
-
-  const armWidth = Math.max(Math.round(width * 0.024), 12);
-  const armHeight = isPortraitLayout
-    ? Math.round(height * 0.31)
-    : Math.round(recordSize * 0.46);
-  const armX = isPortraitLayout
-    ? Math.round(width * 0.86)
-    : Math.round(width * 0.77);
-  const armY = isPortraitLayout
-    ? Math.round(height * 0.12)
-    : Math.round(height * 0.24);
-  const armCapWidth = Math.round(armWidth * 2.8);
-  const armCapHeight = Math.max(Math.round(width * 0.025), 18);
-  const armCapX = armX - Math.round((armCapWidth - armWidth) / 2);
-  const armCapY = armY + armHeight - Math.round(armCapHeight * 0.6);
-  const armHeadWidth = Math.round(armWidth * 3.6);
-  const armHeadHeight = Math.max(Math.round(width * 0.055), 36);
-  const armHeadX = armX - Math.round((armHeadWidth - armWidth) / 2);
-  const armHeadY = armCapY + armCapHeight + Math.max(Math.round(width * 0.012), 8);
-  const armShadowX = armX - Math.round(width * 0.01);
-  const armShadowY = armY - Math.round(width * 0.03);
-  const armShadowWidth = armHeadWidth + Math.round(width * 0.04);
-  const armShadowHeight =
-    armHeadY + armHeadHeight - armShadowY + Math.round(width * 0.015);
-
-  const haloTopWidth = Math.round(width * 0.6);
-  const haloTopHeight = Math.round(height * 0.24);
-  const haloTopX = Math.round(width * 0.56);
-  const haloTopY = -Math.round(height * 0.12);
-  const haloBottomWidth = Math.round(width * 0.72);
-  const haloBottomHeight = Math.round(height * 0.26);
-  const haloBottomX = -Math.round(width * 0.1);
-  const haloBottomY = Math.round(height * 0.82);
-  const bottomShadeWidth = width + Math.round(width * 0.3);
-  const bottomShadeHeight = Math.round(height * 0.32);
-  const bottomShadeX = -Math.round((bottomShadeWidth - width) / 2);
-  const bottomShadeY = height - Math.round(bottomShadeHeight * 0.58);
-  const haloTopRadiusX = Math.max(Math.round(haloTopWidth / 2), 1);
-  const haloTopRadiusY = Math.max(Math.round(haloTopHeight / 2), 1);
-  const haloBottomRadiusX = Math.max(Math.round(haloBottomWidth / 2), 1);
-  const haloBottomRadiusY = Math.max(Math.round(haloBottomHeight / 2), 1);
-  const bottomShadeRadiusX = Math.max(Math.round(bottomShadeWidth / 2), 1);
-  const bottomShadeRadiusY = Math.max(Math.round(bottomShadeHeight / 2), 1);
-
-  const arcTopSize = Math.round(width * 0.52);
-  const arcTopRadius = Math.max(Math.round(arcTopSize / 2), 1);
-  const arcTopX = Math.round(width * 0.66);
-  const arcTopY = Math.round(height * 0.03);
-  const arcMidSize = Math.round(width * 0.94);
-  const arcMidRadius = Math.max(Math.round(arcMidSize / 2), 1);
-  const arcMidX = -Math.round(width * 0.35);
-  const arcMidY = Math.round(height * 0.69);
-  const arcBottomSize = Math.round(width * 0.9);
-  const arcBottomRadius = Math.max(Math.round(arcBottomSize / 2), 1);
-  const arcBottomX = Math.round(width * 0.48);
-  const arcBottomY = Math.round(height * 0.72);
-
-  const tonearmPivotSize = Math.round(width * 0.22);
-  const tonearmPivotRadius = Math.max(Math.round(tonearmPivotSize / 2), 1);
-  const tonearmPivotX = width - Math.round(width * 0.31);
-  const tonearmPivotY = Math.round(height * 0.05);
-
-  const textBlockX = Math.round(width * 0.06);
-  const textNowY = Math.round(height * 0.61);
-  const textTitleY = Math.round(height * 0.665);
-  const textPillY = Math.round(height * 0.716);
-  const textNowWidth = Math.round(width * 0.52);
-  const textTitleWidth = Math.round(width * 0.6);
-  const textNowHeight = Math.round(height * 0.031);
-  const textTitleHeight = Math.round(height * 0.024);
-  const textPillWidth = Math.round(width * 0.25);
-  const textPillHeight = Math.round(height * 0.044);
-
-  const controlsY = Math.round(height * 0.87);
-  const leftControlX = Math.round(width * 0.06);
-  const middleControlX = Math.round(width * 0.62);
-  const rightControlX = Math.round(width * 0.79);
-  const controlWidth = Math.round(width * 0.14);
-  const controlHeight = Math.round(height * 0.044);
-  const iconInset = Math.max(Math.round(controlHeight * 0.28), 2);
-  const iconBarWidth = Math.max(Math.round(controlWidth * 0.06), 2);
-  const iconBarHeight = Math.max(Math.round(controlHeight * 0.36), 6);
+  const layout = getSpinningCdTemplateLayout({ width, height, aspectRatio });
+  const {
+    recordSize,
+    recordRadius,
+    labelRadius,
+    holeRadius,
+    recordX,
+    recordY,
+    armWidth,
+    armHeight,
+    armX,
+    armY,
+    armCapWidth,
+    armCapHeight,
+    armCapX,
+    armCapY,
+    armHeadWidth,
+    armHeadHeight,
+    armHeadX,
+    armHeadY,
+    armShadowX,
+    armShadowY,
+    armShadowWidth,
+    armShadowHeight,
+    haloTopWidth,
+    haloTopHeight,
+    haloTopX,
+    haloTopY,
+    haloBottomWidth,
+    haloBottomHeight,
+    haloBottomX,
+    haloBottomY,
+    bottomShadeWidth,
+    bottomShadeHeight,
+    bottomShadeX,
+    bottomShadeY,
+    haloTopRadiusX,
+    haloTopRadiusY,
+    haloBottomRadiusX,
+    haloBottomRadiusY,
+    bottomShadeRadiusX,
+    bottomShadeRadiusY,
+    arcTopSize,
+    arcTopRadius,
+    arcTopX,
+    arcTopY,
+    arcMidSize,
+    arcMidRadius,
+    arcMidX,
+    arcMidY,
+    arcBottomSize,
+    arcBottomRadius,
+    arcBottomX,
+    arcBottomY,
+    tonearmPivotSize,
+    tonearmPivotRadius,
+    tonearmPivotX,
+    tonearmPivotY,
+    textBlockX,
+    textNowY,
+    textTitleY,
+    textPillY,
+    textNowWidth,
+    textTitleWidth,
+    textNowHeight,
+    textTitleHeight,
+    textPillWidth,
+    textPillHeight,
+    controlsY,
+    leftControlX,
+    middleControlX,
+    rightControlX,
+    controlWidth,
+    controlHeight,
+    iconInset,
+    iconBarWidth,
+    iconBarHeight,
+    fallbackRecordSize,
+    fallbackRecordRadius,
+    fallbackRecordX,
+    fallbackRecordY,
+    fallbackLabelRadius,
+    fallbackHoleRadius,
+  } = layout;
 
   const [preparedPhotoUri, preparedAudioUri] = await Promise.all([
     ensureRenderableInputUri(photoUri, "photo"),
@@ -287,6 +456,7 @@ export async function renderSpinningCdVideo(
   ]);
 
   const outputPath = Paths.join(Paths.cache, `export_${Date.now()}.mp4`);
+  let photoInputUriForRender = preparedPhotoUri;
 
   // Filter graph:
   // [0:v] = artwork source used for spinning vinyl texture
@@ -298,7 +468,7 @@ export async function renderSpinningCdVideo(
   ) =>
     [
       // Deck base inspired by the Create Flow stage: blurred artwork + tint + light halos.
-      `[0:v]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},boxblur=luma_radius=36:luma_power=3:chroma_radius=18:chroma_power=2,eq=saturation=0.62:contrast=1.02:brightness=0.015,format=rgba[bg_photo]`,
+      `[0:v]${buildPhotoScaleCropFilter(width, height)},boxblur=luma_radius=36:luma_power=3:chroma_radius=18:chroma_power=2,eq=saturation=0.62:contrast=1.02:brightness=0.015,format=rgba[bg_photo]`,
       `color=c=#c4c6cc@0.88:s=${width}x${height}:d=${duration}[bg_tint]`,
       `[bg_photo][bg_tint]overlay=0:0:format=auto[bg_tinted]`,
       `color=c=white@1.0:s=${haloTopWidth}x${haloTopHeight}:d=${duration}[halo_top_raw]`,
@@ -332,7 +502,7 @@ export async function renderSpinningCdVideo(
         `[platter]`,
 
       // Spinning artwork disc.
-      `[0:v]scale=${recordSize}:${recordSize}:force_original_aspect_ratio=increase,crop=${recordSize}:${recordSize}[disc_raw]`,
+      `[0:v]${buildPhotoScaleCropFilter(recordSize, recordSize)}[disc_raw]`,
       `[disc_raw]format=rgba[disc_tone]`,
       `[disc_tone]format=rgba,geq=` +
         `'r=r(X,Y):g=g(X,Y):b=b(X,Y):` +
@@ -378,7 +548,14 @@ export async function renderSpinningCdVideo(
       `[scene_12]drawbox=x=${leftControlX + iconInset}:y=${controlsY + iconInset}:w=${iconBarWidth}:h=${iconBarHeight}:color=#ffffff@0.94:t=fill[scene_13]`,
       `[scene_13]drawbox=x=${leftControlX + iconInset + iconBarWidth + 4}:y=${controlsY + iconInset}:w=${iconBarWidth}:h=${iconBarHeight}:color=#ffffff@0.94:t=fill[scene_14]`,
       `[scene_14]drawbox=x=${middleControlX + iconInset + 8}:y=${controlsY + iconInset + 2}:w=${iconBarWidth}:h=${iconBarHeight}:color=#ffffff@0.84:t=fill[scene_15]`,
-      `[scene_15]drawbox=x=${rightControlX + iconInset + 8}:y=${controlsY + iconInset + 2}:w=${iconBarWidth}:h=${iconBarHeight}:color=#ffffff@0.84:t=fill,format=yuv420p[out]`,
+      `[scene_15]drawbox=x=${rightControlX + iconInset + 8}:y=${controlsY + iconInset + 2}:w=${iconBarWidth}:h=${iconBarHeight}:color=#ffffff@0.84:t=fill[scene_16]`,
+      ...buildRenderModeBadgeFilterGraph({
+        inputLabel: "[scene_16]",
+        width,
+        height,
+        mode: "primary",
+        enabled: debugRenderModeBadge,
+      }),
 
       // Audio: explicit trim/reset to avoid MP3 seek/timestamp quirks.
       `[1:a]atrim=start=${audioTrimStartSec}:end=${audioTrimEndSec},asetpts=PTS-STARTPTS[audio_out]`,
@@ -393,8 +570,10 @@ export async function renderSpinningCdVideo(
       "-y",
       "-loop",
       "1",
+      "-framerate",
+      String(fps),
       "-i",
-      preparedPhotoUri,
+      photoInputUriForRender,
       "-i",
       audioInputUri,
       "-filter_complex",
@@ -403,13 +582,13 @@ export async function renderSpinningCdVideo(
       "[out]",
       "-map",
       "[audio_out]",
-      ...buildVideoEncodeArgs("hardware"),
+      ...buildVideoEncodeArgs("hardware", { fastMode }),
       "-c:a",
       "aac",
       "-b:a",
-      "192k",
+      AUDIO_BITRATE,
       "-r",
-      String(FPS),
+      String(fps),
       "-t",
       String(duration),
       "-shortest",
@@ -417,18 +596,6 @@ export async function renderSpinningCdVideo(
     ];
 
   // Compatibility fallback: simpler but still outputs a spinning artwork disc.
-  const fallbackRecordSize = isPortraitLayout
-    ? Math.round(width * 1.28)
-    : Math.round(Math.min(width, height) * 1.02);
-  const fallbackRecordRadius = Math.round(fallbackRecordSize / 2);
-  const fallbackRecordX = isPortraitLayout
-    ? -Math.round(fallbackRecordSize * 0.46)
-    : Math.round((width - fallbackRecordSize) / 2);
-  const fallbackRecordY =
-    Math.round((height - fallbackRecordSize) / 2) -
-    (isPortraitLayout ? Math.round(height * 0.11) : Math.round(height * 0.06));
-  const fallbackLabelRadius = Math.round(fallbackRecordRadius * 0.28);
-  const fallbackHoleRadius = Math.max(Math.round(fallbackRecordRadius * 0.05), 6);
   const buildFallbackFilterComplex = (
     audioTrimStartSec: number,
     audioTrimEndSec: number,
@@ -445,7 +612,7 @@ export async function renderSpinningCdVideo(
       `color=c=black@1.0:s=${arcBottomSize}x${arcBottomSize}:d=${duration}[fb_arc_bottom_raw]`,
       `[fb_arc_bottom_raw]format=rgba,geq='r=0:g=0:b=0:a=if(lte(pow(X-${arcBottomRadius},2)+pow(Y-${arcBottomRadius},2),pow(${arcBottomRadius},2)),52,0)'[fb_arc_bottom]`,
       `[fb_bg_2][fb_arc_bottom]overlay=${arcBottomX}:${arcBottomY}:format=auto[fb_bg2]`,
-      `[0:v]scale=${fallbackRecordSize}:${fallbackRecordSize}:force_original_aspect_ratio=increase,crop=${fallbackRecordSize}:${fallbackRecordSize}[fb_disc_raw]`,
+      `[0:v]${buildPhotoScaleCropFilter(fallbackRecordSize, fallbackRecordSize)}[fb_disc_raw]`,
       `[fb_disc_raw]format=rgba[fb_disc_tone]`,
       `[fb_disc_tone]format=rgba,geq=` +
         `'r=r(X,Y):g=g(X,Y):b=b(X,Y):` +
@@ -477,7 +644,14 @@ export async function renderSpinningCdVideo(
       `[fb_scene_11]drawbox=x=${leftControlX + iconInset}:y=${controlsY + iconInset}:w=${iconBarWidth}:h=${iconBarHeight}:color=#ffffff@0.94:t=fill[fb_scene_12]`,
       `[fb_scene_12]drawbox=x=${leftControlX + iconInset + iconBarWidth + 4}:y=${controlsY + iconInset}:w=${iconBarWidth}:h=${iconBarHeight}:color=#ffffff@0.94:t=fill[fb_scene_13]`,
       `[fb_scene_13]drawbox=x=${middleControlX + iconInset + 8}:y=${controlsY + iconInset + 2}:w=${iconBarWidth}:h=${iconBarHeight}:color=#ffffff@0.84:t=fill[fb_scene_14]`,
-      `[fb_scene_14]drawbox=x=${rightControlX + iconInset + 8}:y=${controlsY + iconInset + 2}:w=${iconBarWidth}:h=${iconBarHeight}:color=#ffffff@0.84:t=fill,format=yuv420p[out]`,
+      `[fb_scene_14]drawbox=x=${rightControlX + iconInset + 8}:y=${controlsY + iconInset + 2}:w=${iconBarWidth}:h=${iconBarHeight}:color=#ffffff@0.84:t=fill[fb_scene_15]`,
+      ...buildRenderModeBadgeFilterGraph({
+        inputLabel: "[fb_scene_15]",
+        width,
+        height,
+        mode: "fallback",
+        enabled: debugRenderModeBadge,
+      }),
       `[1:a]atrim=start=${audioTrimStartSec}:end=${audioTrimEndSec},asetpts=PTS-STARTPTS[audio_out]`,
     ].join(";");
 
@@ -490,25 +664,32 @@ export async function renderSpinningCdVideo(
       "-y",
       "-loop",
       "1",
+      "-framerate",
+      String(fps),
       "-i",
-      preparedPhotoUri,
+      photoInputUriForRender,
       "-i",
       audioInputUri,
       "-vf",
-      `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},format=yuv420p`,
+      buildSafeFallbackVideoFilter({
+        width,
+        height,
+        mode: "safe_fallback",
+        enabled: debugRenderModeBadge,
+      }),
       "-map",
       "0:v:0",
       "-map",
       "1:a:0",
       "-af",
       `atrim=start=${audioTrimStartSec}:end=${audioTrimEndSec},asetpts=PTS-STARTPTS`,
-      ...buildVideoEncodeArgs("software"),
+      ...buildVideoEncodeArgs("software", { fastMode }),
       "-c:a",
       "aac",
       "-b:a",
-      "192k",
+      AUDIO_BITRATE,
       "-r",
-      String(FPS),
+      String(fps),
       "-t",
       String(duration),
       "-shortest",
@@ -524,8 +705,10 @@ export async function renderSpinningCdVideo(
       "-y",
       "-loop",
       "1",
+      "-framerate",
+      String(fps),
       "-i",
-      preparedPhotoUri,
+      photoInputUriForRender,
       "-i",
       audioInputUri,
       "-filter_complex",
@@ -534,13 +717,13 @@ export async function renderSpinningCdVideo(
       "[out]",
       "-map",
       "[audio_out]",
-      ...buildVideoEncodeArgs("hardware"),
+      ...buildVideoEncodeArgs("hardware", { fastMode }),
       "-c:a",
       "aac",
       "-b:a",
-      "192k",
+      AUDIO_BITRATE,
       "-r",
-      String(FPS),
+      String(fps),
       "-t",
       String(duration),
       "-shortest",
@@ -618,6 +801,41 @@ export async function renderSpinningCdVideo(
     let audioTrimStartForRender = trimStartSec;
     let audioTrimEndForRender = trimEndSec;
 
+    // Normalize every photo to a fixed render resolution before compositing.
+    // This avoids repeatedly processing very large originals (e.g. >4K images)
+    // inside the frame pipeline and improves export consistency/perf.
+    const normalizedPhotoPath = Paths.join(
+      Paths.cache,
+      `photo_norm_${width}x${height}_${Date.now()}.jpg`,
+    );
+    const normalizePhotoCommand = [
+      "-y",
+      "-i",
+      preparedPhotoUri,
+      "-vf",
+      buildPhotoScaleCropFilter(width, height),
+      "-frames:v",
+      "1",
+      "-q:v",
+      fastMode ? "6" : "3",
+      normalizedPhotoPath,
+    ];
+    const normalizePhotoResult = await runCommand(normalizePhotoCommand, {
+      withStatistics: false,
+    });
+    if (ReturnCode.isSuccess(normalizePhotoResult.returnCode)) {
+      const normalizedPhotoInfo =
+        await LegacyFileSystem.getInfoAsync(normalizedPhotoPath);
+      if (normalizedPhotoInfo.exists) {
+        photoInputUriForRender = normalizedPhotoPath;
+      }
+    } else if (__DEV__) {
+      console.warn(
+        "[renderSpinningCdVideo] Photo normalization failed, using original photo input:",
+        summarizeFfmpegLogs(normalizePhotoResult.logs),
+      );
+    }
+
     if (extensionFromUri(preparedAudioUri) === "mp3") {
       progressFloor = 12;
       onProgress?.(2);
@@ -641,7 +859,7 @@ export async function renderSpinningCdVideo(
         "-c:a",
         "aac",
         "-b:a",
-        "192k",
+        AUDIO_BITRATE,
         "-ar",
         "48000",
         "-ac",
@@ -684,6 +902,32 @@ export async function renderSpinningCdVideo(
       audioTrimStartForRender,
       audioTrimEndForRender,
     );
+
+    if (fastMode) {
+      const fastSafeFallbackResult = await runCommand(safeFallbackCommand);
+      if (ReturnCode.isSuccess(fastSafeFallbackResult.returnCode)) {
+        console.warn(
+          "[renderSpinningCdVideo] Fast mode safe fallback command succeeded; visual output is simplified for speed.",
+        );
+        onProgress?.(100);
+        return outputPath;
+      }
+      if (ReturnCode.isCancel(fastSafeFallbackResult.returnCode)) {
+        throw new Error("Rendering was canceled.");
+      }
+
+      const fastDetails =
+        summarizeFfmpegLogs(fastSafeFallbackResult.logs);
+      const fastDiagnostics = `photoScheme=${formatScheme(preparedPhotoUri)} audioScheme=${formatScheme(preparedAudioUri)} outputPath=${outputPath}`;
+      if (fastDetails) {
+        throw new Error(
+          `FFmpeg fast rendering failed (code ${fastSafeFallbackResult.returnCode}). ${fastDetails} | ${fastDiagnostics}`,
+        );
+      }
+      throw new Error(
+        `FFmpeg fast rendering failed (code ${fastSafeFallbackResult.returnCode}). ${fastDiagnostics}`,
+      );
+    }
 
     const primaryResult = await runCommand(spinningCommand);
     if (ReturnCode.isSuccess(primaryResult.returnCode)) {
@@ -729,6 +973,436 @@ export async function renderSpinningCdVideo(
     if (__DEV__) {
       console.error(
         "[renderSpinningCdVideo] Safe fallback FFmpeg command failed:",
+        safeFallbackResult.logs,
+      );
+    }
+
+    const details =
+      summarizeFfmpegLogs(safeFallbackResult.logs) ||
+      summarizeFfmpegLogs(fallbackResult.logs) ||
+      summarizeFfmpegLogs(primaryResult.logs);
+    const diagnostics = `photoScheme=${formatScheme(preparedPhotoUri)} audioScheme=${formatScheme(preparedAudioUri)} outputPath=${outputPath}`;
+    if (details) {
+      throw new Error(
+        `FFmpeg rendering failed (code ${safeFallbackResult.returnCode}). ${details} | ${diagnostics}`,
+      );
+    }
+    throw new Error(
+      `FFmpeg rendering failed (code ${safeFallbackResult.returnCode}). ${diagnostics}`,
+    );
+  } finally {
+    if (activeRenderToken === renderToken) {
+      activeRenderSessionId = null;
+      activeRenderToken = null;
+    }
+  }
+}
+
+function toEven(value: number) {
+  return value % 2 === 0 ? value : value - 1;
+}
+
+export async function renderSimpleSpinVideo(
+  options: RenderOptions,
+): Promise<string> {
+  const {
+    photoUri,
+    audioUri,
+    trimStart,
+    trimEnd,
+    aspectRatio,
+    onProgress,
+    debugRenderModeBadge = false,
+    fastMode = false,
+  } = options;
+
+  if (!Number.isFinite(trimStart) || !Number.isFinite(trimEnd)) {
+    throw new Error("Invalid trim range.");
+  }
+
+  const trimStartSec = Math.max(0, trimStart);
+  const trimEndSec = trimEnd;
+  if (trimEndSec <= trimStartSec) {
+    throw new Error("Invalid trim range.");
+  }
+
+  const baseDimensions = OUTPUT_DIMENSIONS[aspectRatio];
+  const width = fastMode
+    ? Math.max(
+        2,
+        Math.round((baseDimensions.width * FAST_MODE_DIMENSION_SCALE) / 2) * 2,
+      )
+    : baseDimensions.width;
+  const height = fastMode
+    ? Math.max(
+        2,
+        Math.round((baseDimensions.height * FAST_MODE_DIMENSION_SCALE) / 2) * 2,
+      )
+    : baseDimensions.height;
+  const fps = fastMode ? FAST_MODE_FPS : FPS;
+  const duration = Math.max(trimEndSec - trimStartSec, 1 / fps);
+  const totalFrames = Math.max(Math.round(duration * fps), 1);
+
+  if (activeRenderToken !== null) {
+    throw new Error("A video render is already in progress.");
+  }
+
+  const renderToken = Symbol("render-simple");
+  activeRenderToken = renderToken;
+
+  const basis = Math.min(width, height);
+  const discScale = aspectRatio === "9:16" ? 0.82 : 0.78;
+  const discSize = Math.max(120, toEven(Math.round(basis * discScale)));
+  const discRadius = Math.round(discSize / 2);
+  const labelRadius = Math.max(24, Math.round(discSize * 0.18));
+  const holeRadius = Math.max(8, Math.round(discSize * 0.045));
+  const discX = Math.round((width - discSize) / 2);
+  const discY = Math.round(
+    (height - discSize) / 2 - (aspectRatio === "9:16" ? height * 0.02 : 0),
+  );
+  const glowSize = Math.max(toEven(Math.round(discSize * 1.08)), discSize + 8);
+  const glowRadius = Math.round(glowSize / 2);
+  const glowX = Math.round((width - glowSize) / 2);
+  const glowY = Math.round(
+    (height - glowSize) / 2 - (aspectRatio === "9:16" ? height * 0.02 : 0),
+  );
+
+  const [preparedPhotoUri, preparedAudioUri] = await Promise.all([
+    ensureRenderableInputUri(photoUri, "photo"),
+    ensureRenderableInputUri(audioUri, "audio"),
+  ]);
+
+  const outputPath = Paths.join(Paths.cache, `export_${Date.now()}.mp4`);
+  let photoInputUriForRender = preparedPhotoUri;
+
+  const buildPrimaryFilterComplex = (
+    audioTrimStartSec: number,
+    audioTrimEndSec: number,
+    mode: RenderPath,
+  ) =>
+    [
+      `color=c=black:s=${width}x${height}:d=${duration}[bg]`,
+      `[0:v]${buildPhotoScaleCropFilter(discSize, discSize)}[disc_raw]`,
+      `[disc_raw]format=rgba,geq='r=r(X,Y):g=g(X,Y):b=b(X,Y):a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${discRadius},2)),255,0)'[disc_circle]`,
+      `color=c=black@1.0:s=${discSize}x${discSize}:d=${duration}[disc_shade_raw]`,
+      `[disc_shade_raw]format=rgba,geq='r=0:g=0:b=0:a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${discRadius},2)),132,0)'[disc_shade]`,
+      `[disc_circle][disc_shade]overlay=0:0:format=auto[disc_dark]`,
+      `color=c=#e8e2d5@0.95:s=${discSize}x${discSize}:d=${duration}[label_raw]`,
+      `[label_raw]format=rgba,geq='r=r(X,Y):g=g(X,Y):b=b(X,Y):a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${labelRadius},2)),238,0)'[label]`,
+      `[disc_dark][label]overlay=0:0:format=auto[disc_labeled]`,
+      `color=black@1.0:s=${discSize}x${discSize}:d=${duration}[hole_raw]`,
+      `[hole_raw]format=rgba,geq='r=0:g=0:b=0:a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${holeRadius},2)),255,0)'[hole]`,
+      `[disc_labeled][hole]overlay=0:0:format=auto,format=rgba,rotate=${SPIN_SPEED}:ow=iw:oh=ih:fillcolor=black@0[disc_rot]`,
+      `color=c=#ffffff@1.0:s=${glowSize}x${glowSize}:d=${duration}[glow_raw]`,
+      `[glow_raw]format=rgba,geq='r=255:g=255:b=255:a=if(lte(pow(X-${glowRadius},2)+pow(Y-${glowRadius},2),pow(${glowRadius},2)),34,0)'[glow]`,
+      `[bg][glow]overlay=${glowX}:${glowY}:format=auto[scene_0]`,
+      `[scene_0][disc_rot]overlay=${discX}:${discY}:format=auto[scene_1]`,
+      ...buildRenderModeBadgeFilterGraph({
+        inputLabel: "[scene_1]",
+        width,
+        height,
+        mode,
+        enabled: debugRenderModeBadge,
+      }),
+      `[1:a]atrim=start=${audioTrimStartSec}:end=${audioTrimEndSec},asetpts=PTS-STARTPTS[audio_out]`,
+    ].join(";");
+
+  const buildSafeFallbackFilterComplex = (
+    audioTrimStartSec: number,
+    audioTrimEndSec: number,
+  ) =>
+    [
+      `color=c=black:s=${width}x${height}:d=${duration}[safe_bg]`,
+      `[0:v]${buildPhotoScaleCropFilter(discSize, discSize)}[safe_disc_raw]`,
+      `[safe_disc_raw]format=rgba,geq='r=r(X,Y):g=g(X,Y):b=b(X,Y):a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${discRadius},2)),255,0)'[safe_disc]`,
+      `[safe_bg][safe_disc]overlay=${discX}:${discY}:format=auto[safe_scene]`,
+      ...buildRenderModeBadgeFilterGraph({
+        inputLabel: "[safe_scene]",
+        width,
+        height,
+        mode: "safe_fallback",
+        enabled: debugRenderModeBadge,
+      }),
+      `[1:a]atrim=start=${audioTrimStartSec}:end=${audioTrimEndSec},asetpts=PTS-STARTPTS[audio_out]`,
+    ].join(";");
+
+  const buildPrimaryCommand = (
+    audioInputUri: string,
+    audioTrimStartSec: number,
+    audioTrimEndSec: number,
+    mode: RenderPath,
+    encoder: "hardware" | "software",
+  ) =>
+    [
+      "-y",
+      "-loop",
+      "1",
+      "-framerate",
+      String(fps),
+      "-i",
+      photoInputUriForRender,
+      "-i",
+      audioInputUri,
+      "-filter_complex",
+      buildPrimaryFilterComplex(audioTrimStartSec, audioTrimEndSec, mode),
+      "-map",
+      "[out]",
+      "-map",
+      "[audio_out]",
+      ...buildVideoEncodeArgs(encoder, { fastMode }),
+      "-c:a",
+      "aac",
+      "-b:a",
+      AUDIO_BITRATE,
+      "-r",
+      String(fps),
+      "-t",
+      String(duration),
+      "-shortest",
+      outputPath,
+    ];
+
+  const buildSafeFallbackCommand = (
+    audioInputUri: string,
+    audioTrimStartSec: number,
+    audioTrimEndSec: number,
+  ) =>
+    [
+      "-y",
+      "-loop",
+      "1",
+      "-framerate",
+      String(fps),
+      "-i",
+      photoInputUriForRender,
+      "-i",
+      audioInputUri,
+      "-filter_complex",
+      buildSafeFallbackFilterComplex(audioTrimStartSec, audioTrimEndSec),
+      "-map",
+      "[out]",
+      "-map",
+      "[audio_out]",
+      ...buildVideoEncodeArgs("software", { fastMode }),
+      "-c:a",
+      "aac",
+      "-b:a",
+      AUDIO_BITRATE,
+      "-r",
+      String(fps),
+      "-t",
+      String(duration),
+      "-shortest",
+      outputPath,
+    ];
+
+  let statisticsCallback: ((stats: Statistics) => void) | undefined;
+  let sessionId: number | null = null;
+
+  if (onProgress) {
+    statisticsCallback = (stats: Statistics) => {
+      if (
+        sessionId === null ||
+        activeRenderToken !== renderToken ||
+        activeRenderSessionId !== sessionId
+      ) {
+        return;
+      }
+      const frame = stats.getVideoFrameNumber();
+      if (!Number.isFinite(frame) || totalFrames <= 0) {
+        return;
+      }
+      const percent = Math.max(
+        0,
+        Math.min(Math.round((frame / totalFrames) * 100), 99),
+      );
+      onProgress(percent);
+    };
+  }
+
+  try {
+    const { FFmpegKit, ReturnCode } = await getFFmpegKit();
+
+    const runCommand = async (
+      commandArguments: string[],
+      options?: { withStatistics?: boolean },
+    ) => {
+      let resolveCompletedSession: ((session: FFmpegSession) => void) | undefined;
+      const completedSessionPromise = new Promise<FFmpegSession>((resolve) => {
+        resolveCompletedSession = resolve;
+      });
+
+      const session = await FFmpegKit.executeWithArgumentsAsync(
+        commandArguments,
+        (completedSession) => {
+          resolveCompletedSession?.(completedSession);
+        },
+        undefined,
+        options?.withStatistics === false ? undefined : statisticsCallback,
+      );
+
+      sessionId = session.getSessionId();
+      activeRenderSessionId = sessionId;
+
+      if (activeRenderToken !== renderToken) {
+        await FFmpegKit.cancel(sessionId);
+        throw new Error("Rendering was canceled.");
+      }
+
+      const completedSession = await completedSessionPromise;
+      const returnCode = await completedSession.getReturnCode();
+      const logs = await completedSession.getLogsAsString();
+      return { returnCode, logs };
+    };
+
+    let audioInputUri = preparedAudioUri;
+    let audioTrimStartForRender = trimStartSec;
+    let audioTrimEndForRender = trimEndSec;
+
+    const normalizedPhotoPath = Paths.join(
+      Paths.cache,
+      `photo_norm_simple_${discSize}_${Date.now()}.jpg`,
+    );
+    const normalizePhotoCommand = [
+      "-y",
+      "-i",
+      preparedPhotoUri,
+      "-vf",
+      buildPhotoScaleCropFilter(discSize, discSize),
+      "-frames:v",
+      "1",
+      "-q:v",
+      fastMode ? "6" : "3",
+      normalizedPhotoPath,
+    ];
+    const normalizePhotoResult = await runCommand(normalizePhotoCommand, {
+      withStatistics: false,
+    });
+    if (ReturnCode.isSuccess(normalizePhotoResult.returnCode)) {
+      const normalizedPhotoInfo =
+        await LegacyFileSystem.getInfoAsync(normalizedPhotoPath);
+      if (normalizedPhotoInfo.exists) {
+        photoInputUriForRender = normalizedPhotoPath;
+      }
+    } else if (__DEV__) {
+      console.warn(
+        "[renderSimpleSpinVideo] Photo normalization failed, using original photo input:",
+        summarizeFfmpegLogs(normalizePhotoResult.logs),
+      );
+    }
+
+    if (extensionFromUri(preparedAudioUri) === "mp3") {
+      const normalizedAudioPath = Paths.join(
+        Paths.cache,
+        `audio_norm_${Date.now()}.m4a`,
+      );
+      const normalizeAudioCommand = [
+        "-y",
+        "-ss",
+        String(trimStartSec),
+        "-t",
+        String(duration),
+        "-i",
+        preparedAudioUri,
+        "-map",
+        "0:a:0",
+        "-vn",
+        "-sn",
+        "-dn",
+        "-c:a",
+        "aac",
+        "-b:a",
+        AUDIO_BITRATE,
+        "-ar",
+        "48000",
+        "-ac",
+        "2",
+        normalizedAudioPath,
+      ];
+
+      const normalizeResult = await runCommand(normalizeAudioCommand, {
+        withStatistics: false,
+      });
+
+      if (ReturnCode.isSuccess(normalizeResult.returnCode)) {
+        const normalizedInfo = await LegacyFileSystem.getInfoAsync(normalizedAudioPath);
+        if (normalizedInfo.exists) {
+          audioInputUri = normalizedAudioPath;
+          audioTrimStartForRender = 0;
+          audioTrimEndForRender = duration;
+        }
+      } else if (__DEV__) {
+        console.warn(
+          "[renderSimpleSpinVideo] MP3 normalization failed, using original audio input:",
+          summarizeFfmpegLogs(normalizeResult.logs),
+        );
+      }
+    }
+
+    const primaryCommand = buildPrimaryCommand(
+      audioInputUri,
+      audioTrimStartForRender,
+      audioTrimEndForRender,
+      "primary",
+      "hardware",
+    );
+    const fallbackCommand = buildPrimaryCommand(
+      audioInputUri,
+      audioTrimStartForRender,
+      audioTrimEndForRender,
+      "fallback",
+      "software",
+    );
+    const safeFallbackCommand = buildSafeFallbackCommand(
+      audioInputUri,
+      audioTrimStartForRender,
+      audioTrimEndForRender,
+    );
+
+    const primaryResult = await runCommand(primaryCommand);
+    if (ReturnCode.isSuccess(primaryResult.returnCode)) {
+      onProgress?.(100);
+      return outputPath;
+    }
+    if (ReturnCode.isCancel(primaryResult.returnCode)) {
+      throw new Error("Rendering was canceled.");
+    }
+
+    if (__DEV__) {
+      console.warn(
+        "[renderSimpleSpinVideo] Primary command failed, trying software fallback:",
+        summarizeFfmpegLogs(primaryResult.logs) || "No diagnostic logs.",
+      );
+    }
+
+    const fallbackResult = await runCommand(fallbackCommand);
+    if (ReturnCode.isSuccess(fallbackResult.returnCode)) {
+      onProgress?.(100);
+      return outputPath;
+    }
+    if (ReturnCode.isCancel(fallbackResult.returnCode)) {
+      throw new Error("Rendering was canceled.");
+    }
+
+    if (__DEV__) {
+      console.warn(
+        "[renderSimpleSpinVideo] Software fallback failed, trying safe fallback:",
+        summarizeFfmpegLogs(fallbackResult.logs) || "No diagnostic logs.",
+      );
+    }
+
+    const safeFallbackResult = await runCommand(safeFallbackCommand);
+    if (ReturnCode.isSuccess(safeFallbackResult.returnCode)) {
+      onProgress?.(100);
+      return outputPath;
+    }
+    if (ReturnCode.isCancel(safeFallbackResult.returnCode)) {
+      throw new Error("Rendering was canceled.");
+    }
+
+    if (__DEV__) {
+      console.error(
+        "[renderSimpleSpinVideo] Safe fallback command failed:",
         safeFallbackResult.logs,
       );
     }

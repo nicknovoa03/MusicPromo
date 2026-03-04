@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { normalizeOptionalMediaUri } from "@/lib/mediaUri";
 
 const LOCAL_PROJECTS_KEY = "musicpromo:local-projects";
 
@@ -69,11 +70,13 @@ function normalizeProject(value: unknown): LocalProject | null {
     title: asTrimmedString(input.title),
     templateId: asTrimmedString(input.templateId),
     aspectRatio: normalizeAspectRatio(input.aspectRatio),
-    photoUri: asTrimmedString(input.photoUri),
+    photoUri: normalizeOptionalMediaUri(asTrimmedString(input.photoUri)),
     photoName: asTrimmedString(input.photoName),
-    audioUri: asTrimmedString(input.audioUri),
+    audioUri: normalizeOptionalMediaUri(asTrimmedString(input.audioUri)),
     audioName: asTrimmedString(input.audioName),
-    exportedVideoUri: asTrimmedString(input.exportedVideoUri),
+    exportedVideoUri: normalizeOptionalMediaUri(
+      asTrimmedString(input.exportedVideoUri),
+    ),
     trimStart: normalizeNumber(input.trimStart),
     trimEnd: normalizeNumber(input.trimEnd),
     status: normalizeStatus(input.status),
@@ -141,12 +144,12 @@ export async function upsertLocalProject(
     title: input.title?.trim() || existing?.title,
     templateId: input.templateId?.trim() || existing?.templateId,
     aspectRatio: normalizeAspectRatio(input.aspectRatio),
-    photoUri: input.photoUri?.trim() || existing?.photoUri,
+    photoUri: normalizeOptionalMediaUri(input.photoUri) || existing?.photoUri,
     photoName: input.photoName?.trim() || existing?.photoName,
-    audioUri: input.audioUri?.trim() || existing?.audioUri,
+    audioUri: normalizeOptionalMediaUri(input.audioUri) || existing?.audioUri,
     audioName: input.audioName?.trim() || existing?.audioName,
-    exportedVideoUri:
-      input.exportedVideoUri?.trim() || existing?.exportedVideoUri,
+    exportedVideoUri: normalizeOptionalMediaUri(input.exportedVideoUri) ||
+      existing?.exportedVideoUri,
     trimStart: Number.isFinite(input.trimStart) ? input.trimStart : existing?.trimStart,
     trimEnd: Number.isFinite(input.trimEnd) ? input.trimEnd : existing?.trimEnd,
     status: input.status ?? existing?.status ?? "draft",
@@ -165,4 +168,3 @@ export async function removeLocalProject(projectId: string): Promise<void> {
   const projects = await readProjects();
   await writeProjects(projects.filter((project) => project.id !== id));
 }
-

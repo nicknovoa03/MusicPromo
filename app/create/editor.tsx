@@ -29,12 +29,18 @@ import {
   AspectRatioToggle,
   type AspectRatio,
 } from "@/components/create/AspectRatioToggle";
-import { SpinningCdTemplateStage } from "@/components/create/SpinningCdTemplateStage";
+import { TemplateToggle } from "@/components/create/TemplateToggle";
 import type { EventName } from "@/lib/analytics";
 import { decodeUriParam, encodeUriParam, fileNameFromUri } from "@/lib/uri";
+import { normalizeMediaUri } from "@/lib/mediaUri";
 import { sleep } from "@/lib/utils";
 import { useLocalSession } from "@/providers/localSession";
 import { upsertLocalProject } from "@/lib/localProjects";
+import {
+  getTemplateDefinition,
+  listTemplateDefinitions,
+  resolveTemplateId,
+} from "@/lib/templates";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const SCREEN_HEIGHT = Dimensions.get("window").height;
@@ -42,6 +48,10 @@ const STAGE_HORIZONTAL_PADDING = spacing.lg * 2;
 const FALLBACK_AUDIO_DURATION = 180;
 const DEFAULT_TRIM_DURATION = 15;
 const DEFAULT_PROJECT_TITLE = "New Project";
+const TEMPLATE_OPTIONS = listTemplateDefinitions().map((template, index) => ({
+  id: template.id,
+  label: `T${index + 1}`,
+}));
 
 type MissingFilesState = {
   photo: boolean;
@@ -95,11 +105,12 @@ function displayMediaLabel(name: string, fallback: string) {
 }
 
 async function isMissingFile(uri?: string) {
-  if (!uri) return true;
-  if (!uri.startsWith("file://")) return false;
+  const normalizedUri = normalizeMediaUri(uri);
+  if (!normalizedUri) return true;
+  if (!normalizedUri.startsWith("file://")) return false;
 
   try {
-    const info = await FileSystem.getInfoAsync(uri);
+    const info = await FileSystem.getInfoAsync(normalizedUri);
     if (info.exists) return false;
   } catch {
     // Fall through to loader-based checks below.
@@ -107,15 +118,15 @@ async function isMissingFile(uri?: string) {
 
   // Metadata checks can be wrong on some iOS sandboxed files.
   // Try actually loading media before declaring "missing".
-  const isLikelyAudio = /\.(mp3|wav|m4a|aac|mp4)$/i.test(uri);
+  const isLikelyAudio = /\.(mp3|wav|m4a|aac|mp4)$/i.test(normalizedUri);
   if (isLikelyAudio) {
-    const duration = await getAudioDurationSec(uri);
+    const duration = await getAudioDurationSec(normalizedUri);
     return !(duration && Number.isFinite(duration) && duration > 0);
   }
 
   return await new Promise<boolean>((resolve) => {
     Image.getSize(
-      uri,
+      normalizedUri,
       () => resolve(false),
       () => resolve(true),
     );
@@ -123,10 +134,22 @@ async function isMissingFile(uri?: string) {
 }
 
 async function getAudioDurationSec(uri: string): Promise<number | null> {
+  const normalizedUri = normalizeMediaUri(uri);
+  if (!normalizedUri) return null;
+
+  if (normalizedUri.startsWith("file://")) {
+    try {
+      const info = await FileSystem.getInfoAsync(normalizedUri);
+      if (!info.exists) return null;
+    } catch {
+      return null;
+    }
+  }
+
   let sound: Audio.Sound | null = null;
   try {
     const created = await Audio.Sound.createAsync(
-      { uri },
+      { uri: normalizedUri },
       { shouldPlay: false },
       undefined,
       false,
@@ -196,6 +219,7 @@ export default function EditorScreen() {
     audioUri?: string;
     audioName?: string;
     aspectRatio?: AspectRatio;
+    templateId?: string;
     trimStart?: string;
     trimEnd?: string;
     returnToEditor?: string;
@@ -209,8 +233,8 @@ export default function EditorScreen() {
   const paramTitle = firstParam(params.title)?.trim() || "";
   const initialProjectTitle =
     paramTitle || DEFAULT_PROJECT_TITLE;
-  const paramPhotoUri = decodeUriParam(firstParam(params.photoUri));
-  const paramAudioUri = decodeUriParam(firstParam(params.audioUri));
+  const paramPhotoUri = normalizeMediaUri(decodeUriParam(firstParam(params.photoUri)));
+  const paramAudioUri = normalizeMediaUri(decodeUriParam(firstParam(params.audioUri)));
   const paramPhotoName = firstParam(params.photoName);
   const paramAudioName = firstParam(params.audioName);
   const [currentProjectId, setCurrentProjectId] = useState<Id<"projects"> | null>(
@@ -223,8 +247,8 @@ export default function EditorScreen() {
     api.projects.getById,
     currentProjectId ? { projectId: currentProjectId } : "skip",
   );
-  const photoUri = paramPhotoUri || projectDetails?.photoUri || "";
-  const audioUri = paramAudioUri || projectDetails?.audioUri || "";
+  const photoUri = paramPhotoUri || normalizeMediaUri(projectDetails?.photoUri) || "";
+  const audioUri = paramAudioUri || normalizeMediaUri(projectDetails?.audioUri) || "";
   const photoName =
     paramPhotoName ||
     projectDetails?.photoName ||
@@ -234,6 +258,10 @@ export default function EditorScreen() {
     projectDetails?.audioName ||
     fallbackMediaNameFromUri(audioUri, "Audio");
   const initialAspectRatio = parseAspectRatioParam(params.aspectRatio);
+  const routeTemplateIdParam = firstParam(params.templateId);
+  const [templateId, setTemplateId] = useState(
+    resolveTemplateId(routeTemplateIdParam),
+  );
   const initialTrimStart = parseNumberParam(params.trimStart, 0);
   const initialTrimEndRaw = parseNumberParam(params.trimEnd, DEFAULT_TRIM_DURATION);
   const initialTrimEnd =
@@ -267,6 +295,7 @@ export default function EditorScreen() {
   const forceAutosaveTickRef = useRef(0);
   const initialSnapshotRef = useRef<string | null>(null);
   const lastSavedSnapshotRef = useRef<string | null>(null);
+  const hasManuallySelectedTemplateRef = useRef(false);
   const hasTrackedEditStartedRef = useRef(false);
   const previousMediaUrisRef = useRef<{ photoUri: string; audioUri: string } | null>(null);
   const draftCreationPromiseRef = useRef<Promise<Id<"projects"> | null> | null>(
@@ -299,6 +328,30 @@ export default function EditorScreen() {
     setCurrentLocalProjectId(initialLocalProjectId);
   }, [initialLocalProjectId]);
 
+  useEffect(() => {
+    if (!routeTemplateIdParam) return;
+    const resolvedTemplateId = resolveTemplateId(routeTemplateIdParam);
+    setTemplateId((previousTemplateId) =>
+      previousTemplateId === resolvedTemplateId
+        ? previousTemplateId
+        : resolvedTemplateId,
+    );
+    hasManuallySelectedTemplateRef.current = false;
+  }, [routeTemplateIdParam]);
+
+  useEffect(() => {
+    if (routeTemplateIdParam) return;
+    if (hasManuallySelectedTemplateRef.current) return;
+    const projectTemplateId = resolveTemplateId(projectDetails?.templateId);
+    setTemplateId((previousTemplateId) =>
+      previousTemplateId === projectTemplateId
+        ? previousTemplateId
+        : projectTemplateId,
+    );
+  }, [routeTemplateIdParam, projectDetails?.templateId]);
+
+  const TemplateStageComponent = getTemplateDefinition(templateId).StageComponent;
+
   const createDraftProject = useCallback(async () => {
     if (currentProjectId) return currentProjectId;
     if (!isAuthenticated || !photoUri || !audioUri) return null;
@@ -322,7 +375,7 @@ export default function EditorScreen() {
             audioName,
             trimStart: roundedTrimStart,
             trimEnd: roundedTrimEnd,
-            templateId: "spinning-cd",
+            templateId,
           });
         } catch (error) {
           if (isUnauthenticatedConvexError(error) && retries > 0) {
@@ -357,6 +410,7 @@ export default function EditorScreen() {
     trimEnd,
     photoName,
     audioName,
+    templateId,
     createProject,
   ]);
 
@@ -374,7 +428,7 @@ export default function EditorScreen() {
     const pending = (async (): Promise<string | null> => {
       const project = await upsertLocalProject({
         title: normalizedTitle,
-        templateId: "spinning-cd",
+        templateId,
         aspectRatio,
         photoUri,
         photoName,
@@ -408,6 +462,7 @@ export default function EditorScreen() {
     trimEnd,
     photoName,
     audioName,
+    templateId,
   ]);
 
   useEffect(() => {
@@ -546,11 +601,11 @@ export default function EditorScreen() {
   ]);
 
   const stageWidth = Math.min(SCREEN_WIDTH - STAGE_HORIZONTAL_PADDING, 440);
+  const targetStageHeight = stageWidth * (aspectRatio === "9:16" ? 1.22 : 1.02);
   const stageHeight = Math.min(
-    Math.max(stageWidth * (aspectRatio === "9:16" ? 1.4 : 1.2), 460),
-    SCREEN_HEIGHT * 0.72,
+    Math.max(targetStageHeight, 300),
+    SCREEN_HEIGHT * (aspectRatio === "9:16" ? 0.52 : 0.48),
   );
-  const stageVinylSize = stageWidth * 1.42;
 
   const handleTrimChange = useCallback((start: number, end: number) => {
     const [nextStart, nextEnd] = clampTrimRange(
@@ -563,6 +618,16 @@ export default function EditorScreen() {
     setTrimStart(nextStart);
     setTrimEnd(nextEnd);
   }, [audioDurationSec, minTrimDuration, maxTrimDuration]);
+
+  const handleTemplateChange = useCallback((nextTemplateId: string) => {
+    const resolvedTemplateId = resolveTemplateId(nextTemplateId);
+    hasManuallySelectedTemplateRef.current = true;
+    setTemplateId((previousTemplateId) =>
+      previousTemplateId === resolvedTemplateId
+        ? previousTemplateId
+        : resolvedTemplateId,
+    );
+  }, []);
 
   const unloadPreviewSound = useCallback(async () => {
     const sound = previewSoundRef.current;
@@ -783,6 +848,7 @@ export default function EditorScreen() {
       : (currentLocalProjectId ?? "local_draft");
     const nextSnapshot = JSON.stringify({
       title: normalizedTitle,
+      templateId,
       aspectRatio,
       trimStart: roundedTrimStart,
       trimEnd: roundedTrimEnd,
@@ -827,7 +893,7 @@ export default function EditorScreen() {
           await upsertLocalProject({
             id: currentLocalProjectId,
             title: normalizedTitle,
-            templateId: "spinning-cd",
+            templateId,
             aspectRatio,
             photoUri,
             photoName,
@@ -841,6 +907,7 @@ export default function EditorScreen() {
           await updateProject({
             projectId: currentProjectId,
             title: normalizedTitle,
+            templateId,
             aspectRatio,
             trimStart: roundedTrimStart,
             trimEnd: roundedTrimEnd,
@@ -877,6 +944,7 @@ export default function EditorScreen() {
     shouldWaitForProjectMedia,
     forceAutosaveTick,
     projectTitle,
+    templateId,
     aspectRatio,
     trimStart,
     trimEnd,
@@ -941,6 +1009,7 @@ export default function EditorScreen() {
           audioUri: encodeUriParam(audioUri),
           audioName,
           aspectRatio,
+          templateId,
           trimStart: String(trimStart),
           trimEnd: String(trimEnd),
           initialTab,
@@ -958,6 +1027,7 @@ export default function EditorScreen() {
       audioUri,
       audioName,
       aspectRatio,
+      templateId,
       trimStart,
       trimEnd,
     ],
@@ -995,6 +1065,7 @@ export default function EditorScreen() {
         trimStart: String(safeTrimStart),
         trimEnd: String(safeTrimEnd),
         aspectRatio,
+        templateId,
       },
     });
   }, [
@@ -1013,6 +1084,7 @@ export default function EditorScreen() {
     minTrimDuration,
     maxTrimDuration,
     aspectRatio,
+    templateId,
   ]);
 
   const trimmedDuration = Math.max(0, trimEnd - trimStart);
@@ -1176,11 +1248,11 @@ export default function EditorScreen() {
       )}
 
       <View style={styles.previewContainer}>
-        <SpinningCdTemplateStage
+        <TemplateStageComponent
           width={stageWidth}
           height={stageHeight}
-          vinylSize={stageVinylSize}
-          photoUri={photoUri && !missingFiles.photo ? photoUri : null}
+          aspectRatio={aspectRatio}
+          photoUri={photoUri && !isCheckingFiles && !missingFiles.photo ? photoUri : null}
           isPlaying={isPlaying}
           playbackLabel={playbackLabel}
           trackTitle={trackTitle}
@@ -1190,11 +1262,17 @@ export default function EditorScreen() {
       </View>
 
       <View style={styles.controls}>
+        <View style={styles.controlsTopRow}>
+          <TemplateToggle
+            value={templateId}
+            options={TEMPLATE_OPTIONS}
+            onChange={handleTemplateChange}
+          />
+          <AspectRatioToggle value={aspectRatio} onChange={setAspectRatio} />
+        </View>
         <Text style={styles.timestamp}>
           {formatClock(previewPositionSec)} / {formatClock(trimmedDuration)}
         </Text>
-
-        <AspectRatioToggle value={aspectRatio} onChange={setAspectRatio} />
       </View>
 
       <View style={styles.mediaChips}>
@@ -1583,17 +1661,21 @@ const styles = StyleSheet.create({
     marginLeft: spacing.sm,
   },
   controls: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-end",
+    alignItems: "stretch",
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.xs,
-    gap: spacing.md,
+    gap: spacing.sm,
+  },
+  controlsTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   timestamp: {
     ...typography.caption,
     color: colors.dark.textSecondary,
     fontVariant: ["tabular-nums"],
+    textAlign: "center",
   },
   mediaChips: {
     flexDirection: "row",

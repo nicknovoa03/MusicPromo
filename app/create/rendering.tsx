@@ -17,10 +17,11 @@ import Constants from "expo-constants";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
-import { SpinningCdTemplateStage } from "@/components/create/SpinningCdTemplateStage";
 import type { EventName } from "@/lib/analytics";
 import { sleep } from "@/lib/utils";
 import { decodeUriParam, encodeUriParam } from "@/lib/uri";
+import { normalizeMediaUri } from "@/lib/mediaUri";
+import { getTemplateDefinition, resolveTemplateId } from "@/lib/templates";
 
 function isExpoGo(): boolean {
   return Constants.appOwnership === "expo";
@@ -32,6 +33,9 @@ const SCREEN_WIDTH = Dimensions.get("window").width;
 const SCREEN_HEIGHT = Dimensions.get("window").height;
 const STAGE_HORIZONTAL_PADDING = spacing.lg * 2;
 const DEFAULT_TRIM_DURATION = 15;
+const ENABLE_RENDER_MODE_BADGE = false;
+const FAST_EXPORT_DURATION_SECONDS: number | null = null;
+const ENABLE_FAST_RENDER_MODE = false;
 
 async function getRenderModule(): Promise<RenderVideoModule> {
   if (isExpoGo()) {
@@ -93,6 +97,7 @@ export default function RenderingScreen() {
   const params = useLocalSearchParams<{
     projectId?: string;
     title?: string;
+    templateId?: string;
     photoUri: string;
     photoName?: string;
     audioUri: string;
@@ -108,14 +113,18 @@ export default function RenderingScreen() {
   const projectTitle = firstParam(params.title)?.trim() || "New Project";
   const audioName = firstParam(params.audioName) || "";
   const aspectRatio = firstParam(params.aspectRatio) === "1:1" ? "1:1" : "9:16";
-  const previewPhotoUri = decodeUriParam(firstParam(params.photoUri));
+  const templateId = resolveTemplateId(firstParam(params.templateId));
+  const previewTemplateDefinition = getTemplateDefinition(templateId);
+  const TemplateStageComponent = previewTemplateDefinition.StageComponent;
+  const previewPhotoUri = normalizeMediaUri(
+    decodeUriParam(firstParam(params.photoUri)),
+  );
   const trackTitle = displayMediaLabel(audioName, "Untitled track");
   const stageWidth = Math.min(SCREEN_WIDTH - STAGE_HORIZONTAL_PADDING, 440);
   const stageHeight = Math.min(
     Math.max(stageWidth * (aspectRatio === "9:16" ? 1.4 : 1.2), 460),
     SCREEN_HEIGHT * 0.72,
   );
-  const stageVinylSize = stageWidth * 1.42;
 
   const [progress, setProgress] = useState(0);
   const [renderState, setRenderState] = useState<RenderState>("rendering");
@@ -147,15 +156,21 @@ export default function RenderingScreen() {
 
     const existingProjectId = asProjectId(firstParam(params.projectId));
     const title = firstParam(params.title);
-    const photoUri = decodeUriParam(firstParam(params.photoUri));
+    const photoUri = normalizeMediaUri(decodeUriParam(firstParam(params.photoUri)));
     const photoName = firstParam(params.photoName) || undefined;
-    const audioUri = decodeUriParam(firstParam(params.audioUri));
+    const audioUri = normalizeMediaUri(decodeUriParam(firstParam(params.audioUri)));
     const audioName = firstParam(params.audioName) || undefined;
     const parsedTrimStart = Number(firstParam(params.trimStart));
     const parsedTrimEnd = Number(firstParam(params.trimEnd));
     const [trimStart, trimEnd] = normalizeTrimBounds(parsedTrimStart, parsedTrimEnd);
+    const renderTrimEnd =
+      FAST_EXPORT_DURATION_SECONDS === null
+        ? trimEnd
+        : Math.min(trimEnd, trimStart + FAST_EXPORT_DURATION_SECONDS);
     const aspectRatio =
       firstParam(params.aspectRatio) === "1:1" ? "1:1" : "9:16";
+    const templateId = resolveTemplateId(firstParam(params.templateId));
+    const selectedTemplateDefinition = getTemplateDefinition(templateId);
 
     track("video_export_started", { aspectRatio });
 
@@ -175,7 +190,7 @@ export default function RenderingScreen() {
             audioName,
             trimStart,
             trimEnd,
-            templateId: "spinning-cd",
+            templateId,
           });
           projectIdRef.current = projectId;
         } catch (err) {
@@ -194,13 +209,15 @@ export default function RenderingScreen() {
     }
 
     try {
-      const { renderSpinningCdVideo } = await getRenderModule();
-      const videoUri = await renderSpinningCdVideo({
+      await getRenderModule();
+      const videoUri = await selectedTemplateDefinition.renderVideo({
         photoUri,
         audioUri,
         trimStart,
-        trimEnd,
+        trimEnd: renderTrimEnd,
         aspectRatio,
+        debugRenderModeBadge: ENABLE_RENDER_MODE_BADGE,
+        fastMode: ENABLE_FAST_RENDER_MODE,
         onProgress: (percent) => {
           setProgress(percent);
         },
@@ -216,7 +233,7 @@ export default function RenderingScreen() {
         try {
           await updateProject({
             projectId: projectIdRef.current,
-            templateId: "spinning-cd",
+            templateId,
             aspectRatio,
             photoUri,
             photoName,
@@ -340,10 +357,10 @@ export default function RenderingScreen() {
             <Text style={styles.percentageText}>{progress}%</Text>
 
             <View style={styles.stageWrap}>
-              <SpinningCdTemplateStage
+              <TemplateStageComponent
                 width={stageWidth}
                 height={stageHeight}
-                vinylSize={stageVinylSize}
+                aspectRatio={aspectRatio}
                 photoUri={previewPhotoUri}
                 isPlaying={renderState === "rendering"}
                 playbackLabel="Now Playing"
