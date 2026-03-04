@@ -6,7 +6,7 @@
 - Doc owner: Nick
 - Stakeholders: Nick (sole developer / product owner)
 - Last updated (YYYY-MM-DD): 2026-03-04
-- Version: 1.3 (Phase 3 branch wrap-up)
+- Version: 1.4 (scope clarification + finalization pass)
 - Links: GitHub repo at `/home/nick/MusicPromo`, template parity guide at `docs/requirements/TEMPLATE_PARITY_SYSTEM.md`
 
 ## 1) Product Summary
@@ -70,7 +70,7 @@
   - Admin tooling needs: None for v1 (Convex dashboard for manual operations)
 - **Accessibility:**
   - WCAG target: N/A (not web)
-  - Screen reader expectations: TBD (not a v1 priority for POC)
+  - Screen reader expectations: Provide labels/roles for primary controls in Sign In, Home, Create, Export, and Profile flows; full accessibility audit is deferred to post-v1.
 - **Privacy/security/compliance:**
   - PII handled: Email only (via Clerk)
   - Data retention: Indefinite (soft-delete on account deletion)
@@ -87,7 +87,7 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 ### App-Level Screens
 
 1. **Sign In** — Clean login with Apple + Google sign-in, "Continue as Guest" option. Light background.
-2. **Onboarding** — 1-2 walkthrough screens for first-time users. Design TBD.
+2. **Onboarding** — 1-2 walkthrough screens for first-time users with Edits-inspired visuals (full-bleed illustration, short headline/body copy, single primary CTA).
 3. **Home / Projects** — White background. "Projects" header, profile icon top-right. 2-column grid of project thumbnails with title + metadata. Black "+" FAB bottom-right. Empty state: illustration + "Create your first project."
 4. **Create — Media Picker** — Light background. Tabbed interface (Photo / Audio tabs, same layout for both). Cancel top-left, Add top-right. Search bar. Grid of device items.
 5. **Create — Editor/Trimmer** — Dark background. Turntable-style template preview (top) with template toggle, timestamp + aspect ratio controls, selected media chips, project-name editing, autosave feedback, and audio trimmer with trim handles + playback progress. "Export" button top-right.
@@ -252,7 +252,7 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 - **User problem:** User forgets about the app or misses new features.
 - **Primary user story:** As a creator, I receive push notifications for reminders, new templates, export completion, and announcements.
 - **Scope (v1):** Expo Push Notifications, all four notification types (reminder, new-template, export-complete, announcement), both automated and manual triggers
-- **Non-goals:** In-app notification center (TBD based on Mobbin), notification preferences/opt-out
+- **Non-goals:** In-app notification center, notification preferences/opt-out
 - **Key screens/components:** Push notification permission prompt, notification entity in Convex
 - **Backend/data needs:** Push Token entity in Convex, Notification entity, Expo push notification service
 - **Analytics/events:** `notification_received`, `notification_tapped`
@@ -289,7 +289,7 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 - **Primary user story:** As a new user, I see a brief walkthrough explaining the app so I know what to do.
 - **Scope (v1):** 1-3 onboarding screens shown once after first sign-in/guest entry
 - **Non-goals:** Interactive tutorial, skip-and-never-show-again logic for POC
-- **Key screens/components:** Onboarding screen(s) — design TBD (Mobbin research)
+- **Key screens/components:** Onboarding screen(s) with full-bleed artwork, concise explanatory copy, pagination dots, and a single primary CTA per step
 - **Analytics/events:** `onboarding_completed`
 - **Acceptance criteria:**
   - First-time user sees onboarding after sign-in or guest entry
@@ -316,7 +316,7 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 - **Main sections:** 2-column grid of project cards (thumbnail, title, date/size)
 - **Data source:** Signed-in user = Convex projects; local guest user = AsyncStorage local projects
 - **Primary CTA:** Black "+" FAB button (bottom-right) → create flow
-- **Card actions:** Quick-actions menu with Rename, Duplicate (placeholder), and Delete (destructive + confirm)
+- **Card actions:** Quick-actions menu with Rename, Duplicate, and Delete (destructive + confirm); in v1.3, Rename and Duplicate remain visible and show "Coming soon" messaging when tapped
 - **List behavior:** Vertical scroll, pull to refresh
 - **Empty state:** Illustration + "Create your first project" + "Keep track of your drafts and finished videos all in one place."
 - **Loading:** Skeleton grid
@@ -389,7 +389,7 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 - **Primary intent:** Introduce first-time users to the app
 - **Main sections:** 1-2 screens with illustration + brief copy explaining the flow
 - **Primary CTA:** "Get Started" / "Continue"
-- **Theme:** TBD
+- **Theme:** Dark/black (aligned with Create and Export experiences)
 - **Analytics:** `onboarding_completed`
 
 ## 8) Interaction Flows
@@ -530,7 +530,7 @@ Primary reference: Meta's Edits app. Secondary: Spotify (profile). Screenshots i
 - ~~Tone of voice~~ — RESOLVED: Casual and clear
 - Preview/export frame parity automation strategy (manual visual QA vs automated frame diff tooling)
 - Next built-in template roadmap beyond Simple Spin and Deck
-- Whether to keep duplicate as a placeholder action or ship full duplication behavior in next phase
+- ~~Duplicate quick action scope for v1.3~~ — RESOLVED: Keep the Duplicate entry visible in v1.3 with "Coming soon" messaging on tap; ship full duplication behavior in the next phase
 
 ## 14) Phasing and Milestones
 
