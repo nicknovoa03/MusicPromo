@@ -129,7 +129,7 @@ export default function HomeScreen() {
             aspectRatio: project.aspectRatio,
             templateId: resolveTemplateId(project.templateId),
             trimStart: String(project.trimStart ?? 0),
-            trimEnd: String(project.trimEnd ?? 30),
+            trimEnd: String(project.trimEnd ?? 15),
           },
         });
         return;
@@ -145,7 +145,7 @@ export default function HomeScreen() {
           aspectRatio: project.aspectRatio,
           templateId: resolveTemplateId(project.templateId),
           trimStart: String(project.trimStart ?? 0),
-          trimEnd: String(project.trimEnd ?? 30),
+          trimEnd: String(project.trimEnd ?? 15),
         },
       });
     },

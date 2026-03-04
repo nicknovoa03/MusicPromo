@@ -5,9 +5,9 @@
 - Project / repo: MusicPromo (`/home/nick/MusicPromo`)
 - Product name: MusicPromo
 - Owners: Nick
-- Date: 2026-03-04
-- Version: 1.3 (Phase 3 branch wrap-up)
-- Links: PRD at `docs/requirements/PRODUCT_DESIGN_REQUIREMENTS.md`, parity guide at `docs/requirements/TEMPLATE_PARITY_SYSTEM.md`
+- Date: 2026-02-20
+- Version: 1.0 (initial intake)
+- Links: PRD at `docs/requirements/PRODUCT_DESIGN_REQUIREMENTS.md`
 
 ## 1) Guideline (Shared AI-Human Understanding)
 
@@ -16,7 +16,7 @@
 - **One-liner:** A dead-simple mobile tool that turns a photo and audio clip into a short promo video for social media.
 - **Target users:** Indie musicians and creators who self-promote on Instagram, TikTok, etc.
 - **Primary value:** Eliminates the hour-long CapCut/Photoshop workflow — two inputs, one output, done.
-- **Definition of v1 "done":** A user can sign in (or go guest), pick a photo + audio, trim audio, choose a built-in template, preview/export a matching MP4, and save/share to Instagram/TikTok. Project history/editing is saved. Push notifications work.
+- **Definition of v1 "done":** A user can sign in (or go guest), pick a photo + audio, trim audio, preview a spinning CD video, export as MP4, and save to camera roll or share to Instagram/TikTok. Project history is saved. Push notifications work.
 - **Non-goals:** Not a video editor, not a social network, not a distribution platform, no SoundCloud integration, no multi-user/label features, no monetization.
 
 ### 1.2 Current State
@@ -87,12 +87,8 @@
 - 2026-02-26: **Profile preferences save immediately with constrained presets** → `defaultAspectRatio` and `defaultVideoLength` are updated from Profile via one-tap controls (9:16/1:1 and 15s/30s/60s) and reused as defaults for new create sessions.
 - 2026-02-26: **Account deletion is soft-delete plus forced sign-out** → Added `users.isDeleted`/`users.deletedAt` and `users.softDeleteCurrent`; deleted users are treated as inactive for queries/mutations and app bootstrap routes them back to auth.
 - 2026-02-27: **Onboarding completion uses Convex-backed state with AsyncStorage fallback** → Added `users.onboardingCompletedAt` + `users.completeOnboarding` for durable cross-device routing gates, and local per-user fallback (`musicpromo:onboarding-complete:<clerkUserId>`) so onboarding completion is never blocked by transient offline/write failures.
-- 2026-02-27: **Project card quick-actions adopted (Rename, Duplicate, Delete) with destructive confirmation for delete** → Home projects now expose a lightweight actions menu inspired by Edits; `projects.remove` enforces ownership checks, and delete requires explicit confirmation before removing metadata from history.
-- 2026-03-04: **Template system promoted to first-class contract (`simple-spin`, `spinning-cd`)** → Added a typed template registry (`src/lib/templates.ts`) so stage preview + renderer selection flow through a single source instead of hardcoding one template path.
-- 2026-03-04: **Preview/export parity uses shared template specs** → Added shared spec files (`simpleSpinTemplateSpec`, `spinningCdTemplateSpec`, `vinylTemplateSpec`) consumed by both React Native preview components and FFmpeg filter generation to reduce visual drift and make new templates export-ready by design.
-- 2026-03-04: **New-project trim defaults pinned to 15 seconds at picker entry** → New create sessions now initialize to 15s regardless of profile preferred length to match product expectation and avoid accidental long draft trims; reopened projects still preserve saved trim.
-- 2026-03-04: **Production export profile fixed to high-quality mode** → Export path now disables debug badge/fast mode and uses high-quality encoding defaults (H.264 ~8 Mbps + AAC 256 kbps) for consistent output quality in branch release testing.
-- 2026-03-04: **Render pipeline hardening via media normalization and FFmpeg fallback layering** → Added predictable photo/audio normalization and explicit fallback command paths to reduce export failures across iOS device media edge cases while preserving user-facing flow.
+- 2026-03-04: **Phase 4 renderer strategy is local-first with a Remotion decision gate** → We want preview/export parity without cloud rendering. Phase 4 runs a local Remotion spike (single composition for preview+export) with explicit pass/fail gates (performance, sync, stability, fidelity). If it fails, fallback is a maintained FFmpeg fork behind a renderer abstraction so templates stay standardized.
+- 2026-03-04: **Phase 4 implementation keeps FFmpeg active while preserving Remotion path behind abstraction** → Added runtime engine selection (`EXPO_PUBLIC_RENDER_ENGINE`) and shared `spinning-cd` composition inputs used by preview + export. `remotion-local` adapter now executes local rendering through FFmpeg fallback because a production-ready native Remotion runtime is not yet available in this Expo architecture; go/no-go gates remain manual device validation.
 
 ## 2) Guidance (Methodology for Evolving Prompts)
 
@@ -189,7 +185,7 @@ Project: MusicPromo
 Stack: React Native + Expo, Clerk, Convex, PostHog
 PRD: docs/requirements/PRODUCT_DESIGN_REQUIREMENTS.md
 Agent Design: docs/requirements/AGENT_DESIGN_REQUIREMENTS.md
-Current phase: [Phase 0/1/2/3]
+Current phase: [Phase 0/1/2/3/4]
 Focus: [epic name]
 ```
 
@@ -209,10 +205,12 @@ Phase 2 — Polish
   ├── Epic: Profile & Settings
   └── Epic: Onboarding
 
-Phase 3 — Project Management Enhancements
-  ├── Epic: Project Quick Actions (Delete now, rename/duplicate staged)
-  ├── Epic: Project Editing Core (autosave, title, media replacement recovery)
-  └── Epic: Advanced history controls (future)
+Phase 3 — Stabilization
+  └── Epic: Release Hardening & Regression
+
+Phase 4 — MVP Finalization
+  └── Epic: Template Fidelity & Export Standardization (Local-Only)
+      Current status (2026-03-04): renderer abstraction + shared composition shipped for `spinning-cd`; Remotion path is feature-flagged with FFmpeg fallback pending gate results on real devices
 ```
 
 Work through epics within a phase, then move to the next phase. Update "Current phase" and "Focus" as you go. Examples:
@@ -233,8 +231,8 @@ Focus: Push Notifications
 ```
 
 ```
-Current phase: Phase 3
-Focus: Project Quick Actions
+Current phase: Phase 4
+Focus: Template Fidelity & Export Standardization
 ```
 
 ## 3) Guardrails (AI-Assisted Reviews and Quality Gates)
