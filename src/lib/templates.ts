@@ -6,6 +6,7 @@ import {
   renderSimpleSpinVideo,
   renderSpinningCdVideo,
 } from "@/lib/renderVideo";
+import type { VinylToneId } from "@/lib/vinylTemplateSpec";
 
 export interface TemplateStageProps {
   width: number;
@@ -24,6 +25,10 @@ export interface TemplateDefinition {
   name: string;
   StageComponent: ComponentType<TemplateStageProps>;
   renderVideo: (options: RenderOptions) => Promise<string>;
+  parity: {
+    layoutSpec: string;
+    vinylTone: VinylToneId;
+  };
 }
 
 export const DEFAULT_TEMPLATE_ID = "simple-spin";
@@ -34,12 +39,20 @@ const TEMPLATE_DEFINITIONS: Record<string, TemplateDefinition> = {
     name: "Simple Spin",
     StageComponent: SimpleSpinTemplateStage,
     renderVideo: renderSimpleSpinVideo,
+    parity: {
+      layoutSpec: "simpleSpinTemplateSpec",
+      vinylTone: "simple-spin",
+    },
   },
   "spinning-cd": {
     id: "spinning-cd",
     name: "Deck",
     StageComponent: SpinningCdTemplateStage,
     renderVideo: renderSpinningCdVideo,
+    parity: {
+      layoutSpec: "spinningCdTemplateSpec",
+      vinylTone: "spinning-cd",
+    },
   },
 };
 

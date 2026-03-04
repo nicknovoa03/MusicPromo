@@ -122,6 +122,7 @@ export function SpinningCdTemplateStage({
           imageUri={photoUri ?? null}
           size={layout.recordSize}
           spinning={isPlaying}
+          tone="spinning-cd"
         />
       </View>
 

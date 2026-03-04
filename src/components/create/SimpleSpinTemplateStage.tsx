@@ -2,16 +2,13 @@ import { Pressable, StyleSheet, View } from "react-native";
 import { radius } from "@/constants/tokens";
 import { VinylPreview } from "@/components/create/VinylPreview";
 import type { TemplateStageProps } from "@/lib/templates";
-
-function even(value: number) {
-  return value % 2 === 0 ? value : value - 1;
-}
-
-function getDiscSize(width: number, height: number, aspectRatio: "9:16" | "1:1") {
-  const basis = Math.min(width, height);
-  const scale = aspectRatio === "9:16" ? 0.82 : 0.78;
-  return Math.max(120, even(Math.round(basis * scale)));
-}
+import {
+  getSimpleSpinTemplateLayout,
+  SIMPLE_SPIN_GLOW_ALPHA_BYTE,
+  SIMPLE_SPIN_GLOW_HEX,
+  SIMPLE_SPIN_STAGE_BACKGROUND_HEX,
+} from "@/lib/simpleSpinTemplateSpec";
+import { toRgba } from "@/lib/vinylTemplateSpec";
 
 export function SimpleSpinTemplateStage({
   width,
@@ -24,27 +21,30 @@ export function SimpleSpinTemplateStage({
   subtitle,
   onTogglePlay,
 }: TemplateStageProps) {
-  const discSize = getDiscSize(width, height, aspectRatio);
-  const discX = (width - discSize) / 2;
-  const discY = (height - discSize) / 2 - (aspectRatio === "9:16" ? height * 0.02 : 0);
-  const glowSize = discSize * 1.08;
-  const glowX = (width - glowSize) / 2;
-  const glowY = (height - glowSize) / 2 - (aspectRatio === "9:16" ? height * 0.02 : 0);
+  const layout = getSimpleSpinTemplateLayout({ width, height, aspectRatio });
 
   return (
     <View
-      style={[styles.stage, { width, height }]}
+      style={[
+        styles.stage,
+        {
+          width,
+          height,
+          backgroundColor: SIMPLE_SPIN_STAGE_BACKGROUND_HEX,
+        },
+      ]}
       accessibilityLabel={`${playbackLabel}. ${trackTitle}. ${subtitle}`}
     >
       <View
         style={[
           styles.glow,
           {
-            left: glowX,
-            top: glowY,
-            width: glowSize,
-            height: glowSize,
-            borderRadius: glowSize / 2,
+            left: layout.glowX,
+            top: layout.glowY,
+            width: layout.glowSize,
+            height: layout.glowSize,
+            borderRadius: layout.glowRadius,
+            backgroundColor: toRgba(SIMPLE_SPIN_GLOW_HEX, SIMPLE_SPIN_GLOW_ALPHA_BYTE),
           },
         ]}
       />
@@ -53,12 +53,17 @@ export function SimpleSpinTemplateStage({
         style={[
           styles.discWrap,
           {
-            left: discX,
-            top: discY,
+            left: layout.discX,
+            top: layout.discY,
           },
         ]}
       >
-        <VinylPreview imageUri={photoUri ?? null} size={discSize} spinning={isPlaying} />
+        <VinylPreview
+          imageUri={photoUri ?? null}
+          size={layout.discSize}
+          spinning={isPlaying}
+          tone="simple-spin"
+        />
       </View>
 
       {onTogglePlay ? (
@@ -67,11 +72,11 @@ export function SimpleSpinTemplateStage({
           style={[
             styles.playTouch,
             {
-              left: discX,
-              top: discY,
-              width: discSize,
-              height: discSize,
-              borderRadius: discSize / 2,
+              left: layout.discX,
+              top: layout.discY,
+              width: layout.discSize,
+              height: layout.discSize,
+              borderRadius: layout.discRadius,
             },
           ]}
           accessibilityLabel={isPlaying ? "Pause preview" : "Play preview"}
@@ -86,7 +91,6 @@ const styles = StyleSheet.create({
   stage: {
     borderRadius: radius.lg,
     overflow: "hidden",
-    backgroundColor: "#030304",
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: "rgba(255,255,255,0.12)",
     shadowColor: "#000000",
@@ -97,7 +101,6 @@ const styles = StyleSheet.create({
   },
   glow: {
     position: "absolute",
-    backgroundColor: "rgba(255,255,255,0.08)",
   },
   discWrap: {
     position: "absolute",

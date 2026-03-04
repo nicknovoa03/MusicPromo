@@ -2,11 +2,17 @@ import { useEffect, useRef } from "react";
 import { Animated, Easing, Image, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { colors } from "@/constants/tokens";
+import {
+  getVinylToneSpec,
+  toRgba,
+  type VinylToneId,
+} from "@/lib/vinylTemplateSpec";
 
 interface VinylPreviewProps {
   imageUri?: string | null;
   size: number;
   spinning?: boolean;
+  tone?: VinylToneId;
 }
 
 const GROOVE_SCALES = [0.92, 0.84, 0.76, 0.68, 0.6, 0.52, 0.44];
@@ -16,8 +22,10 @@ export function VinylPreview({
   imageUri,
   size,
   spinning = true,
+  tone = "spinning-cd",
 }: VinylPreviewProps) {
   const spinProgress = useRef(new Animated.Value(0)).current;
+  const toneSpec = getVinylToneSpec(tone);
 
   useEffect(() => {
     if (!spinning) {
@@ -90,29 +98,41 @@ export function VinylPreview({
           </View>
         )}
 
-        <View style={styles.darken} />
-        <View style={styles.groovesLayer}>
-          {GROOVE_SCALES.map((scale, index) => {
-            const grooveSize = size * scale;
-            return (
-              <View
-                key={String(scale)}
-                style={[
-                  styles.groove,
-                  {
-                    width: grooveSize,
-                    height: grooveSize,
-                    borderRadius: grooveSize / 2,
-                    borderColor:
-                      index % 2 === 0
-                        ? "rgba(255,255,255,0.08)"
-                        : "rgba(0,0,0,0.22)",
-                  },
-                ]}
-              />
-            );
-          })}
-        </View>
+        <View
+          style={[
+            styles.darken,
+            {
+              backgroundColor: toRgba(
+                toneSpec.shadeHexColor,
+                toneSpec.shadeAlphaByte,
+              ),
+            },
+          ]}
+        />
+        {toneSpec.showGroovesInPreview ? (
+          <View style={styles.groovesLayer}>
+            {GROOVE_SCALES.map((scale, index) => {
+              const grooveSize = size * scale;
+              return (
+                <View
+                  key={String(scale)}
+                  style={[
+                    styles.groove,
+                    {
+                      width: grooveSize,
+                      height: grooveSize,
+                      borderRadius: grooveSize / 2,
+                      borderColor:
+                        index % 2 === 0
+                          ? "rgba(255,255,255,0.08)"
+                          : "rgba(0,0,0,0.22)",
+                    },
+                  ]}
+                />
+              );
+            })}
+          </View>
+        ) : null}
 
         <View
           style={[
@@ -121,6 +141,10 @@ export function VinylPreview({
               width: labelSize,
               height: labelSize,
               borderRadius: labelSize / 2,
+              backgroundColor: toRgba(
+                toneSpec.labelHexColor,
+                toneSpec.labelAlphaByte,
+              ),
             },
           ]}
         />
@@ -131,10 +155,14 @@ export function VinylPreview({
               width: holeSize,
               height: holeSize,
               borderRadius: holeSize / 2,
+              backgroundColor: toRgba(
+                toneSpec.holeHexColor,
+                toneSpec.holeAlphaByte,
+              ),
             },
           ]}
         />
-        <View style={styles.sheen} />
+        {toneSpec.showSheenInPreview ? <View style={styles.sheen} /> : null}
       </Animated.View>
     </View>
   );
@@ -167,7 +195,6 @@ const styles = StyleSheet.create({
   },
   darken: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(8,8,10,0.56)",
   },
   groovesLayer: {
     ...StyleSheet.absoluteFillObject,
@@ -180,15 +207,11 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   label: {
-    backgroundColor: "#E8E2D5",
-    borderWidth: 2,
-    borderColor: "rgba(0,0,0,0.2)",
+    borderWidth: 0,
   },
   hole: {
     position: "absolute",
-    backgroundColor: "#0B0B0D",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.3)",
+    borderWidth: 0,
   },
   sheen: {
     position: "absolute",
