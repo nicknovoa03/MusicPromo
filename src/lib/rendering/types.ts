@@ -9,6 +9,8 @@ export interface RenderRequest {
   trimStart: number;
   trimEnd: number;
   aspectRatio: RenderAspectRatio;
+  debugRenderModeBadge?: boolean;
+  fastMode?: boolean;
   onProgress?: (percent: number) => void;
   engine?: RenderEngine;
 }

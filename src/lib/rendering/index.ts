@@ -5,7 +5,15 @@ export {
   resolveRenderer,
 } from "@/lib/rendering/renderer";
 export { TemplatePreview } from "@/lib/rendering/preview";
-export { FEATURE_FLAG_RENDER_ENGINE, resolvePreferredRenderEngine } from "@/lib/rendering/runtime";
+export {
+  FEATURE_FLAG_RENDER_ENGINE,
+  resolvePreferredRenderEngine,
+} from "@/lib/rendering/runtime";
+export {
+  REMOTION_LOCAL_SPIKE_ENABLED,
+  clearRemotionLocalRuntimeBridge,
+  registerRemotionLocalRuntimeBridge,
+} from "@/lib/rendering/remotionLocalRuntime";
 export {
   SPINNING_CD_TEMPLATE_ID,
   spinningCdComposition,

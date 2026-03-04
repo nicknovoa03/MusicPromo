@@ -18,6 +18,12 @@ import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
 import type { EventName } from "@/lib/analytics";
+import {
+  cancelRendererWork,
+  renderVideoWithRenderer,
+  resolveRenderEngine,
+  type RenderEngine,
+} from "@/lib/rendering";
 import { sleep } from "@/lib/utils";
 import { decodeUriParam, encodeUriParam } from "@/lib/uri";
 import { normalizeMediaUri } from "@/lib/mediaUri";
@@ -27,8 +33,6 @@ function isExpoGo(): boolean {
   return Constants.appOwnership === "expo";
 }
 
-type RenderVideoModule = typeof import("@/lib/renderVideo");
-let renderModule: RenderVideoModule | null = null;
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const SCREEN_HEIGHT = Dimensions.get("window").height;
 const STAGE_HORIZONTAL_PADDING = spacing.lg * 2;
@@ -37,22 +41,13 @@ const ENABLE_RENDER_MODE_BADGE = false;
 const FAST_EXPORT_DURATION_SECONDS: number | null = null;
 const ENABLE_FAST_RENDER_MODE = false;
 
-async function getRenderModule(): Promise<RenderVideoModule> {
-  if (isExpoGo()) {
-    throw new Error(
-      "Video rendering requires a development build.\n\nIt cannot run in Expo Go. Run 'npx expo run:android' or 'npx expo run:ios' to test.",
-    );
-  }
-  if (!renderModule) {
-    renderModule = await import("@/lib/renderVideo");
-  }
-  return renderModule;
-}
-
-async function cancelCurrentRender(): Promise<void> {
-  if (isExpoGo() || !renderModule) return;
+async function cancelCurrentRender(params: {
+  engine?: RenderEngine;
+  templateId?: string;
+}): Promise<void> {
+  if (isExpoGo()) return;
   try {
-    await renderModule.cancelCurrentRender();
+    await cancelRendererWork(params);
   } catch {
     // Ignore
   }
@@ -133,6 +128,8 @@ export default function RenderingScreen() {
   const hasStarted = useRef(false);
   const isScreenActiveRef = useRef(true);
   const isCanceledRef = useRef(false);
+  const activeEngineRef = useRef<RenderEngine>(resolveRenderEngine({ templateId }));
+  const activeTemplateIdRef = useRef<string>(templateId);
 
   const track = useCallback(
     (event: EventName, props?: Record<string, string>) => {
@@ -145,7 +142,10 @@ export default function RenderingScreen() {
     return () => {
       isScreenActiveRef.current = false;
       isCanceledRef.current = true;
-      void cancelCurrentRender();
+      void cancelCurrentRender({
+        engine: activeEngineRef.current,
+        templateId: activeTemplateIdRef.current,
+      });
     };
   }, []);
 
@@ -170,9 +170,15 @@ export default function RenderingScreen() {
     const aspectRatio =
       firstParam(params.aspectRatio) === "1:1" ? "1:1" : "9:16";
     const templateId = resolveTemplateId(firstParam(params.templateId));
-    const selectedTemplateDefinition = getTemplateDefinition(templateId);
+    const selectedEngine = resolveRenderEngine({ templateId });
+    activeEngineRef.current = selectedEngine;
+    activeTemplateIdRef.current = templateId;
 
-    track("video_export_started", { aspectRatio });
+    track("video_export_started", {
+      aspectRatio,
+      engine: selectedEngine,
+      templateId,
+    });
 
     if (!projectIdRef.current && existingProjectId) {
       projectIdRef.current = existingProjectId;
@@ -209,8 +215,15 @@ export default function RenderingScreen() {
     }
 
     try {
-      await getRenderModule();
-      const videoUri = await selectedTemplateDefinition.renderVideo({
+      if (isExpoGo()) {
+        throw new Error(
+          "Video rendering requires a development build.\n\nIt cannot run in Expo Go. Run 'npx expo run:android' or 'npx expo run:ios' to test.",
+        );
+      }
+
+      const renderResult = await renderVideoWithRenderer({
+        engine: selectedEngine,
+        templateId,
         photoUri,
         audioUri,
         trimStart,
@@ -222,12 +235,16 @@ export default function RenderingScreen() {
           setProgress(percent);
         },
       });
+      const videoUri = renderResult.videoUri;
 
       if (!isScreenActiveRef.current || isCanceledRef.current) return;
 
       setProgress(100);
       setRenderState("complete");
-      track("video_exported");
+      track("video_exported", {
+        engine: renderResult.engine,
+        templateId: renderResult.templateId,
+      });
 
       if (projectIdRef.current) {
         try {
@@ -295,7 +312,10 @@ export default function RenderingScreen() {
           style: "destructive",
           onPress: () => {
             isCanceledRef.current = true;
-            void cancelCurrentRender();
+            void cancelCurrentRender({
+              engine: activeEngineRef.current,
+              templateId: activeTemplateIdRef.current,
+            });
             router.back();
           },
         },

@@ -1,18 +1,49 @@
 import type { Renderer, RenderRequest, RenderResult } from "@/lib/rendering/types";
 import { ffmpegRenderer } from "@/lib/rendering/ffmpegRenderer";
-import { resolveSpinningCdTemplateId } from "@/lib/rendering/templates/spinningCdComposition";
+import {
+  REMOTION_LOCAL_SPIKE_ENABLED,
+  tryCancelRemotionLocalRuntime,
+  tryRenderWithRemotionLocalRuntime,
+} from "@/lib/rendering/remotionLocalRuntime";
+import { resolveTemplateId } from "@/lib/templates";
 
 export const remotionLocalRenderer: Renderer = {
   engine: "remotion-local",
   async render(request: RenderRequest): Promise<RenderResult> {
-    const templateId = resolveSpinningCdTemplateId(request.templateId);
+    const templateId = resolveTemplateId(request.templateId);
 
-    // Limitation: Remotion does not currently provide a production-ready on-device
-    // React Native renderer runtime for this Expo app. Keep this adapter behind
-    // the abstraction and run local export via the FFmpeg backend for now.
+    try {
+      const remotionVideoUri = await tryRenderWithRemotionLocalRuntime(
+        templateId,
+        request,
+      );
+      if (remotionVideoUri) {
+        if (__DEV__) {
+          console.info(
+            `[remotion-local] Rendered via runtime bridge for template "${templateId}".`,
+          );
+        }
+        return {
+          videoUri: remotionVideoUri,
+          templateId,
+          engine: "remotion-local",
+        };
+      }
+    } catch (error) {
+      if (__DEV__) {
+        console.warn(
+          `[remotion-local] Runtime bridge failed for template "${templateId}", falling back to FFmpeg.`,
+          error,
+        );
+      }
+    }
+
     if (__DEV__) {
+      const reason = REMOTION_LOCAL_SPIKE_ENABLED
+        ? "runtime bridge unavailable"
+        : "spike disabled";
       console.info(
-        "[remotion-local] Falling back to FFmpeg local renderer pending native Remotion runtime support.",
+        `[remotion-local] Falling back to FFmpeg (${reason}) for template "${templateId}".`,
       );
     }
 
@@ -22,6 +53,11 @@ export const remotionLocalRenderer: Renderer = {
     });
   },
   async cancel(): Promise<void> {
+    try {
+      await tryCancelRemotionLocalRuntime();
+    } catch {
+      // Ignore runtime cancel failures and continue with fallback cancel.
+    }
     await ffmpegRenderer.cancel?.();
   },
 };
