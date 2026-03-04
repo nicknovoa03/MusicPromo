@@ -5,8 +5,7 @@ import {
   StyleSheet,
   Pressable,
   Alert,
-  Animated,
-  Image,
+  Dimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -19,19 +18,41 @@ import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
 import type { EventName } from "@/lib/analytics";
-import { cancelRendererWork, renderVideoWithRenderer } from "@/lib/rendering";
 import { sleep } from "@/lib/utils";
+import { decodeUriParam, encodeUriParam } from "@/lib/uri";
+import { normalizeMediaUri } from "@/lib/mediaUri";
+import { getTemplateDefinition, resolveTemplateId } from "@/lib/templates";
 
 function isExpoGo(): boolean {
   return Constants.appOwnership === "expo";
 }
 
-const PREVIEW_SIZE = 220;
+type RenderVideoModule = typeof import("@/lib/renderVideo");
+let renderModule: RenderVideoModule | null = null;
+const SCREEN_WIDTH = Dimensions.get("window").width;
+const SCREEN_HEIGHT = Dimensions.get("window").height;
+const STAGE_HORIZONTAL_PADDING = spacing.lg * 2;
+const DEFAULT_TRIM_DURATION = 15;
+const ENABLE_RENDER_MODE_BADGE = false;
+const FAST_EXPORT_DURATION_SECONDS: number | null = null;
+const ENABLE_FAST_RENDER_MODE = false;
+
+async function getRenderModule(): Promise<RenderVideoModule> {
+  if (isExpoGo()) {
+    throw new Error(
+      "Video rendering requires a development build.\n\nIt cannot run in Expo Go. Run 'npx expo run:android' or 'npx expo run:ios' to test.",
+    );
+  }
+  if (!renderModule) {
+    renderModule = await import("@/lib/renderVideo");
+  }
+  return renderModule;
+}
 
 async function cancelCurrentRender(): Promise<void> {
-  if (isExpoGo()) return;
+  if (isExpoGo() || !renderModule) return;
   try {
-    await cancelRendererWork("ffmpeg");
+    await renderModule.cancelCurrentRender();
   } catch {
     // Ignore
   }
@@ -46,8 +67,16 @@ function firstParam(param: string | string[] | undefined) {
 function normalizeTrimBounds(start: number, end: number): [number, number] {
   const safeStart = Number.isFinite(start) ? Math.max(0, start) : 0;
   const safeEnd =
-    Number.isFinite(end) && end > safeStart ? end : safeStart + 30;
+    Number.isFinite(end) && end > safeStart
+      ? end
+      : safeStart + DEFAULT_TRIM_DURATION;
   return [safeStart, safeEnd];
+}
+
+function displayMediaLabel(name: string, fallback: string) {
+  const trimmed = name.trim();
+  if (!trimmed) return fallback;
+  return trimmed.replace(/\.[a-z0-9]{1,8}$/i, "");
 }
 
 function asProjectId(value: string | undefined): Id<"projects"> | null {
@@ -68,8 +97,11 @@ export default function RenderingScreen() {
   const params = useLocalSearchParams<{
     projectId?: string;
     title?: string;
+    templateId?: string;
     photoUri: string;
+    photoName?: string;
     audioUri: string;
+    audioName?: string;
     trimStart: string;
     trimEnd: string;
     aspectRatio: string;
@@ -78,12 +110,26 @@ export default function RenderingScreen() {
   const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
   const createProject = useMutation(api.projects.create);
   const updateProject = useMutation(api.projects.update);
+  const projectTitle = firstParam(params.title)?.trim() || "New Project";
+  const audioName = firstParam(params.audioName) || "";
+  const aspectRatio = firstParam(params.aspectRatio) === "1:1" ? "1:1" : "9:16";
+  const templateId = resolveTemplateId(firstParam(params.templateId));
+  const previewTemplateDefinition = getTemplateDefinition(templateId);
+  const TemplateStageComponent = previewTemplateDefinition.StageComponent;
+  const previewPhotoUri = normalizeMediaUri(
+    decodeUriParam(firstParam(params.photoUri)),
+  );
+  const trackTitle = displayMediaLabel(audioName, "Untitled track");
+  const stageWidth = Math.min(SCREEN_WIDTH - STAGE_HORIZONTAL_PADDING, 440);
+  const stageHeight = Math.min(
+    Math.max(stageWidth * (aspectRatio === "9:16" ? 1.4 : 1.2), 460),
+    SCREEN_HEIGHT * 0.72,
+  );
 
   const [progress, setProgress] = useState(0);
   const [renderState, setRenderState] = useState<RenderState>("rendering");
   const [errorMessage, setErrorMessage] = useState("");
   const projectIdRef = useRef<Id<"projects"> | null>(null);
-  const animatedProgress = useRef(new Animated.Value(0)).current;
   const hasStarted = useRef(false);
   const isScreenActiveRef = useRef(true);
   const isCanceledRef = useRef(false);
@@ -110,13 +156,21 @@ export default function RenderingScreen() {
 
     const existingProjectId = asProjectId(firstParam(params.projectId));
     const title = firstParam(params.title);
-    const photoUri = firstParam(params.photoUri) ?? "";
-    const audioUri = firstParam(params.audioUri) ?? "";
+    const photoUri = normalizeMediaUri(decodeUriParam(firstParam(params.photoUri)));
+    const photoName = firstParam(params.photoName) || undefined;
+    const audioUri = normalizeMediaUri(decodeUriParam(firstParam(params.audioUri)));
+    const audioName = firstParam(params.audioName) || undefined;
     const parsedTrimStart = Number(firstParam(params.trimStart));
     const parsedTrimEnd = Number(firstParam(params.trimEnd));
     const [trimStart, trimEnd] = normalizeTrimBounds(parsedTrimStart, parsedTrimEnd);
+    const renderTrimEnd =
+      FAST_EXPORT_DURATION_SECONDS === null
+        ? trimEnd
+        : Math.min(trimEnd, trimStart + FAST_EXPORT_DURATION_SECONDS);
     const aspectRatio =
       firstParam(params.aspectRatio) === "1:1" ? "1:1" : "9:16";
+    const templateId = resolveTemplateId(firstParam(params.templateId));
+    const selectedTemplateDefinition = getTemplateDefinition(templateId);
 
     track("video_export_started", { aspectRatio });
 
@@ -131,10 +185,12 @@ export default function RenderingScreen() {
             title: title?.trim() || "New Project",
             aspectRatio,
             photoUri,
+            photoName,
             audioUri,
+            audioName,
             trimStart,
             trimEnd,
-            templateId: "spinning-cd",
+            templateId,
           });
           projectIdRef.current = projectId;
         } catch (err) {
@@ -153,30 +209,19 @@ export default function RenderingScreen() {
     }
 
     try {
-      if (isExpoGo()) {
-        throw new Error(
-          "Video rendering requires a development build.\n\nIt cannot run in Expo Go. Run 'npx expo run:android' or 'npx expo run:ios' to test.",
-        );
-      }
-
-      const renderResult = await renderVideoWithRenderer({
-        engine: "ffmpeg",
-        templateId: "spinning-cd",
+      await getRenderModule();
+      const videoUri = await selectedTemplateDefinition.renderVideo({
         photoUri,
         audioUri,
         trimStart,
-        trimEnd,
+        trimEnd: renderTrimEnd,
         aspectRatio,
+        debugRenderModeBadge: ENABLE_RENDER_MODE_BADGE,
+        fastMode: ENABLE_FAST_RENDER_MODE,
         onProgress: (percent) => {
           setProgress(percent);
-          Animated.timing(animatedProgress, {
-            toValue: percent,
-            duration: 300,
-            useNativeDriver: false,
-          }).start();
         },
       });
-      const videoUri = renderResult.videoUri;
 
       if (!isScreenActiveRef.current || isCanceledRef.current) return;
 
@@ -188,10 +233,12 @@ export default function RenderingScreen() {
         try {
           await updateProject({
             projectId: projectIdRef.current,
-            templateId: "spinning-cd",
+            templateId,
             aspectRatio,
             photoUri,
+            photoName,
             audioUri,
+            audioName,
             trimStart,
             trimEnd,
             exportedVideoUri: videoUri,
@@ -207,9 +254,9 @@ export default function RenderingScreen() {
       router.replace({
         pathname: "/create/share",
         params: {
-          videoUri,
+          videoUri: encodeUriParam(videoUri),
           projectId: projectIdRef.current ?? "",
-          posterUri: photoUri,
+          posterUri: encodeUriParam(photoUri),
         },
       });
     } catch (err) {
@@ -230,7 +277,6 @@ export default function RenderingScreen() {
     updateProject,
     track,
     router,
-    animatedProgress,
   ]);
 
   useEffect(() => {
@@ -264,12 +310,6 @@ export default function RenderingScreen() {
     hasStarted.current = false;
     startRender();
   }, [startRender]);
-
-  const gradientBorderWidth = animatedProgress.interpolate({
-    inputRange: [0, 100],
-    outputRange: [0, PREVIEW_SIZE],
-    extrapolate: "clamp",
-  });
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
@@ -313,35 +353,22 @@ export default function RenderingScreen() {
           </View>
         ) : (
           <>
-            {/* Percentage */}
+            <Text style={styles.progressLabel}>Exporting</Text>
             <Text style={styles.percentageText}>{progress}%</Text>
 
-            {/* Preview with gradient border */}
-            <View style={styles.previewWrapper}>
-              <View style={styles.gradientBorder}>
-                <Animated.View
-                  style={[styles.gradientFill, { width: gradientBorderWidth }]}
-                />
-              </View>
-              <View style={styles.previewInner}>
-                {firstParam(params.photoUri) ? (
-                  <Image
-                    source={{ uri: firstParam(params.photoUri) }}
-                    style={styles.previewImage}
-                    resizeMode="cover"
-                    accessibilityLabel="Video preview"
-                  />
-                ) : (
-                  <Ionicons
-                    name="videocam-outline"
-                    size={48}
-                    color={colors.dark.textSecondary}
-                  />
-                )}
-              </View>
+            <View style={styles.stageWrap}>
+              <TemplateStageComponent
+                width={stageWidth}
+                height={stageHeight}
+                aspectRatio={aspectRatio}
+                photoUri={previewPhotoUri}
+                isPlaying={renderState === "rendering"}
+                playbackLabel="Now Playing"
+                trackTitle={trackTitle}
+                subtitle={projectTitle}
+              />
             </View>
 
-            {/* Message */}
             <Text style={styles.message}>
               Please don't close the app{"\n"}or lock your screen.
             </Text>
@@ -377,53 +404,35 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: spacing.xl,
+    justifyContent: "flex-start",
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xl,
+  },
+  progressLabel: {
+    ...typography.caption,
+    color: colors.dark.textSecondary,
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    marginTop: spacing.lg,
+    marginBottom: spacing.xs,
   },
   percentageText: {
-    fontSize: 72,
+    fontSize: 64,
     fontWeight: "800",
     color: colors.dark.text,
     fontVariant: ["tabular-nums"],
-    marginBottom: spacing.xl,
+    marginBottom: spacing.lg,
   },
-  previewWrapper: {
-    width: PREVIEW_SIZE,
-    height: PREVIEW_SIZE,
-    borderRadius: radius.lg + 4,
-    padding: 3,
-    overflow: "hidden",
-    backgroundColor: colors.dark.surface,
-    marginBottom: spacing.xl,
-  },
-  gradientBorder: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: radius.lg + 4,
-    overflow: "hidden",
-    backgroundColor: colors.dark.surface,
-  },
-  gradientFill: {
-    height: "100%",
-    backgroundColor: colors.accent.primary,
-    opacity: 0.6,
-  },
-  previewInner: {
-    flex: 1,
-    borderRadius: radius.lg,
-    backgroundColor: colors.dark.background,
-    overflow: "hidden",
+  stageWrap: {
+    width: "100%",
     alignItems: "center",
-    justifyContent: "center",
-  },
-  previewImage: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: radius.lg,
+    marginBottom: spacing.lg,
   },
   message: {
     ...typography.body,
     color: colors.dark.textSecondary,
     textAlign: "center",
-    lineHeight: 24,
+    lineHeight: 22,
   },
   errorContainer: {
     alignItems: "center",

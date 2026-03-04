@@ -5,13 +5,23 @@ Project: MusicPromo
 Stack: React Native + Expo, Clerk, Convex, PostHog
 PRD: docs/requirements/PRODUCT_DESIGN_REQUIREMENTS.md
 Agent Design: docs/requirements/AGENT_DESIGN_REQUIREMENTS.md
-Current phase: Phase 3 (Placeholder)
-Focus: Post-v1 Expansion
+Current phase: Phase 3
+Focus: Branch Wrap-Up Documentation
 
 ## Status
 
-Phase 3 is intentionally undefined for now.
-This document is a lightweight placeholder to capture future work once Phase 2 is complete and validated.
+Phase 3 core slices are implemented and documented:
+- `docs/requirements/prompts/phase-3a-project-quick-actions-delete.md`
+- `docs/requirements/prompts/phase-3b-project-editing-core.md`
+- `docs/requirements/prompts/phase-3c-template-parity-export-fidelity.md`
+- `docs/requirements/TEMPLATE_PARITY_SYSTEM.md`
+
+Branch wrap-up updates were applied to:
+- `docs/requirements/PRODUCT_DESIGN_REQUIREMENTS.md`
+- `docs/requirements/AGENT_DESIGN_REQUIREMENTS.md`
+- `docs/requirements/summary.json`
+
+Keep this placeholder as the umbrella backlog for additional Phase 3 slices.
 
 ## Candidate Epics (Draft)
 

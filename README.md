@@ -11,3 +11,7 @@ npx expo start --tunnel
 ```
 
 Then scan the QR code in the terminal with Expo Go.
+
+## iOS TestFlight
+
+Use the release checklist at `docs/release/testflight-checklist.md`.
