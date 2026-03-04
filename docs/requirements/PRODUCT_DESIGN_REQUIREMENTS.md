@@ -506,6 +506,8 @@ Primary reference: Meta's Edits app. Secondary: Spotify (profile). Screenshots i
 - Onboarding screen design — still TBD (deferred to Phase 2)
 - User Profile exact fields — before Phase 2
 - Notification content strategy — before Phase 2
+- Can local Remotion rendering meet MVP export reliability/performance targets on real devices?
+- If local Remotion fails Phase 4 gates, which maintained FFmpeg fork becomes the long-term local export backend?
 
 ## 14) Phasing and Milestones
 
@@ -534,9 +536,22 @@ Primary reference: Meta's Edits app. Secondary: Spotify (profile). Screenshots i
 - Offline queue for Convex metadata writes (local create → sync on reconnect)
 - Account deletion
 
+### Phase 3: Stabilization
+- Resolve QA bugs from Phases 0-2
+- Improve crash/error observability around create/export/share
+- Tighten copy, interaction polish, and regression coverage
+
+### Phase 4: Template Fidelity + Export Standardization (MVP Final)
+- Standardize template authoring around one canonical template contract
+- Eliminate preview/export drift for migrated templates
+- Implement local Remotion spike with explicit pass/fail gates
+- Keep local-only export architecture (no cloud render dependency)
+- If Remotion fails gates, ship with maintained local FFmpeg fork behind renderer abstraction
+- Migrate existing templates to standardized system and prove fast new-template onboarding
+
 ### Deferred (Post-v1)
 - SoundCloud URL audio extraction
-- Additional video templates and styles
+- Large template library expansion beyond Phase 4 baseline
 - AI-generated templates (Sora, etc.)
 - Label/agency multi-user accounts
 - Template marketplace
