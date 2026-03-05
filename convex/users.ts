@@ -109,7 +109,6 @@ export const softDeleteCurrent = mutation({
     await ctx.db.patch(user._id, {
       isDeleted: true,
       deletedAt,
-      onboardingCompletedAt: undefined,
     });
 
     return { userId: user._id, deletedAt };

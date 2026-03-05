@@ -10,7 +10,7 @@ import {
   Pressable,
   Modal,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { Picker } from "@react-native-picker/picker";
 import { colors, spacing, radius, typography } from "@/constants/tokens";
 interface AudioTrimmerProps {

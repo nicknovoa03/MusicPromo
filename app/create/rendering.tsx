@@ -9,7 +9,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { usePostHog } from "posthog-react-native";
 import { useConvexAuth, useMutation } from "convex/react";
 import { ConvexError } from "convex/values";
@@ -32,6 +32,7 @@ import {
   normalizeTemplateTweaks,
   parseTemplateTweaksParam,
   resolveTemplateId,
+  serializeTemplateTweaksParam,
 } from "@/lib/templates";
 
 function isExpoGo(): boolean {
@@ -202,6 +203,7 @@ export default function RenderingScreen() {
           stageBackgroundColor:
             firstParam(params.stageBackgroundColor) ?? undefined,
         });
+    const serializedTemplateTweaks = serializeTemplateTweaksParam(templateTweaks);
     const selectedEngine = resolveRenderEngine({ templateId });
     activeEngineRef.current = selectedEngine;
     activeTemplateIdRef.current = templateId;
@@ -229,6 +231,7 @@ export default function RenderingScreen() {
             trimStart,
             trimEnd,
             templateId,
+            templateTweaks: serializedTemplateTweaks,
           });
           projectIdRef.current = projectId;
         } catch (err) {
@@ -283,7 +286,9 @@ export default function RenderingScreen() {
         try {
           await updateProject({
             projectId: projectIdRef.current,
+            title: title?.trim() || "New Project",
             templateId,
+            templateTweaks: serializedTemplateTweaks,
             aspectRatio,
             photoUri,
             photoName,

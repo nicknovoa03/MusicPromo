@@ -6,7 +6,7 @@ import {
   View,
 } from "react-native";
 import { Tabs, useRouter } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { usePostHog } from "posthog-react-native";
 import { useAuth, useUser } from "@clerk/clerk-expo";

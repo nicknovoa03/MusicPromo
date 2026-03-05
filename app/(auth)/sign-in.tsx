@@ -15,7 +15,7 @@ import {
 } from "@clerk/clerk-expo";
 import { usePostHog } from "posthog-react-native";
 import * as WebBrowser from "expo-web-browser";
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
 import { useLocalSession } from "@/providers/localSession";
 

@@ -15,7 +15,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { usePostHog } from "posthog-react-native";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { ConvexError } from "convex/values";
@@ -921,6 +921,142 @@ export default function EditorScreen() {
     track,
   ]);
 
+  const persistProjectSnapshot = useCallback(async (): Promise<boolean> => {
+    const hasRemoteProject = !!currentProjectId;
+    const hasLocalProject = !!currentLocalProjectId;
+    if (!hasRemoteProject && !hasLocalProject) return false;
+    if (hasRemoteProject && shouldWaitForProjectMedia) return false;
+
+    const roundedTrimStart = Math.round(trimStart * 100) / 100;
+    const roundedTrimEnd = Math.round(trimEnd * 100) / 100;
+    const normalizedTitle = projectTitle.trim() || DEFAULT_PROJECT_TITLE;
+    const trackedProjectId = currentProjectId
+      ? String(currentProjectId)
+      : (currentLocalProjectId ?? "local_draft");
+    const nextSnapshot = JSON.stringify({
+      title: normalizedTitle,
+      templateId,
+      templateTweaks: serializedTemplateTweaks,
+      aspectRatio,
+      trimStart: roundedTrimStart,
+      trimEnd: roundedTrimEnd,
+      photoUri,
+      audioUri,
+    });
+
+    if (nextSnapshot === lastSavedSnapshotRef.current) {
+      return true;
+    }
+
+    setEditorSaveStatus("saving");
+    try {
+      if (isLocalGuest && currentLocalProjectId) {
+        await upsertLocalProject({
+          id: currentLocalProjectId,
+          title: normalizedTitle,
+          templateId,
+          templateTweaks: serializedTemplateTweaks,
+          aspectRatio,
+          photoUri,
+          photoName,
+          audioUri,
+          audioName,
+          trimStart: roundedTrimStart,
+          trimEnd: roundedTrimEnd,
+          status: "draft",
+        });
+      } else if (currentProjectId) {
+        if (!remoteTemplateTweaksUnsupportedRef.current) {
+          try {
+            await updateProject({
+              projectId: currentProjectId,
+              title: normalizedTitle,
+              templateId,
+              templateTweaks: serializedTemplateTweaks,
+              aspectRatio,
+              trimStart: roundedTrimStart,
+              trimEnd: roundedTrimEnd,
+              photoUri,
+              photoName,
+              audioUri,
+              audioName,
+            });
+          } catch (error) {
+            if (!isTemplateTweaksValidationError(error)) {
+              throw error;
+            }
+            remoteTemplateTweaksUnsupportedRef.current = true;
+            await updateProject({
+              projectId: currentProjectId,
+              title: normalizedTitle,
+              templateId,
+              aspectRatio,
+              trimStart: roundedTrimStart,
+              trimEnd: roundedTrimEnd,
+              photoUri,
+              photoName,
+              audioUri,
+              audioName,
+            });
+          }
+        } else {
+          await updateProject({
+            projectId: currentProjectId,
+            title: normalizedTitle,
+            templateId,
+            aspectRatio,
+            trimStart: roundedTrimStart,
+            trimEnd: roundedTrimEnd,
+            photoUri,
+            photoName,
+            audioUri,
+            audioName,
+          });
+        }
+        await setCachedTemplateTweaks(
+          String(currentProjectId),
+          serializedTemplateTweaks,
+        );
+      } else {
+        return false;
+      }
+
+      lastSavedSnapshotRef.current = nextSnapshot;
+      if (!initialSnapshotRef.current) {
+        initialSnapshotRef.current = nextSnapshot;
+      }
+      setEditorSaveStatus("saved");
+      track("project_autosave_succeeded", {
+        projectId: trackedProjectId,
+      });
+      return true;
+    } catch {
+      setEditorSaveStatus("error");
+      track("project_autosave_failed", {
+        projectId: trackedProjectId,
+      });
+      return false;
+    }
+  }, [
+    currentProjectId,
+    currentLocalProjectId,
+    shouldWaitForProjectMedia,
+    trimStart,
+    trimEnd,
+    projectTitle,
+    templateId,
+    serializedTemplateTweaks,
+    aspectRatio,
+    photoUri,
+    photoName,
+    audioUri,
+    audioName,
+    isLocalGuest,
+    track,
+    upsertLocalProject,
+    updateProject,
+  ]);
+
   useEffect(() => {
     const hasRemoteProject = !!currentProjectId;
     const hasLocalProject = !!currentLocalProjectId;
@@ -972,97 +1108,18 @@ export default function EditorScreen() {
 
     if (autosaveTimerRef.current) {
       clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = null;
     }
     setEditorSaveStatus("saving");
 
-    autosaveTimerRef.current = setTimeout(async () => {
-      try {
-        if (isLocalGuest && currentLocalProjectId) {
-          await upsertLocalProject({
-            id: currentLocalProjectId,
-            title: normalizedTitle,
-            templateId,
-            templateTweaks: serializedTemplateTweaks,
-            aspectRatio,
-            photoUri,
-            photoName,
-            audioUri,
-            audioName,
-            trimStart: roundedTrimStart,
-            trimEnd: roundedTrimEnd,
-            status: "draft",
-          });
-        } else if (currentProjectId) {
-          if (!remoteTemplateTweaksUnsupportedRef.current) {
-            try {
-              await updateProject({
-                projectId: currentProjectId,
-                title: normalizedTitle,
-                templateId,
-                templateTweaks: serializedTemplateTweaks,
-                aspectRatio,
-                trimStart: roundedTrimStart,
-                trimEnd: roundedTrimEnd,
-                photoUri,
-                photoName,
-                audioUri,
-                audioName,
-              });
-            } catch (error) {
-              if (!isTemplateTweaksValidationError(error)) {
-                throw error;
-              }
-              remoteTemplateTweaksUnsupportedRef.current = true;
-              await updateProject({
-                projectId: currentProjectId,
-                title: normalizedTitle,
-                templateId,
-                aspectRatio,
-                trimStart: roundedTrimStart,
-                trimEnd: roundedTrimEnd,
-                photoUri,
-                photoName,
-                audioUri,
-                audioName,
-              });
-            }
-          } else {
-            await updateProject({
-              projectId: currentProjectId,
-              title: normalizedTitle,
-              templateId,
-              aspectRatio,
-              trimStart: roundedTrimStart,
-              trimEnd: roundedTrimEnd,
-              photoUri,
-              photoName,
-              audioUri,
-              audioName,
-            });
-          }
-          await setCachedTemplateTweaks(
-            String(currentProjectId),
-            serializedTemplateTweaks,
-          );
-        } else {
-          return;
-        }
-        lastSavedSnapshotRef.current = nextSnapshot;
-        setEditorSaveStatus("saved");
-        track("project_autosave_succeeded", {
-          projectId: trackedProjectId,
-        });
-      } catch {
-        setEditorSaveStatus("error");
-        track("project_autosave_failed", {
-          projectId: trackedProjectId,
-        });
-      }
+    autosaveTimerRef.current = setTimeout(() => {
+      void persistProjectSnapshot();
     }, 700);
 
     return () => {
       if (autosaveTimerRef.current) {
         clearTimeout(autosaveTimerRef.current);
+        autosaveTimerRef.current = null;
       }
     };
   }, [
@@ -1082,8 +1139,7 @@ export default function EditorScreen() {
     audioUri,
     audioName,
     track,
-    upsertLocalProject,
-    updateProject,
+    persistProjectSnapshot,
   ]);
 
   useEffect(() => {
@@ -1114,6 +1170,11 @@ export default function EditorScreen() {
   const handleCloseEditor = useCallback(() => {
     void (async () => {
       try {
+        if (autosaveTimerRef.current) {
+          clearTimeout(autosaveTimerRef.current);
+          autosaveTimerRef.current = null;
+        }
+        await persistProjectSnapshot();
         if (isLocalGuest) {
           await createLocalDraftProject();
         } else {
@@ -1123,7 +1184,13 @@ export default function EditorScreen() {
         router.replace("/(tabs)" as const);
       }
     })();
-  }, [isLocalGuest, createLocalDraftProject, createDraftProject, router]);
+  }, [
+    isLocalGuest,
+    createLocalDraftProject,
+    createDraftProject,
+    persistProjectSnapshot,
+    router,
+  ]);
 
   const handleSwapMedia = useCallback(
     (initialTab: "photo" | "audio") => {
@@ -1172,34 +1239,43 @@ export default function EditorScreen() {
     !isCheckingFiles;
 
   const handleExport = useCallback(() => {
-    if (!canExport) {
-      return;
-    }
-    const [safeTrimStart, safeTrimEnd] = clampTrimRange(
-      trimStart,
-      trimEnd,
-      audioDurationSec,
-      minTrimDuration,
-      maxTrimDuration,
-    );
+    void (async () => {
+      if (!canExport) {
+        return;
+      }
 
-    router.push({
-      pathname: "/create/rendering",
-      params: {
-        projectId: currentProjectId ? String(currentProjectId) : "",
-        localProjectId: currentLocalProjectId ?? "",
-        title: projectTitle,
-        photoUri: encodeUriParam(photoUri),
-        photoName,
-        audioUri: encodeUriParam(audioUri),
-        audioName,
-        trimStart: String(safeTrimStart),
-        trimEnd: String(safeTrimEnd),
-        aspectRatio,
-        templateId,
-        templateTweaks: serializedTemplateTweaks,
-      },
-    });
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+        autosaveTimerRef.current = null;
+      }
+      await persistProjectSnapshot();
+
+      const [safeTrimStart, safeTrimEnd] = clampTrimRange(
+        trimStart,
+        trimEnd,
+        audioDurationSec,
+        minTrimDuration,
+        maxTrimDuration,
+      );
+
+      router.push({
+        pathname: "/create/rendering",
+        params: {
+          projectId: currentProjectId ? String(currentProjectId) : "",
+          localProjectId: currentLocalProjectId ?? "",
+          title: projectTitle,
+          photoUri: encodeUriParam(photoUri),
+          photoName,
+          audioUri: encodeUriParam(audioUri),
+          audioName,
+          trimStart: String(safeTrimStart),
+          trimEnd: String(safeTrimEnd),
+          aspectRatio,
+          templateId,
+          templateTweaks: serializedTemplateTweaks,
+        },
+      });
+    })();
   }, [
     canExport,
     router,
@@ -1218,6 +1294,7 @@ export default function EditorScreen() {
     aspectRatio,
     templateId,
     serializedTemplateTweaks,
+    persistProjectSnapshot,
   ]);
 
   const handleTemplateChange = useCallback((nextTemplateId: string) => {

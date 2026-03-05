@@ -8,6 +8,12 @@
     "start:go:tunnel": "expo start --go --tunnel",
     "start:dev-client:tunnel": "expo start --dev-client --tunnel --scheme musicpromo",
     "start:go:fast": "expo start --go --lan --no-dev --minify",
+    "atlas:start": "EXPO_ATLAS=true expo start --go --lan",
+    "atlas:export:ios": "EXPO_ATLAS=true npx expo export --platform ios",
+    "atlas:export:android": "EXPO_ATLAS=true npx expo export --platform android",
+    "atlas:open": "npx expo-atlas .expo/atlas.jsonl",
+    "atlas:ios": "npm run atlas:export:ios && npm run atlas:open",
+    "atlas:android": "npm run atlas:export:android && npm run atlas:open",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "lint": "npx tsc --noEmit",
@@ -66,6 +72,7 @@
   "devDependencies": {
     "@types/react": "~19.1.10",
     "babel-preset-expo": "~54.0.10",
+    "expo-atlas": "^0.4.3",
     "typescript": "^5.8.3"
   },
   "private": true
