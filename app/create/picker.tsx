@@ -27,7 +27,12 @@ import { persistPickedMediaFile } from "@/lib/mediaStorage";
 import { decodeUriParam, encodeUriParam } from "@/lib/uri";
 import { normalizeMediaUri } from "@/lib/mediaUri";
 import { useLocalSession } from "@/providers/localSession";
-import { resolveTemplateId } from "@/lib/templates";
+import {
+  normalizeTemplateTweaks,
+  parseTemplateTweaksParam,
+  resolveTemplateId,
+  serializeTemplateTweaksParam,
+} from "@/lib/templates";
 
 type Tab = "photo" | "audio";
 
@@ -45,10 +50,6 @@ function firstParam(param: string | string[] | undefined) {
   return Array.isArray(param) ? param[0] : param;
 }
 
-function countSelectedMedia(media: MediaSelection) {
-  return Number(Boolean(media.photoUri)) + Number(Boolean(media.audioUri));
-}
-
 export default function PickerScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{
@@ -61,8 +62,12 @@ export default function PickerScreen() {
     audioName?: string;
     aspectRatio?: "9:16" | "1:1";
     templateId?: string;
+    templateTweaks?: string;
     trimStart?: string;
     trimEnd?: string;
+    spinSpeed?: string;
+    recordOpacity?: string;
+    stageBackgroundColor?: string;
     initialTab?: Tab;
     returnToEditor?: string;
   }>();
@@ -72,8 +77,21 @@ export default function PickerScreen() {
   const title = firstParam(params.title);
   const aspectRatio = firstParam(params.aspectRatio);
   const templateId = resolveTemplateId(firstParam(params.templateId));
+  const templateTweaksParam = firstParam(params.templateTweaks);
   const trimStart = firstParam(params.trimStart);
   const trimEnd = firstParam(params.trimEnd);
+  const spinSpeed = firstParam(params.spinSpeed);
+  const recordOpacity = firstParam(params.recordOpacity);
+  const stageBackgroundColor = firstParam(params.stageBackgroundColor);
+  const parsedTemplateTweaks = parseTemplateTweaksParam(templateTweaksParam);
+  const templateTweaks = parsedTemplateTweaks
+    ? parsedTemplateTweaks
+    : normalizeTemplateTweaks({
+        spinSpeed: spinSpeed ? Number(spinSpeed) : undefined,
+        recordOpacity: recordOpacity ? Number(recordOpacity) : undefined,
+        stageBackgroundColor: stageBackgroundColor ?? undefined,
+      });
+  const serializedTemplateTweaks = serializeTemplateTweaksParam(templateTweaks);
   const initialPhotoUri = normalizeMediaUri(decodeUriParam(firstParam(params.photoUri)));
   const initialAudioUri = normalizeMediaUri(decodeUriParam(firstParam(params.audioUri)));
   const initialTab =
@@ -242,6 +260,7 @@ export default function PickerScreen() {
         templateId,
         trimStart: nextTrimStart,
         trimEnd: nextTrimEnd,
+        templateTweaks: serializedTemplateTweaks,
       };
 
       if (projectId) nextParams.projectId = projectId;
@@ -258,6 +277,7 @@ export default function PickerScreen() {
       preferredAspectRatio,
       trimStart,
       trimEnd,
+      serializedTemplateTweaks,
       templateId,
       projectId,
       localProjectId,
@@ -311,6 +331,7 @@ export default function PickerScreen() {
           templateId,
           trimStart: trimStart ?? "0",
           trimEnd: trimEnd ?? String(DEFAULT_NEW_PROJECT_TRIM_END),
+          templateTweaks: serializedTemplateTweaks,
         },
       });
       return;
@@ -332,24 +353,13 @@ export default function PickerScreen() {
     preferredAspectRatio,
     trimStart,
     trimEnd,
+    serializedTemplateTweaks,
   ]);
 
   const canAdd = activeTab === "photo" ? !!media.photoUri : !!media.audioUri;
   const bothSelected = !!media.photoUri && !!media.audioUri;
-  const selectedCount = countSelectedMedia(media);
-  const progressRatio = selectedCount / 2;
   const showArtworkQuickFill =
     activeTab === "photo" && !media.photoUri && !!media.audioArtworkUri;
-  const momentumTitle = bothSelected
-    ? "Everything loaded. Ready to edit."
-    : activeTab === "photo"
-      ? "Pick a cover image to start your promo."
-      : "Add a track and we will spin it instantly.";
-  const momentumHint = bothSelected
-    ? "Your next screen is the live editor preview."
-    : selectedCount === 0
-      ? "Two quick picks. Usually under 30 seconds."
-      : "One more pick and you are in the editor.";
   const bottomCtaLabel = bothSelected
     ? "Open Editor"
     : activeTab === "photo"
@@ -416,18 +426,6 @@ export default function PickerScreen() {
             {bothSelected ? "Next" : "Add"}
           </Text>
         </Pressable>
-      </View>
-
-      <View style={styles.momentumCard}>
-        <View style={styles.momentumHeader}>
-          <Text style={styles.momentumEyebrow}>Time to fun</Text>
-          <Text style={styles.momentumMeta}>{selectedCount}/2 selected</Text>
-        </View>
-        <Text style={styles.momentumTitle}>{momentumTitle}</Text>
-        <Text style={styles.momentumHint}>{momentumHint}</Text>
-        <View style={styles.progressTrack}>
-          <View style={[styles.progressFill, { width: `${progressRatio * 100}%` }]} />
-        </View>
       </View>
 
       {/* Content */}
@@ -745,56 +743,6 @@ const styles = StyleSheet.create({
   },
   tabTextActive: {
     color: colors.light.text,
-  },
-  momentumCard: {
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    borderRadius: radius.md,
-    backgroundColor: "#0F1016",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(149,187,255,0.45)",
-    gap: spacing.xs,
-  },
-  momentumHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  momentumEyebrow: {
-    ...typography.caption,
-    color: "#9FC3FF",
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
-    fontWeight: "700",
-  },
-  momentumMeta: {
-    ...typography.caption,
-    color: "rgba(255,255,255,0.76)",
-    fontWeight: "600",
-  },
-  momentumTitle: {
-    ...typography.body,
-    color: "#FFFFFF",
-    fontWeight: "700",
-  },
-  momentumHint: {
-    ...typography.caption,
-    color: "rgba(255,255,255,0.74)",
-    lineHeight: 18,
-  },
-  progressTrack: {
-    marginTop: spacing.xs,
-    height: 6,
-    borderRadius: radius.full,
-    backgroundColor: "rgba(255,255,255,0.2)",
-    overflow: "hidden",
-  },
-  progressFill: {
-    height: "100%",
-    borderRadius: radius.full,
-    backgroundColor: "#9FC3FF",
   },
   content: {
     flex: 1,

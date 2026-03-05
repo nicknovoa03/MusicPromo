@@ -176,13 +176,16 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 - **Key screens/components:** Create screen (photo picker, audio picker, centered template rail, audio trimmer, aspect ratio selector, preview player, export button)
 - **Backend/data needs:** Project metadata saved to Convex after export
 - **Permissions/abuse risks:** Minimal — user's own content
-- **Analytics/events:** `create_started`, `photo_selected`, `audio_selected`, `preview_viewed`, `video_exported`
+- **Analytics/events:** `create_started`, `photo_selected`, `audio_selected`, `preview_viewed`, `editor_controls_opened`, `template_selected_from_edit_media`, `media_swap_started_from_edit_media`, `template_tweak_changed`, `video_exported`
 - **Acceptance criteria:**
   - User can select a photo from camera roll
   - User can select an audio file (MP3, WAV, M4A) from device
   - User can trim audio to select playback section
   - User can choose aspect ratio (9:16 or 1:1)
-  - User can switch templates from a dedicated centered rail in the editor
+  - User can open dedicated `Edit Media` and `Template` control surfaces from the editor
+  - User can switch templates from the dedicated `Edit Media` template rail (tap + swipe with clear active state)
+  - User can change spin speed, record opacity, and stage background tint from dedicated `Template` controls
+  - Template tweaks apply to preview immediately while editing and remain in effect through export
   - User sees a preview of the CD-style spinning disc video with their photo and audio
   - User can swap photo or audio without losing other selections
   - Video renders on-device and completes in under 60 seconds
@@ -325,12 +328,15 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 - **Route:** `/create/editor`
 - **Primary intent:** Preview, trim, and configure the promo video
 - **Header:** X/back (left), project name (center), "Export" button (right)
-- **Main sections:** Video preview (top, centered), dedicated template rail (center-snapping pills with active template name), play/pause + timestamp + undo/redo (middle), timeline strip with frame thumbnails + scrubber (bottom), aspect ratio toggle
+- **Main sections:** Video preview (top, centered), compact editor action row (`Edit Media`, `Template`) above trimmer, audio trim/waveform section (bottom), dedicated full-screen control surfaces for media/layout vs template polish
 - **Primary CTA:** "Export" button (top-right)
-- **Secondary actions:** Template rail swipe/tap selection, play/pause, trim handles, aspect ratio toggle (9:16 / 1:1), undo/redo
+- **Secondary actions:** 
+  - `Edit Media` surface: aspect ratio pills (9:16 / 1:1), template selector rail (swipe + snap + tap), change photo, change audio
+  - `Template` surface: spin speed, record opacity, stage/background tint with live preview updates
+  - Play/pause preview, trim handles, media swap without destructive resets
 - **Empty/loading/error:** Preview loading skeleton, "Rendering failed" + retry
 - **Theme:** Dark/black
-- **Analytics:** `preview_viewed`
+- **Analytics:** `preview_viewed`, `editor_controls_opened`, `template_selected_from_edit_media`, `media_swap_started_from_edit_media`, `template_tweak_changed`
 - **Reference:** `create-flow/Create Flow - final media trimmer - screens 0.png`, `Create Flow - final media trimmer - screens 1.png`, `general-vibe/Edits iOS Creating a project 3.png`
 
 ### Post-Export — Rendering

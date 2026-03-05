@@ -8,6 +8,7 @@ export const ffmpegRenderer: Renderer = {
     const templateId = resolveTemplateId(request.templateId);
     const templateDefinition = getTemplateDefinition(templateId);
     const videoUri = await templateDefinition.renderVideo({
+      templateTweaks: request.templateTweaks,
       photoUri: request.photoUri,
       audioUri: request.audioUri,
       trimStart: request.trimStart,

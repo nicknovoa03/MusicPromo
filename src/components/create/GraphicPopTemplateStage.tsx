@@ -21,6 +21,7 @@ export function GraphicPopTemplateStage({
   playbackLabel,
   trackTitle,
   subtitle,
+  templateTweaks,
   onTogglePlay,
 }: TemplateStageProps) {
   const layout = getGraphicPopTemplateLayout({ width, height, aspectRatio });
@@ -32,7 +33,8 @@ export function GraphicPopTemplateStage({
         {
           width,
           height,
-          backgroundColor: GRAPHIC_POP_STAGE_BACKGROUND_HEX,
+          backgroundColor:
+            templateTweaks?.stageBackgroundColor ?? GRAPHIC_POP_STAGE_BACKGROUND_HEX,
         },
       ]}
       accessibilityLabel={`${playbackLabel}. ${trackTitle}. ${subtitle}`}
@@ -88,6 +90,8 @@ export function GraphicPopTemplateStage({
           imageUri={photoUri ?? null}
           size={layout.discSize}
           spinning={isPlaying}
+          spinSpeed={templateTweaks?.spinSpeed ?? 1}
+          discOpacity={templateTweaks?.recordOpacity ?? 1}
           tone="graphic-pop"
         />
       </View>

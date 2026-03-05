@@ -51,7 +51,7 @@ export function getCenterTextureSpec(discSize: number): CenterTextureSpec {
     ringRadius - Math.round(safeDiscSize * 0.003),
     1,
   );
-  const shadowOffsetY = Math.max(Math.round(safeDiscSize * 0.006), 1);
+  const shadowOffsetY = 0;
   const shadowOffsetX = 0;
 
   return {

@@ -18,6 +18,7 @@ interface AudioTrimmerProps {
   startSec: number;
   endSec: number;
   onTrimChange: (start: number, end: number) => void;
+  centerTimeLabel?: string;
   isPlaying?: boolean;
   playbackProgressSec?: number;
   onTogglePlay?: () => void;
@@ -51,6 +52,7 @@ export function AudioTrimmer({
   startSec,
   endSec,
   onTrimChange,
+  centerTimeLabel,
   isPlaying = false,
   playbackProgressSec,
   onTogglePlay,
@@ -459,9 +461,15 @@ export function AudioTrimmer({
       </View>
 
       <View style={styles.timeRow}>
-        <Text style={styles.timeText}>{formatTime(safeStart)}</Text>
-        <Text style={styles.durationText}>{formatTime(currentDuration)}</Text>
-        <Text style={styles.timeText}>{formatTime(safeEnd)}</Text>
+        <Text style={[styles.timeText, styles.timeTextStart]}>
+          {formatTime(safeStart)}
+        </Text>
+        <Text style={styles.centerTimeText}>
+          {centerTimeLabel ?? formatTime(currentDuration)}
+        </Text>
+        <Text style={[styles.timeText, styles.timeTextEnd]}>
+          {formatTime(safeEnd)}
+        </Text>
       </View>
 
       <View
@@ -670,19 +678,29 @@ const styles = StyleSheet.create({
   },
   timeRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
+    alignItems: "center",
     paddingHorizontal: spacing.xs,
+    gap: spacing.xs,
   },
   timeText: {
     ...typography.caption,
     color: colors.dark.textSecondary,
     fontVariant: ["tabular-nums"],
   },
-  durationText: {
+  timeTextStart: {
+    flex: 1,
+    textAlign: "left",
+  },
+  timeTextEnd: {
+    flex: 1,
+    textAlign: "right",
+  },
+  centerTimeText: {
     ...typography.caption,
-    color: "#7F82FF",
-    fontWeight: "700",
+    color: colors.dark.textSecondary,
+    fontWeight: "600",
     fontVariant: ["tabular-nums"],
+    textAlign: "center",
   },
   track: {
     height: 62,

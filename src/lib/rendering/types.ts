@@ -4,6 +4,11 @@ export type RenderEngine = "ffmpeg";
 
 export interface RenderRequest {
   templateId?: string;
+  templateTweaks?: {
+    spinSpeed?: number;
+    recordOpacity?: number;
+    stageBackgroundColor?: string | null;
+  };
   photoUri: string;
   audioUri: string;
   trimStart: number;

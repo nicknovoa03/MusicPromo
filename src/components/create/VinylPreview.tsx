@@ -7,6 +7,12 @@ import {
   toRgba,
   type VinylToneId,
 } from "@/lib/vinylTemplateSpec";
+import {
+  GRAPHIC_POP_CENTER_RING_ALPHA_BYTE,
+  GRAPHIC_POP_CENTER_RING_HEX,
+  GRAPHIC_POP_CENTER_SHADOW_ALPHA_BYTE,
+  GRAPHIC_POP_CENTER_SHADOW_HEX,
+} from "@/lib/graphicPopTemplateSpec";
 import { getCenterTextureSpec } from "@/lib/simpleSpinTemplateSpec";
 
 interface VinylPreviewProps {
@@ -14,6 +20,8 @@ interface VinylPreviewProps {
   size: number;
   spinning?: boolean;
   tone?: VinylToneId;
+  spinSpeed?: number;
+  discOpacity?: number;
 }
 
 const GROOVE_SCALES = [0.95, 0.89, 0.83, 0.77, 0.71, 0.65, 0.59, 0.53, 0.47];
@@ -31,11 +39,19 @@ export function VinylPreview({
   size,
   spinning = true,
   tone = "simple-spin",
+  spinSpeed = 1,
+  discOpacity = 1,
 }: VinylPreviewProps) {
   const spinProgress = useRef(new Animated.Value(0)).current;
   const toneSpec = getVinylToneSpec(tone);
   const isCdStyleTone = toneSpec.id === "simple-spin";
   const isGraphicTone = toneSpec.id === "graphic-pop";
+  const normalizedSpinSpeed = Math.min(Math.max(spinSpeed, 0.25), 4);
+  const spinDurationMs = Math.max(
+    Math.round(SPIN_DURATION_MS / normalizedSpinSpeed),
+    400,
+  );
+  const normalizedDiscOpacity = Math.min(Math.max(discOpacity, 0.35), 1);
 
   useEffect(() => {
     if (!spinning) {
@@ -47,7 +63,7 @@ export function VinylPreview({
     const loop = Animated.loop(
       Animated.timing(spinProgress, {
         toValue: 1,
-        duration: SPIN_DURATION_MS,
+        duration: spinDurationMs,
         easing: Easing.linear,
         useNativeDriver: true,
       }),
@@ -58,7 +74,7 @@ export function VinylPreview({
       loop.stop();
       spinProgress.stopAnimation();
     };
-  }, [spinning, spinProgress]);
+  }, [spinning, spinDurationMs, spinProgress]);
 
   const rotation = spinProgress.interpolate({
     inputRange: [0, 1],
@@ -67,7 +83,7 @@ export function VinylPreview({
 
   const labelSize = size * (isCdStyleTone ? 0.36 : isGraphicTone ? 0.19 : 0.28);
   const holeSize = Math.max(
-    size * (isCdStyleTone ? 0.13 : isGraphicTone ? 0.085 : 0.05),
+    size * (isCdStyleTone ? 0.13 : isGraphicTone ? 0.068 : 0.05),
     6,
   );
   const spindleRingSize = Math.max(holeSize * (isGraphicTone ? 1.7 : 2.3), 14);
@@ -79,6 +95,14 @@ export function VinylPreview({
   const graphicInnerShadowSize = centerTexture.shadowOuterRadius * 2;
   const graphicInnerShadowOffsetX = centerTexture.shadowOffsetX;
   const graphicInnerShadowOffsetY = centerTexture.shadowOffsetY;
+  const graphicCenterRingColor = toRgba(
+    GRAPHIC_POP_CENTER_RING_HEX,
+    GRAPHIC_POP_CENTER_RING_ALPHA_BYTE,
+  );
+  const graphicCenterShadowColor = toRgba(
+    GRAPHIC_POP_CENTER_SHADOW_HEX,
+    GRAPHIC_POP_CENTER_SHADOW_ALPHA_BYTE,
+  );
   const iconSize = Math.max(size * 0.2, 32);
 
   return (
@@ -90,7 +114,7 @@ export function VinylPreview({
           height: size,
           borderRadius: size / 2,
           backgroundColor: isGraphicTone
-            ? "#bcc3cd"
+            ? "#1d222c"
             : isCdStyleTone
               ? "#bfc8d6"
               : "#121212",
@@ -104,6 +128,7 @@ export function VinylPreview({
             width: size,
             height: size,
             borderRadius: size / 2,
+            opacity: normalizedDiscOpacity,
             transform: [{ rotate: rotation }],
             backgroundColor: isGraphicTone
               ? "#d4d9e0"
@@ -236,6 +261,7 @@ export function VinylPreview({
                     (size - graphicInnerShadowSize) / 2 + graphicInnerShadowOffsetY,
                   left:
                     (size - graphicInnerShadowSize) / 2 + graphicInnerShadowOffsetX,
+                  borderColor: graphicCenterShadowColor,
                 },
               ]}
             />
@@ -249,6 +275,7 @@ export function VinylPreview({
                   borderWidth: graphicInnerRingBorderWidth,
                   top: (size - graphicInnerRingSize) / 2,
                   left: (size - graphicInnerRingSize) / 2,
+                  borderColor: graphicCenterRingColor,
                 },
               ]}
             />
@@ -387,12 +414,10 @@ const styles = StyleSheet.create({
   },
   graphicInnerRing: {
     position: "absolute",
-    borderColor: "rgba(246,248,251,0.48)",
     backgroundColor: "transparent",
   },
   graphicInnerShadowRing: {
     position: "absolute",
-    borderColor: "rgba(0,0,0,0.0)",
     backgroundColor: "transparent",
   },
   spindleRing: {

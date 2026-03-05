@@ -21,6 +21,7 @@ export function SimpleSpinTemplateStage({
   playbackLabel,
   trackTitle,
   subtitle,
+  templateTweaks,
   onTogglePlay,
 }: TemplateStageProps) {
   const layout = getSimpleSpinTemplateLayout({ width, height, aspectRatio });
@@ -32,7 +33,8 @@ export function SimpleSpinTemplateStage({
         {
           width,
           height,
-          backgroundColor: SIMPLE_SPIN_STAGE_BACKGROUND_HEX,
+          backgroundColor:
+            templateTweaks?.stageBackgroundColor ?? SIMPLE_SPIN_STAGE_BACKGROUND_HEX,
         },
       ]}
       accessibilityLabel={`${playbackLabel}. ${trackTitle}. ${subtitle}`}
@@ -88,6 +90,8 @@ export function SimpleSpinTemplateStage({
           imageUri={photoUri ?? null}
           size={layout.discSize}
           spinning={isPlaying}
+          spinSpeed={templateTweaks?.spinSpeed ?? 1}
+          discOpacity={templateTweaks?.recordOpacity ?? 1}
           tone="simple-spin"
         />
       </View>

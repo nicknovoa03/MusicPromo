@@ -27,7 +27,12 @@ import {
 import { sleep } from "@/lib/utils";
 import { decodeUriParam, encodeUriParam } from "@/lib/uri";
 import { normalizeMediaUri } from "@/lib/mediaUri";
-import { getTemplateDefinition, resolveTemplateId } from "@/lib/templates";
+import {
+  getTemplateDefinition,
+  normalizeTemplateTweaks,
+  parseTemplateTweaksParam,
+  resolveTemplateId,
+} from "@/lib/templates";
 
 function isExpoGo(): boolean {
   return Constants.appOwnership === "expo";
@@ -93,6 +98,10 @@ export default function RenderingScreen() {
     projectId?: string;
     title?: string;
     templateId?: string;
+    templateTweaks?: string;
+    spinSpeed?: string;
+    recordOpacity?: string;
+    stageBackgroundColor?: string;
     photoUri: string;
     photoName?: string;
     audioUri: string;
@@ -109,6 +118,16 @@ export default function RenderingScreen() {
   const audioName = firstParam(params.audioName) || "";
   const aspectRatio = firstParam(params.aspectRatio) === "1:1" ? "1:1" : "9:16";
   const templateId = resolveTemplateId(firstParam(params.templateId));
+  const parsedTemplateTweaks = parseTemplateTweaksParam(
+    firstParam(params.templateTweaks),
+  );
+  const templateTweaks = parsedTemplateTweaks
+    ? parsedTemplateTweaks
+    : normalizeTemplateTweaks({
+        spinSpeed: Number(firstParam(params.spinSpeed)),
+        recordOpacity: Number(firstParam(params.recordOpacity)),
+        stageBackgroundColor: firstParam(params.stageBackgroundColor) ?? undefined,
+      });
   const previewTemplateDefinition = getTemplateDefinition(templateId);
   const TemplateStageComponent = previewTemplateDefinition.StageComponent;
   const previewPhotoUri = normalizeMediaUri(
@@ -170,6 +189,17 @@ export default function RenderingScreen() {
     const aspectRatio =
       firstParam(params.aspectRatio) === "1:1" ? "1:1" : "9:16";
     const templateId = resolveTemplateId(firstParam(params.templateId));
+    const parsedTemplateTweaks = parseTemplateTweaksParam(
+      firstParam(params.templateTweaks),
+    );
+    const templateTweaks = parsedTemplateTweaks
+      ? parsedTemplateTweaks
+      : normalizeTemplateTweaks({
+          spinSpeed: Number(firstParam(params.spinSpeed)),
+          recordOpacity: Number(firstParam(params.recordOpacity)),
+          stageBackgroundColor:
+            firstParam(params.stageBackgroundColor) ?? undefined,
+        });
     const selectedEngine = resolveRenderEngine({ templateId });
     activeEngineRef.current = selectedEngine;
     activeTemplateIdRef.current = templateId;
@@ -224,6 +254,7 @@ export default function RenderingScreen() {
       const renderResult = await renderVideoWithRenderer({
         engine: selectedEngine,
         templateId,
+        templateTweaks,
         photoUri,
         audioUri,
         trimStart,
@@ -386,6 +417,7 @@ export default function RenderingScreen() {
                 playbackLabel="Now Playing"
                 trackTitle={trackTitle}
                 subtitle={projectTitle}
+                templateTweaks={templateTweaks}
               />
             </View>
 

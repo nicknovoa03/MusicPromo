@@ -25,11 +25,9 @@ import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
 import { AudioTrimmer } from "@/components/create/AudioTrimmer";
-import {
-  AspectRatioToggle,
-  type AspectRatio,
-} from "@/components/create/AspectRatioToggle";
-import { TemplateSwitcher } from "@/components/create/TemplateSwitcher";
+import { type AspectRatio } from "@/components/create/AspectRatioToggle";
+import { EditMediaModal } from "@/components/create/EditMediaModal";
+import { TemplateCustomizeModal } from "@/components/create/TemplateCustomizeModal";
 import type { EventName } from "@/lib/analytics";
 import { decodeUriParam, encodeUriParam, fileNameFromUri } from "@/lib/uri";
 import { normalizeMediaUri } from "@/lib/mediaUri";
@@ -37,9 +35,14 @@ import { sleep } from "@/lib/utils";
 import { useLocalSession } from "@/providers/localSession";
 import { upsertLocalProject } from "@/lib/localProjects";
 import {
+  DEFAULT_TEMPLATE_TWEAKS,
   getTemplateDefinition,
   listTemplateDefinitions,
+  normalizeTemplateTweaks,
+  parseTemplateTweaksParam,
   resolveTemplateId,
+  serializeTemplateTweaksParam,
+  type TemplateTweaks,
 } from "@/lib/templates";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
@@ -216,8 +219,12 @@ export default function EditorScreen() {
     audioName?: string;
     aspectRatio?: AspectRatio;
     templateId?: string;
+    templateTweaks?: string;
     trimStart?: string;
     trimEnd?: string;
+    spinSpeed?: string;
+    recordOpacity?: string;
+    stageBackgroundColor?: string;
     returnToEditor?: string;
   }>();
 
@@ -255,6 +262,26 @@ export default function EditorScreen() {
     fallbackMediaNameFromUri(audioUri, "Audio");
   const initialAspectRatio = parseAspectRatioParam(params.aspectRatio);
   const initialTemplateId = resolveTemplateId(firstParam(params.templateId));
+  const initialSpinSpeed = parseNumberParam(
+    params.spinSpeed,
+    DEFAULT_TEMPLATE_TWEAKS.spinSpeed,
+  );
+  const initialRecordOpacity = parseNumberParam(
+    params.recordOpacity,
+    DEFAULT_TEMPLATE_TWEAKS.recordOpacity,
+  );
+  const initialStageBackgroundColor =
+    firstParam(params.stageBackgroundColor) || null;
+  const parsedTemplateTweaks = parseTemplateTweaksParam(
+    firstParam(params.templateTweaks),
+  );
+  const initialTemplateTweaks = normalizeTemplateTweaks(
+    parsedTemplateTweaks ?? {
+      spinSpeed: initialSpinSpeed,
+      recordOpacity: initialRecordOpacity,
+      stageBackgroundColor: initialStageBackgroundColor,
+    },
+  );
   const initialTrimStart = parseNumberParam(params.trimStart, 0);
   const initialTrimEndRaw = parseNumberParam(params.trimEnd, DEFAULT_TRIM_DURATION);
   const initialTrimEnd =
@@ -266,6 +293,11 @@ export default function EditorScreen() {
   const updateProject = useMutation(api.projects.update);
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>(initialAspectRatio);
   const [templateId, setTemplateId] = useState(initialTemplateId);
+  const [templateTweaks, setTemplateTweaks] =
+    useState<TemplateTweaks>(initialTemplateTweaks);
+  const [isEditMediaModalVisible, setIsEditMediaModalVisible] = useState(false);
+  const [isTemplateCustomizeVisible, setIsTemplateCustomizeVisible] =
+    useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [trimStart, setTrimStart] = useState(initialTrimStart);
   const [trimEnd, setTrimEnd] = useState(initialTrimEnd);
@@ -962,6 +994,8 @@ export default function EditorScreen() {
     })();
   }, [isLocalGuest, createLocalDraftProject, createDraftProject, router]);
 
+  const serializedTemplateTweaks = serializeTemplateTweaksParam(templateTweaks);
+
   const handleSwapMedia = useCallback(
     (initialTab: "photo" | "audio") => {
       router.push({
@@ -976,6 +1010,7 @@ export default function EditorScreen() {
           audioName,
           aspectRatio,
           templateId,
+          templateTweaks: serializedTemplateTweaks,
           trimStart: String(trimStart),
           trimEnd: String(trimEnd),
           initialTab,
@@ -994,6 +1029,7 @@ export default function EditorScreen() {
       audioName,
       aspectRatio,
       templateId,
+      serializedTemplateTweaks,
       trimStart,
       trimEnd,
     ],
@@ -1032,6 +1068,7 @@ export default function EditorScreen() {
         trimEnd: String(safeTrimEnd),
         aspectRatio,
         templateId,
+        templateTweaks: serializedTemplateTweaks,
       },
     });
   }, [
@@ -1051,12 +1088,79 @@ export default function EditorScreen() {
     maxTrimDuration,
     aspectRatio,
     templateId,
+    serializedTemplateTweaks,
   ]);
 
   const handleTemplateChange = useCallback((nextTemplateId: string) => {
     const resolvedId = resolveTemplateId(nextTemplateId);
     setTemplateId((prev) => (prev === resolvedId ? prev : resolvedId));
   }, []);
+
+  const handleOpenEditMedia = useCallback(() => {
+    track("editor_controls_opened", { surface: "edit_media" });
+    setIsEditMediaModalVisible(true);
+  }, [track]);
+
+  const handleCloseEditMedia = useCallback(() => {
+    setIsEditMediaModalVisible(false);
+  }, []);
+
+  const handleApplyEditMedia = useCallback(
+    (next: { aspectRatio: AspectRatio; templateId: string }) => {
+      setAspectRatio(next.aspectRatio);
+      handleTemplateChange(next.templateId);
+      setIsEditMediaModalVisible(false);
+    },
+    [handleTemplateChange],
+  );
+
+  const handleOpenTemplateCustomize = useCallback(() => {
+    track("editor_controls_opened", { surface: "template" });
+    setIsTemplateCustomizeVisible(true);
+  }, [track]);
+
+  const handleCloseTemplateCustomize = useCallback(() => {
+    setIsTemplateCustomizeVisible(false);
+  }, []);
+
+  const handleApplyTemplateCustomize = useCallback(
+    (next: TemplateTweaks) => {
+      const normalizedNext = normalizeTemplateTweaks(next);
+      if (normalizedNext.spinSpeed !== templateTweaks.spinSpeed) {
+        track("template_tweak_changed", { control: "spin_speed" });
+      }
+      if (normalizedNext.recordOpacity !== templateTweaks.recordOpacity) {
+        track("template_tweak_changed", { control: "record_opacity" });
+      }
+      if (
+        (normalizedNext.stageBackgroundColor ?? "") !==
+        (templateTweaks.stageBackgroundColor ?? "")
+      ) {
+        track("template_tweak_changed", { control: "stage_background" });
+      }
+      setTemplateTweaks(normalizedNext);
+      setIsTemplateCustomizeVisible(false);
+    },
+    [templateTweaks, track],
+  );
+
+  const handleTemplateSelectedFromEditMedia = useCallback(
+    (nextTemplateId: string) => {
+      track("template_selected_from_edit_media", {
+        templateId: resolveTemplateId(nextTemplateId),
+      });
+    },
+    [track],
+  );
+
+  const handleSwapMediaFromEditMedia = useCallback(
+    (tab: "photo" | "audio") => {
+      track("media_swap_started_from_edit_media", { media_type: tab });
+      setIsEditMediaModalVisible(false);
+      handleSwapMedia(tab);
+    },
+    [handleSwapMedia, track],
+  );
 
   const trimmedDuration = Math.max(0, trimEnd - trimStart);
   const showMissingNotice = !isCheckingFiles && (missingFiles.photo || missingFiles.audio);
@@ -1219,77 +1323,48 @@ export default function EditorScreen() {
       )}
 
       <View style={styles.previewContainer}>
-        <TemplateStageComponent
-          width={stageWidth}
-          height={stageHeight}
-          aspectRatio={aspectRatio}
-          photoUri={photoUri && !missingFiles.photo ? photoUri : null}
-          isPlaying={isPlaying}
-          playbackLabel={playbackLabel}
-          trackTitle={trackTitle}
-          subtitle={subtitle}
-          onTogglePlay={handlePlayPause}
-        />
+        <View style={[styles.previewStageFrame, { width: stageWidth, height: stageHeight }]}>
+          <TemplateStageComponent
+            width={stageWidth}
+            height={stageHeight}
+            aspectRatio={aspectRatio}
+            photoUri={photoUri && !missingFiles.photo ? photoUri : null}
+            isPlaying={isPlaying}
+            playbackLabel={playbackLabel}
+            trackTitle={trackTitle}
+            subtitle={subtitle}
+            templateTweaks={templateTweaks}
+            onTogglePlay={handlePlayPause}
+          />
+          <Pressable
+            onPress={handleOpenTemplateCustomize}
+            style={({ pressed }) => [
+              styles.previewTemplateButton,
+              pressed && styles.previewTemplateButtonPressed,
+            ]}
+            accessibilityLabel="Open template settings"
+            accessibilityRole="button"
+          >
+            <Ionicons name="settings-outline" size={18} color={colors.dark.text} />
+          </Pressable>
+        </View>
       </View>
 
       <View style={styles.controls}>
-        <View style={styles.templateSwitcherWrap}>
-          <TemplateSwitcher
-            options={templateDefinitions}
-            value={templateId}
-            onChange={handleTemplateChange}
-          />
-        </View>
         <View style={styles.controlsTopRow}>
-          <AspectRatioToggle value={aspectRatio} onChange={setAspectRatio} />
+          <Pressable
+            onPress={handleOpenEditMedia}
+            style={({ pressed }) => [
+              styles.controlActionButton,
+              pressed && styles.controlActionButtonPressed,
+            ]}
+            accessibilityLabel="Edit media settings"
+            accessibilityRole="button"
+          >
+            <Ionicons name="images-outline" size={16} color={colors.dark.text} />
+            <Text style={styles.controlActionText}>Edit Media</Text>
+          </Pressable>
         </View>
-        <Text style={styles.timestamp}>
-          {formatClock(previewPositionSec)} / {formatClock(trimmedDuration)}
-        </Text>
-      </View>
-
-      <View style={styles.mediaChips}>
-        <Pressable
-          style={[styles.chip, missingFiles.photo && styles.chipMissing]}
-          onPress={() => handleSwapMedia("photo")}
-          accessibilityLabel={`Photo: ${photoName}. Tap to change.`}
-          accessibilityRole="button"
-        >
-          <Ionicons
-            name={missingFiles.photo ? "warning" : "image"}
-            size={16}
-            color={missingFiles.photo ? colors.accent.warning : colors.accent.primary}
-          />
-          <Text style={styles.chipText} numberOfLines={1}>
-            {photoName}
-          </Text>
-          <Ionicons
-            name="swap-horizontal"
-            size={14}
-            color={colors.dark.textSecondary}
-          />
-        </Pressable>
-
-        <Pressable
-          style={[styles.chip, missingFiles.audio && styles.chipMissing]}
-          onPress={() => handleSwapMedia("audio")}
-          accessibilityLabel={`Audio: ${audioName}. Tap to change.`}
-          accessibilityRole="button"
-        >
-          <Ionicons
-            name={missingFiles.audio ? "warning" : "musical-note"}
-            size={16}
-            color={missingFiles.audio ? colors.accent.warning : colors.accent.primary}
-          />
-          <Text style={styles.chipText} numberOfLines={1}>
-            {audioName}
-          </Text>
-          <Ionicons
-            name="swap-horizontal"
-            size={14}
-            color={colors.dark.textSecondary}
-          />
-        </Pressable>
       </View>
 
       <View style={styles.trimmerSection}>
@@ -1299,6 +1374,7 @@ export default function EditorScreen() {
           startSec={trimStart}
           endSec={trimEnd}
           onTrimChange={handleTrimChange}
+          centerTimeLabel={`${formatClock(previewPositionSec)} / ${formatClock(trimmedDuration)}`}
           isPlaying={isPlaying}
           playbackProgressSec={previewPositionSec}
           onTogglePlay={handlePlayPause}
@@ -1306,6 +1382,29 @@ export default function EditorScreen() {
           maxDuration={maxTrimDuration}
         />
       </View>
+
+      <EditMediaModal
+        visible={isEditMediaModalVisible}
+        aspectRatio={aspectRatio}
+        templateId={templateId}
+        templateDefinitions={templateDefinitions}
+        onTemplateSelectionChanged={handleTemplateSelectedFromEditMedia}
+        onClose={handleCloseEditMedia}
+        onApply={handleApplyEditMedia}
+        onSwapPhoto={() => handleSwapMediaFromEditMedia("photo")}
+        onSwapAudio={() => handleSwapMediaFromEditMedia("audio")}
+        photoLabel={photoName}
+        audioLabel={audioName}
+      />
+
+      <TemplateCustomizeModal
+        visible={isTemplateCustomizeVisible}
+        templateId={templateId}
+        photoUri={photoUri}
+        value={templateTweaks}
+        onClose={handleCloseTemplateCustomize}
+        onApply={handleApplyTemplateCustomize}
+      />
     </SafeAreaView>
   );
 }
@@ -1477,6 +1576,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.xs,
   },
+  previewStageFrame: {
+    position: "relative",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  previewTemplateButton: {
+    position: "absolute",
+    left: spacing.sm,
+    bottom: spacing.sm,
+    width: 40,
+    height: 40,
+    borderRadius: radius.full,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.dark.surface,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+  previewTemplateButtonPressed: {
+    opacity: 0.82,
+    transform: [{ scale: 0.96 }],
+  },
   controls: {
     alignItems: "stretch",
     paddingHorizontal: spacing.lg,
@@ -1486,41 +1607,29 @@ const styles = StyleSheet.create({
   controlsTopRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "flex-end",
-  },
-  templateSwitcherWrap: {
-    width: "100%",
-  },
-  timestamp: {
-    ...typography.caption,
-    color: colors.dark.textSecondary,
-    fontVariant: ["tabular-nums"],
-    textAlign: "center",
-  },
-  mediaChips: {
-    flexDirection: "row",
-    paddingHorizontal: spacing.lg,
+    justifyContent: "center",
     gap: spacing.sm,
-    paddingBottom: spacing.sm,
   },
-  chip: {
-    flex: 1,
+  controlActionButton: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    justifyContent: "center",
+    gap: 6,
+    minHeight: 36,
+    minWidth: 122,
+    paddingHorizontal: spacing.sm,
     borderRadius: radius.full,
     backgroundColor: colors.dark.surface,
-  },
-  chipMissing: {
     borderWidth: 1,
-    borderColor: "rgba(255,149,0,0.5)",
+    borderColor: "rgba(255,255,255,0.09)",
   },
-  chipText: {
+  controlActionButtonPressed: {
+    opacity: 0.85,
+  },
+  controlActionText: {
     ...typography.caption,
     color: colors.dark.text,
-    flex: 1,
+    fontWeight: "700",
   },
   trimmerSection: {
     paddingHorizontal: spacing.lg,

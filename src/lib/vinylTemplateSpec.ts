@@ -27,7 +27,7 @@ const VINYL_TONES: Record<VinylToneId, VinylToneSpec> = {
   "graphic-pop": {
     id: "graphic-pop",
     shadeHexColor: "#d2d8e0",
-    shadeAlphaByte: 138,
+    shadeAlphaByte: 0,
     labelHexColor: "#f3f5f8",
     labelAlphaByte: 54,
     holeHexColor: "#11141a",

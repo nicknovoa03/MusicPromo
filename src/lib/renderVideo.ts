@@ -14,6 +14,10 @@ import {
 import {
   GRAPHIC_POP_AMBIENT_GLOW_ALPHA_BYTE,
   GRAPHIC_POP_AMBIENT_GLOW_HEX,
+  GRAPHIC_POP_CENTER_RING_ALPHA_BYTE,
+  GRAPHIC_POP_CENTER_RING_HEX,
+  GRAPHIC_POP_CENTER_SHADOW_ALPHA_BYTE,
+  GRAPHIC_POP_CENTER_SHADOW_HEX,
   GRAPHIC_POP_GLOW_ALPHA_BYTE,
   GRAPHIC_POP_GLOW_HEX,
   GRAPHIC_POP_STAGE_BACKGROUND_HEX,
@@ -35,6 +39,11 @@ export interface RenderOptions {
   trimStart: number;
   trimEnd: number;
   aspectRatio: "9:16" | "1:1";
+  templateTweaks?: {
+    spinSpeed?: number;
+    recordOpacity?: number;
+    stageBackgroundColor?: string | null;
+  };
   onProgress?: (percent: number) => void;
   debugRenderModeBadge?: boolean;
   fastMode?: boolean;
@@ -80,7 +89,11 @@ const FAST_MODE_VIDEO_BITRATE = "1.2M";
 const AUDIO_BITRATE = "256k";
 const PHOTO_INPUT_RANGE = "pc";
 const VIDEO_OUTPUT_RANGE = "tv";
-const SPIN_SPEED = "2*PI*t/4"; // full rotation every 4 seconds
+const BASE_SPIN_ROTATION_SECONDS = 4;
+const MIN_SPIN_SPEED = 0.25;
+const MAX_SPIN_SPEED = 4;
+const MIN_RECORD_OPACITY = 0.35;
+const MAX_RECORD_OPACITY = 1;
 
 const RENDER_PATH_COLORS: Record<RenderPath, string> = {
   primary: "#38d17b",
@@ -135,10 +148,10 @@ const RENDER_VARIANTS: Record<RenderVariantId, RenderVariantConfig> = {
     ambientGlowAlphaByte: GRAPHIC_POP_AMBIENT_GLOW_ALPHA_BYTE,
     includeCdSheen: false,
     includeCenterTexture: true,
-    centerRingHex: "#f5f7fb",
-    centerRingAlphaByte: 78,
-    centerShadowHex: "#07090d",
-    centerShadowAlphaByte: 0,
+    centerRingHex: GRAPHIC_POP_CENTER_RING_HEX,
+    centerRingAlphaByte: GRAPHIC_POP_CENTER_RING_ALPHA_BYTE,
+    centerShadowHex: GRAPHIC_POP_CENTER_SHADOW_HEX,
+    centerShadowAlphaByte: GRAPHIC_POP_CENTER_SHADOW_ALPHA_BYTE,
   },
 };
 
@@ -302,6 +315,23 @@ function extensionFromUri(uri: string): string {
   return /^[a-z0-9]{1,8}$/.test(ext) ? ext : "";
 }
 
+function clampNumber(
+  value: number | undefined,
+  min: number,
+  max: number,
+  fallback: number,
+): number {
+  if (!Number.isFinite(value)) return fallback;
+  return Math.max(min, Math.min(value as number, max));
+}
+
+function sanitizeHexColor(value?: string | null): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return /^#[0-9a-fA-F]{6}$/.test(trimmed) ? trimmed : null;
+}
+
 function hexToRgb(hex: string): { r: number; g: number; b: number } {
   const normalized = hex.trim().replace(/^#/, "");
   if (!/^[0-9a-fA-F]{6}$/.test(normalized)) {
@@ -415,6 +445,7 @@ async function renderVinylVideoWithVariant(
     trimStart,
     trimEnd,
     aspectRatio,
+    templateTweaks,
     onProgress,
     debugRenderModeBadge = false,
     fastMode = false,
@@ -454,6 +485,22 @@ async function renderVinylVideoWithVariant(
   const renderToken = Symbol(`render-${variantId}`);
   activeRenderToken = renderToken;
   const variant = RENDER_VARIANTS[variantId];
+  const normalizedSpinSpeed = clampNumber(
+    templateTweaks?.spinSpeed,
+    MIN_SPIN_SPEED,
+    MAX_SPIN_SPEED,
+    1,
+  );
+  const spinRotateExpression = `2*PI*t*${normalizedSpinSpeed.toFixed(3)}/${BASE_SPIN_ROTATION_SECONDS}`;
+  const normalizedRecordOpacity = clampNumber(
+    templateTweaks?.recordOpacity,
+    MIN_RECORD_OPACITY,
+    MAX_RECORD_OPACITY,
+    1,
+  );
+  const stageBackgroundHex =
+    sanitizeHexColor(templateTweaks?.stageBackgroundColor) ??
+    variant.stageBackgroundHex;
   const layout = getSimpleSpinTemplateLayout({ width, height, aspectRatio });
   const {
     discSize,
@@ -497,7 +544,7 @@ async function renderVinylVideoWithVariant(
     mode: RenderPath,
   ) => {
     const lines: string[] = [
-      `color=c=${toFfmpegColor(variant.stageBackgroundHex, 255)}:s=${width}x${height}:d=${duration}[bg]`,
+      `color=c=${toFfmpegColor(stageBackgroundHex, 255)}:s=${width}x${height}:d=${duration}[bg]`,
       `[0:v]${buildPhotoScaleCropFilter(discSize, discSize)}[disc_raw]`,
       `[disc_raw]format=rgba,geq='r=r(X,Y):g=g(X,Y):b=b(X,Y):a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${discRadius},2)),255,0)'[disc_circle]`,
       `color=c=${toFfmpegColor(vinylTone.shadeHexColor, 255)}:s=${discSize}x${discSize}:d=${duration}[disc_shade_raw]`,
@@ -534,7 +581,9 @@ async function renderVinylVideoWithVariant(
       `${discBaseLabel}[label]overlay=0:0:format=auto[disc_labeled]`,
       `color=c=${toFfmpegColor(vinylTone.holeHexColor, vinylTone.holeAlphaByte)}:s=${discSize}x${discSize}:d=${duration}[hole_raw]`,
       `[hole_raw]format=rgba,geq='r=${holeRgb.r}:g=${holeRgb.g}:b=${holeRgb.b}:a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${holeRadius},2)),${vinylTone.holeAlphaByte},0)'[hole]`,
-      `[disc_labeled][hole]overlay=0:0:format=auto,format=rgba,rotate=${SPIN_SPEED}:ow=iw:oh=ih:fillcolor=black@0[disc_rot]`,
+      `[disc_labeled][hole]overlay=0:0:format=auto[disc_with_hole]`,
+      `[disc_with_hole]format=rgba,colorchannelmixer=aa=${normalizedRecordOpacity.toFixed(3)}[disc_opacity]`,
+      `[disc_opacity]rotate=${spinRotateExpression}:ow=iw:oh=ih:fillcolor=black@0[disc_rot]`,
       `color=c=${toFfmpegColor(variant.ambientGlowHex, 255)}:s=${ambientGlowSize}x${ambientGlowSize}:d=${duration}[ambient_glow_raw]`,
       `[ambient_glow_raw]format=rgba,geq='r=${ambientGlowRgb.r}:g=${ambientGlowRgb.g}:b=${ambientGlowRgb.b}:a=if(lte(pow(X-${ambientGlowRadius},2)+pow(Y-${ambientGlowRadius},2),pow(${ambientGlowRadius},2)),${variant.ambientGlowAlphaByte},0)'[ambient_glow]`,
       `[bg][ambient_glow]overlay=${ambientGlowX}:${ambientGlowY}:format=auto[scene_ambient]`,
@@ -560,13 +609,14 @@ async function renderVinylVideoWithVariant(
     audioTrimEndSec: number,
   ) =>
     [
-      `color=c=${toFfmpegColor(variant.stageBackgroundHex, 255)}:s=${width}x${height}:d=${duration}[safe_bg]`,
+      `color=c=${toFfmpegColor(stageBackgroundHex, 255)}:s=${width}x${height}:d=${duration}[safe_bg]`,
       `[0:v]${buildPhotoScaleCropFilter(discSize, discSize)}[safe_disc_raw]`,
       `[safe_disc_raw]format=rgba,geq='r=r(X,Y):g=g(X,Y):b=b(X,Y):a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${discRadius},2)),255,0)'[safe_disc]`,
       `color=c=${toFfmpegColor(variant.ambientGlowHex, 255)}:s=${ambientGlowSize}x${ambientGlowSize}:d=${duration}[safe_ambient_glow_raw]`,
       `[safe_ambient_glow_raw]format=rgba,geq='r=${ambientGlowRgb.r}:g=${ambientGlowRgb.g}:b=${ambientGlowRgb.b}:a=if(lte(pow(X-${ambientGlowRadius},2)+pow(Y-${ambientGlowRadius},2),pow(${ambientGlowRadius},2)),${variant.ambientGlowAlphaByte},0)'[safe_ambient_glow]`,
       `[safe_bg][safe_ambient_glow]overlay=${ambientGlowX}:${ambientGlowY}:format=auto[safe_scene_0]`,
-      `[safe_scene_0][safe_disc]overlay=${discX}:${discY}:format=auto[safe_scene]`,
+      `[safe_disc]format=rgba,colorchannelmixer=aa=${normalizedRecordOpacity.toFixed(3)}[safe_disc_dim]`,
+      `[safe_scene_0][safe_disc_dim]overlay=${discX}:${discY}:format=auto[safe_scene]`,
       ...buildRenderModeBadgeFilterGraph({
         inputLabel: "[safe_scene]",
         width,
