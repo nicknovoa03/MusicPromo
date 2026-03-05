@@ -25,6 +25,8 @@ import {
 import { normalizeMediaUri } from "@/lib/mediaUri";
 import {
   getVinylCenterGeometry,
+  getVinylEdgeGeometry,
+  getVinylEdgeSpec,
   getVinylToneSpec,
   toFfmpegColor,
   type VinylToneId,
@@ -103,9 +105,6 @@ const MIN_BACKGROUND_BLUR = 0;
 const MAX_BACKGROUND_BLUR = 24;
 const MIN_ROTATION_START_DEG = -180;
 const MAX_ROTATION_START_DEG = 180;
-const OUTER_RIM_ALPHA_BYTE = 97; // rgba(10,14,22,0.38)
-const INNER_RIM_ALPHA_BYTE = 36; // rgba(255,255,255,0.14)
-const INNER_RIM_DIAMETER_RATIO = 0.955;
 
 const RENDER_PATH_COLORS: Record<RenderPath, string> = {
   primary: "#38d17b",
@@ -144,7 +143,7 @@ const RENDER_VARIANTS: Record<RenderVariantId, RenderVariantConfig> = {
     glowAlphaByte: SIMPLE_SPIN_GLOW_ALPHA_BYTE,
     ambientGlowHex: SIMPLE_SPIN_AMBIENT_GLOW_HEX,
     ambientGlowAlphaByte: SIMPLE_SPIN_AMBIENT_GLOW_ALPHA_BYTE,
-    includeCdSheen: true,
+    includeCdSheen: false,
     includeCenterTexture: false,
     centerRingHex: "#ffffff",
     centerRingAlphaByte: 0,
@@ -159,7 +158,7 @@ const RENDER_VARIANTS: Record<RenderVariantId, RenderVariantConfig> = {
     ambientGlowHex: GRAPHIC_POP_AMBIENT_GLOW_HEX,
     ambientGlowAlphaByte: GRAPHIC_POP_AMBIENT_GLOW_ALPHA_BYTE,
     includeCdSheen: false,
-    includeCenterTexture: true,
+    includeCenterTexture: false,
     centerRingHex: GRAPHIC_POP_CENTER_RING_HEX,
     centerRingAlphaByte: GRAPHIC_POP_CENTER_RING_ALPHA_BYTE,
     centerShadowHex: GRAPHIC_POP_CENTER_SHADOW_HEX,
@@ -573,11 +572,10 @@ async function renderVinylVideoWithVariant(
   const cdOuterRingRadius = Math.round(discRadius * 0.84);
   const cdMidRingRadius = Math.round(discRadius * 0.64);
   const cdInnerRingRadius = Math.round(discRadius * 0.42);
-  const outerRimWidth = Math.max(discSize * 0.017, 1.2);
-  const outerRimInnerRadius = Math.max(discRadius - outerRimWidth, 0);
-  const innerRimRadius = (discSize * INNER_RIM_DIAMETER_RATIO) / 2;
-  const innerRimThickness = 1;
-  const innerRimInnerRadius = Math.max(innerRimRadius - innerRimThickness, 0);
+  const edgeSpec = getVinylEdgeSpec();
+  const edgeGeometry = getVinylEdgeGeometry(discSize);
+  const outerRimRgb = hexToRgb(edgeSpec.outerRimHexColor);
+  const innerRimRgb = hexToRgb(edgeSpec.innerRimHexColor);
 
   const preparedPhotoUriPromise = ensureRenderableInputUri(photoUri, "photo");
   const preparedAudioUriPromise = ensureRenderableInputUri(audioUri, "audio");
@@ -653,11 +651,11 @@ async function renderVinylVideoWithVariant(
     }
 
     lines.push(
-      `color=c=#0a0e16@1.0:s=${discSize}x${discSize}:d=${duration}[outer_rim_raw]`,
-      `[outer_rim_raw]format=rgba,geq='r=10:g=14:b=22:a=if(between(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${outerRimInnerRadius.toFixed(3)},2),pow(${discRadius},2)),${OUTER_RIM_ALPHA_BYTE},0)'[outer_rim]`,
+      `color=c=${toFfmpegColor(edgeSpec.outerRimHexColor, 255)}:s=${discSize}x${discSize}:d=${duration}[outer_rim_raw]`,
+      `[outer_rim_raw]format=rgba,geq='r=${outerRimRgb.r}:g=${outerRimRgb.g}:b=${outerRimRgb.b}:a=if(between(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${edgeGeometry.outerRimInnerRadius.toFixed(3)},2),pow(${discRadius},2)),${edgeSpec.outerRimAlphaByte},0)'[outer_rim]`,
       `${discBaseLabel}[outer_rim]overlay=0:0:format=auto[disc_with_outer_rim]`,
-      `color=c=#ffffff@1.0:s=${discSize}x${discSize}:d=${duration}[inner_rim_raw]`,
-      `[inner_rim_raw]format=rgba,geq='r=255:g=255:b=255:a=if(between(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${innerRimInnerRadius.toFixed(3)},2),pow(${innerRimRadius.toFixed(3)},2)),${INNER_RIM_ALPHA_BYTE},0)'[inner_rim]`,
+      `color=c=${toFfmpegColor(edgeSpec.innerRimHexColor, 255)}:s=${discSize}x${discSize}:d=${duration}[inner_rim_raw]`,
+      `[inner_rim_raw]format=rgba,geq='r=${innerRimRgb.r}:g=${innerRimRgb.g}:b=${innerRimRgb.b}:a=if(between(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${edgeGeometry.innerRimInnerRadius.toFixed(3)},2),pow(${edgeGeometry.innerRimRadius.toFixed(3)},2)),${edgeSpec.innerRimAlphaByte},0)'[inner_rim]`,
       `[disc_with_outer_rim][inner_rim]overlay=0:0:format=auto[disc_with_rims]`,
     );
     discBaseLabel = "[disc_with_rims]";

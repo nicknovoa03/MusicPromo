@@ -4,6 +4,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { colors } from "@/constants/tokens";
 import {
   getVinylCenterGeometry,
+  getVinylEdgeGeometry,
+  getVinylEdgeSpec,
   getVinylToneSpec,
   toRgba,
   type VinylToneId,
@@ -101,8 +103,16 @@ export function VinylPreview({
   const labelSize = centerGeometry.labelDiameter;
   const holeSize = centerGeometry.holeDiameter;
   const spindleRingSize = Math.max(holeSize * (isGraphicTone ? 1.7 : 2.3), 14);
-  const outerRimWidth = Math.max(size * 0.017, 1.2);
-  const innerRimSize = size * 0.955;
+  const edgeGeometry = getVinylEdgeGeometry(size);
+  const edgeSpec = getVinylEdgeSpec();
+  const outerRimColor = toRgba(
+    edgeSpec.outerRimHexColor,
+    edgeSpec.outerRimAlphaByte,
+  );
+  const innerRimColor = toRgba(
+    edgeSpec.innerRimHexColor,
+    edgeSpec.innerRimAlphaByte,
+  );
   const centerTexture = getCenterTextureSpec(size);
   const graphicInnerRingSize = centerTexture.ringRadius * 2;
   const graphicInnerRingBorderWidth = centerTexture.ringThickness;
@@ -185,7 +195,8 @@ export function VinylPreview({
             styles.outerRim,
             {
               borderRadius: size / 2,
-              borderWidth: outerRimWidth,
+              borderWidth: edgeGeometry.outerRimWidth,
+              borderColor: outerRimColor,
             },
           ]}
         />
@@ -193,11 +204,13 @@ export function VinylPreview({
           style={[
             styles.innerRim,
             {
-              width: innerRimSize,
-              height: innerRimSize,
-              borderRadius: innerRimSize / 2,
-              top: (size - innerRimSize) / 2,
-              left: (size - innerRimSize) / 2,
+              width: edgeGeometry.innerRimDiameter,
+              height: edgeGeometry.innerRimDiameter,
+              borderRadius: edgeGeometry.innerRimRadius,
+              borderWidth: edgeGeometry.innerRimThickness,
+              borderColor: innerRimColor,
+              top: (size - edgeGeometry.innerRimDiameter) / 2,
+              left: (size - edgeGeometry.innerRimDiameter) / 2,
             },
           ]}
         />
@@ -225,7 +238,7 @@ export function VinylPreview({
             })}
           </View>
         ) : null}
-        {isCdStyleTone ? (
+        {isCdStyleTone && toneSpec.showSheenInPreview ? (
           <View style={styles.cdRingsLayer}>
             {CD_RING_SCALES.map((scale, index) => {
               const ringSize = size * scale;
@@ -261,7 +274,7 @@ export function VinylPreview({
             },
           ]}
         />
-        {isGraphicTone ? (
+        {isGraphicTone && toneSpec.showCenterTextureInPreview ? (
           <>
             <View
               style={[
@@ -321,7 +334,7 @@ export function VinylPreview({
             },
           ]}
         />
-        {isCdStyleTone ? (
+        {isCdStyleTone && toneSpec.showSheenInPreview ? (
           <>
             <View style={styles.cdIridescentStripeA} />
             <View style={styles.cdIridescentStripeB} />
@@ -329,7 +342,7 @@ export function VinylPreview({
         ) : null}
         {toneSpec.showSheenInPreview ? <View style={styles.sheen} /> : null}
       </Animated.View>
-      {isGraphicTone ? null : (
+      {isGraphicTone || !toneSpec.showSheenInPreview ? null : (
         <>
           <View
             pointerEvents="none"
@@ -393,12 +406,9 @@ const styles = StyleSheet.create({
   },
   outerRim: {
     ...StyleSheet.absoluteFillObject,
-    borderColor: "rgba(10,14,22,0.38)",
   },
   innerRim: {
     position: "absolute",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
   },
   groovesLayer: {
     ...StyleSheet.absoluteFillObject,

@@ -5,8 +5,8 @@
 - Product name: MusicPromo
 - Doc owner: Nick
 - Stakeholders: Nick (sole developer / product owner)
-- Last updated (YYYY-MM-DD): 2026-03-04
-- Version: 1.2 (Template rail interaction update + release readiness)
+- Last updated (YYYY-MM-DD): 2026-03-05
+- Version: 1.3 (Template parity hardening + export fidelity fixes)
 - Links: GitHub repo at `/home/nick/MusicPromo`
 
 ## 1) Product Summary
@@ -184,8 +184,10 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
   - User can choose aspect ratio (9:16 or 1:1)
   - User can open dedicated `Edit Media` and `Template` control surfaces from the editor
   - User can switch templates from the dedicated `Edit Media` template rail (tap + swipe with clear active state)
-  - User can change spin speed, record opacity, and stage background tint from dedicated `Template` controls
+  - User can change spin speed, record opacity, stage background color/photo, background blur, and rotation start/direction from dedicated `Template` controls
   - Template tweaks apply to preview immediately while editing and remain in effect through export
+  - Export duration respects the selected trim range (no unintended 3s clamp when fast mode is off)
+  - Exported output matches preview styling for CD center geometry, disc edge detail, and background blur intent
   - User sees a preview of the CD-style spinning disc video with their photo and audio
   - User can swap photo or audio without losing other selections
   - Video renders on-device and completes in under 60 seconds
@@ -332,7 +334,7 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 - **Primary CTA:** "Export" button (top-right)
 - **Secondary actions:** 
   - `Edit Media` surface: aspect ratio pills (9:16 / 1:1), template selector rail (swipe + snap + tap), change photo, change audio
-  - `Template` surface: spin speed, record opacity, stage/background tint with live preview updates
+  - `Template` surface: spin speed, record opacity, stage background color/photo, background blur, rotation start angle/direction with live preview updates
   - Play/pause preview, trim handles, media swap without destructive resets
 - **Empty/loading/error:** Preview loading skeleton, "Rendering failed" + retry
 - **Theme:** Dark/black
@@ -553,10 +555,14 @@ Primary reference: Meta's Edits app. Secondary: Spotify (profile). Screenshots i
 - Freeze MVP scope to a curated two-template set and ship reliability over breadth
 - Keep local-only export architecture with FFmpeg as the active renderer
 - Defer broad template-library authoring/parity work until after MVP release
-- Phase 4 implementation status (2026-03-04):
+- Phase 4 implementation status (2026-03-05):
   - Editor template selector is a dedicated centered rail (horizontal pills with snap-to-center behavior + active template label)
   - Template resolution supports `simple-spin` and `graphic-pop` across picker, editor, and export routes
-  - Disc visual treatment was updated to read as a CD (preview + export alignment pass)
+  - Disc visual treatment was updated to read as a CD (preview + export alignment pass, including edge-rim detail)
+  - Template control surface now supports stage background image + blur and rotation start/direction
+  - Export duration now respects user trim selection when fast mode is disabled
+  - Preview/export parity uses shared vinyl geometry specs (center + edge) to prevent drift from duplicated constants
+  - Export color range mapping was corrected to match preview vibrance more closely on device
   - Local FFmpeg export remains the active path; `remotion-local` remains experimental behind feature flag / fallback behavior
   - User-tested export path is working end-to-end for the current MVP slice
 - Next step in this phase: App Store production launch checklist

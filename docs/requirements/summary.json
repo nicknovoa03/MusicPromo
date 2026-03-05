@@ -44,7 +44,7 @@
       "name": "Template",
       "storage": "Convex",
       "key_fields": ["id", "name", "description", "previewImageUrl", "type", "config"],
-      "v1_entries": ["Spinning CD"]
+      "v1_entries": ["simple-spin", "graphic-pop"]
     },
     {
       "name": "Push Token",
