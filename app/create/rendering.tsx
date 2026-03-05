@@ -41,10 +41,12 @@ function isExpoGo(): boolean {
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const SCREEN_HEIGHT = Dimensions.get("window").height;
 const STAGE_HORIZONTAL_PADDING = spacing.lg * 2;
-const DEFAULT_TRIM_DURATION = 15;
+const DEFAULT_TRIM_DURATION = 5;
 const ENABLE_RENDER_MODE_BADGE = false;
-const FAST_EXPORT_DURATION_SECONDS: number | null = 3;
 const ENABLE_FAST_RENDER_MODE = false;
+const FAST_EXPORT_DURATION_SECONDS: number | null = ENABLE_FAST_RENDER_MODE
+  ? 3
+  : null;
 
 async function cancelCurrentRender(params: {
   engine?: RenderEngine;

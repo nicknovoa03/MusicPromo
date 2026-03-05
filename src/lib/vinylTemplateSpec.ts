@@ -12,6 +12,11 @@ export interface VinylToneSpec {
   showSheenInPreview: boolean;
 }
 
+interface VinylCenterRatioSpec {
+  labelDiameterRatio: number;
+  holeDiameterRatio: number;
+}
+
 const VINYL_TONES: Record<VinylToneId, VinylToneSpec> = {
   "simple-spin": {
     id: "simple-spin",
@@ -34,6 +39,17 @@ const VINYL_TONES: Record<VinylToneId, VinylToneSpec> = {
     holeAlphaByte: 228,
     showGroovesInPreview: false,
     showSheenInPreview: false,
+  },
+};
+
+const VINYL_CENTER_RATIO_SPECS: Record<VinylToneId, VinylCenterRatioSpec> = {
+  "simple-spin": {
+    labelDiameterRatio: 0.36,
+    holeDiameterRatio: 0.13,
+  },
+  "graphic-pop": {
+    labelDiameterRatio: 0.19,
+    holeDiameterRatio: 0.068,
   },
 };
 
@@ -71,4 +87,29 @@ export function toRgba(hex: string, alphaByte: number): string {
 
 export function getVinylToneSpec(tone: VinylToneId): VinylToneSpec {
   return VINYL_TONES[tone];
+}
+
+export function getVinylCenterGeometry(tone: VinylToneId, discSize: number): {
+  labelDiameter: number;
+  labelRadius: number;
+  holeDiameter: number;
+  holeRadius: number;
+} {
+  const safeDiscSize = Math.max(Math.round(discSize), 1);
+  const ratios = VINYL_CENTER_RATIO_SPECS[tone];
+  const labelDiameter = Math.max(
+    Math.round(safeDiscSize * ratios.labelDiameterRatio),
+    1,
+  );
+  const holeDiameter = Math.max(
+    Math.round(safeDiscSize * ratios.holeDiameterRatio),
+    6,
+  );
+
+  return {
+    labelDiameter,
+    labelRadius: Math.round(labelDiameter / 2),
+    holeDiameter,
+    holeRadius: Math.round(holeDiameter / 2),
+  };
 }

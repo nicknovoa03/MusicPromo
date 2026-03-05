@@ -56,7 +56,7 @@ export function AudioTrimmer({
   isPlaying = false,
   playbackProgressSec,
   onTogglePlay,
-  minDuration = 15,
+  minDuration = 5,
   maxDuration = Number.POSITIVE_INFINITY,
 }: AudioTrimmerProps) {
   const safeDuration = Number.isFinite(durationSec) ? Math.max(durationSec, 1) : 1;

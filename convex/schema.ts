@@ -28,6 +28,7 @@ export default defineSchema({
     userId: v.id("users"),
     title: v.optional(v.string()),
     templateId: v.optional(v.string()),
+    templateTweaks: v.optional(v.string()),
     aspectRatio: v.union(v.literal("9:16"), v.literal("1:1")),
     videoLength: v.optional(v.number()),
     photoUri: v.optional(v.string()),

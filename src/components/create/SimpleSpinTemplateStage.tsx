@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, View } from "react-native";
+import { Image, Pressable, StyleSheet, View } from "react-native";
 import { radius } from "@/constants/tokens";
 import { VinylPreview } from "@/components/create/VinylPreview";
 import type { TemplateStageProps } from "@/lib/templates";
@@ -11,6 +11,8 @@ import {
   SIMPLE_SPIN_STAGE_BACKGROUND_HEX,
 } from "@/lib/simpleSpinTemplateSpec";
 import { toRgba } from "@/lib/vinylTemplateSpec";
+
+const MAX_BACKGROUND_BLUR = 24;
 
 export function SimpleSpinTemplateStage({
   width,
@@ -25,6 +27,16 @@ export function SimpleSpinTemplateStage({
   onTogglePlay,
 }: TemplateStageProps) {
   const layout = getSimpleSpinTemplateLayout({ width, height, aspectRatio });
+  const normalizedBackgroundBlur = Math.min(
+    Math.max(templateTweaks?.backgroundBlur ?? 0, 0),
+    MAX_BACKGROUND_BLUR,
+  );
+  const normalizedRotationStartDeg = Math.min(
+    Math.max(templateTweaks?.rotationStartDeg ?? 0, -180),
+    180,
+  );
+  const normalizedRotationDirection =
+    templateTweaks?.rotationDirection === "ccw" ? "ccw" : "cw";
 
   return (
     <View
@@ -39,6 +51,16 @@ export function SimpleSpinTemplateStage({
       ]}
       accessibilityLabel={`${playbackLabel}. ${trackTitle}. ${subtitle}`}
     >
+      {templateTweaks?.stageBackgroundImageUri ? (
+        <Image
+          source={{ uri: templateTweaks.stageBackgroundImageUri }}
+          style={styles.backgroundImage}
+          blurRadius={Math.round(normalizedBackgroundBlur)}
+          resizeMode="cover"
+          accessibilityIgnoresInvertColors
+        />
+      ) : null}
+
       {SIMPLE_SPIN_AMBIENT_GLOW_ALPHA_BYTE > 0 ? (
         <View
           style={[
@@ -92,6 +114,8 @@ export function SimpleSpinTemplateStage({
           spinning={isPlaying}
           spinSpeed={templateTweaks?.spinSpeed ?? 1}
           discOpacity={templateTweaks?.recordOpacity ?? 1}
+          rotationStartDeg={normalizedRotationStartDeg}
+          rotationDirection={normalizedRotationDirection}
           tone="simple-spin"
         />
       </View>
@@ -134,6 +158,9 @@ const styles = StyleSheet.create({
   },
   ambientGlow: {
     position: "absolute",
+  },
+  backgroundImage: {
+    ...StyleSheet.absoluteFillObject,
   },
   discWrap: {
     position: "absolute",

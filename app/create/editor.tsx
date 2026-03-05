@@ -35,6 +35,10 @@ import { sleep } from "@/lib/utils";
 import { useLocalSession } from "@/providers/localSession";
 import { upsertLocalProject } from "@/lib/localProjects";
 import {
+  getCachedTemplateTweaks,
+  setCachedTemplateTweaks,
+} from "@/lib/templateTweaksCache";
+import {
   DEFAULT_TEMPLATE_TWEAKS,
   getTemplateDefinition,
   listTemplateDefinitions,
@@ -47,9 +51,9 @@ import {
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const SCREEN_HEIGHT = Dimensions.get("window").height;
-const STAGE_HORIZONTAL_PADDING = spacing.lg * 2;
+const STAGE_HORIZONTAL_PADDING = spacing.sm * 2;
 const FALLBACK_AUDIO_DURATION = 180;
-const DEFAULT_TRIM_DURATION = 15;
+const DEFAULT_TRIM_DURATION = 5;
 const DEFAULT_PROJECT_TITLE = "New Project";
 
 type MissingFilesState = {
@@ -85,6 +89,15 @@ function isUnauthenticatedConvexError(error: unknown) {
   if (!error.data || typeof error.data !== "object") return false;
   const code = (error.data as { code?: unknown }).code;
   return code === "UNAUTHENTICATED";
+}
+
+function isTemplateTweaksValidationError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const message = error.message || "";
+  return (
+    message.includes("ArgumentValidationError") &&
+    message.includes("templateTweaks")
+  );
 }
 
 function isGeneratedMediaName(value: string) {
@@ -295,6 +308,7 @@ export default function EditorScreen() {
   const [templateId, setTemplateId] = useState(initialTemplateId);
   const [templateTweaks, setTemplateTweaks] =
     useState<TemplateTweaks>(initialTemplateTweaks);
+  const serializedTemplateTweaks = serializeTemplateTweaksParam(templateTweaks);
   const [isEditMediaModalVisible, setIsEditMediaModalVisible] = useState(false);
   const [isTemplateCustomizeVisible, setIsTemplateCustomizeVisible] =
     useState(false);
@@ -318,6 +332,7 @@ export default function EditorScreen() {
   >("idle");
   const [forceAutosaveTick, setForceAutosaveTick] = useState(0);
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const remoteTemplateTweaksUnsupportedRef = useRef(false);
   const forceAutosaveTickRef = useRef(0);
   const initialSnapshotRef = useRef<string | null>(null);
   const lastSavedSnapshotRef = useRef<string | null>(null);
@@ -357,6 +372,42 @@ export default function EditorScreen() {
     setTemplateId(resolveTemplateId(firstParam(params.templateId)));
   }, [params.templateId]);
 
+  useEffect(() => {
+    if (firstParam(params.templateTweaks)) return;
+    const savedTemplateTweaksRaw = projectDetails?.templateTweaks;
+    if (!savedTemplateTweaksRaw) return;
+    const parsed = parseTemplateTweaksParam(savedTemplateTweaksRaw);
+    if (!parsed) return;
+    setTemplateTweaks((prev) => {
+      const prevSerialized = serializeTemplateTweaksParam(prev);
+      const nextSerialized = serializeTemplateTweaksParam(parsed);
+      return prevSerialized === nextSerialized ? prev : parsed;
+    });
+  }, [params.templateTweaks, projectDetails?.templateTweaks]);
+
+  useEffect(() => {
+    if (firstParam(params.templateTweaks)) return;
+    if (!currentProjectId) return;
+    if (projectDetails?.templateTweaks) return;
+
+    let isCancelled = false;
+    void (async () => {
+      const cached = await getCachedTemplateTweaks(String(currentProjectId));
+      if (!cached || isCancelled) return;
+      const parsed = parseTemplateTweaksParam(cached);
+      if (!parsed) return;
+      setTemplateTweaks((prev) => {
+        const prevSerialized = serializeTemplateTweaksParam(prev);
+        const nextSerialized = serializeTemplateTweaksParam(parsed);
+        return prevSerialized === nextSerialized ? prev : parsed;
+      });
+    })();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [currentProjectId, params.templateTweaks, projectDetails?.templateTweaks]);
+
   const templateDefinitions = listTemplateDefinitions();
   const TemplateStageComponent = getTemplateDefinition(templateId).StageComponent;
 
@@ -374,6 +425,20 @@ export default function EditorScreen() {
     const pending = (async (): Promise<Id<"projects"> | null> => {
       const tryCreate = async (retries = 1): Promise<Id<"projects"> | null> => {
         try {
+          if (!remoteTemplateTweaksUnsupportedRef.current) {
+            return await createProject({
+              title: normalizedTitle,
+              aspectRatio,
+              photoUri,
+              photoName,
+              audioUri,
+              audioName,
+              trimStart: roundedTrimStart,
+              trimEnd: roundedTrimEnd,
+              templateId,
+              templateTweaks: serializedTemplateTweaks,
+            });
+          }
           return await createProject({
             title: normalizedTitle,
             aspectRatio,
@@ -386,6 +451,23 @@ export default function EditorScreen() {
             templateId,
           });
         } catch (error) {
+          if (
+            !remoteTemplateTweaksUnsupportedRef.current &&
+            isTemplateTweaksValidationError(error)
+          ) {
+            remoteTemplateTweaksUnsupportedRef.current = true;
+            return await createProject({
+              title: normalizedTitle,
+              aspectRatio,
+              photoUri,
+              photoName,
+              audioUri,
+              audioName,
+              trimStart: roundedTrimStart,
+              trimEnd: roundedTrimEnd,
+              templateId,
+            });
+          }
           if (isUnauthenticatedConvexError(error) && retries > 0) {
             await sleep(600);
             return await tryCreate(retries - 1);
@@ -402,6 +484,10 @@ export default function EditorScreen() {
       const createdProjectId = await pending;
       if (createdProjectId) {
         setCurrentProjectId(createdProjectId);
+        await setCachedTemplateTweaks(
+          String(createdProjectId),
+          serializedTemplateTweaks,
+        );
       }
       return createdProjectId;
     } finally {
@@ -419,6 +505,7 @@ export default function EditorScreen() {
     photoName,
     audioName,
     templateId,
+    serializedTemplateTweaks,
     createProject,
   ]);
 
@@ -437,6 +524,7 @@ export default function EditorScreen() {
       const project = await upsertLocalProject({
         title: normalizedTitle,
         templateId,
+        templateTweaks: serializedTemplateTweaks,
         aspectRatio,
         photoUri,
         photoName,
@@ -471,6 +559,7 @@ export default function EditorScreen() {
     photoName,
     audioName,
     templateId,
+    serializedTemplateTweaks,
   ]);
 
   useEffect(() => {
@@ -584,7 +673,7 @@ export default function EditorScreen() {
     };
   }, [audioUri, missingFiles.audio]);
 
-  const minTrimDuration = Math.min(15, Math.max(audioDurationSec, 1));
+  const minTrimDuration = Math.min(5, Math.max(audioDurationSec, 1));
   const maxTrimDuration = Math.max(
     minTrimDuration,
     Math.min(audioDurationSec, 45),
@@ -608,11 +697,11 @@ export default function EditorScreen() {
     trimEnd,
   ]);
 
-  const stageWidth = Math.min(SCREEN_WIDTH - STAGE_HORIZONTAL_PADDING, 440);
-  const targetStageHeight = stageWidth * (aspectRatio === "9:16" ? 1.22 : 1.02);
+  const stageWidth = Math.min(SCREEN_WIDTH - STAGE_HORIZONTAL_PADDING, 520);
+  const targetStageHeight = stageWidth * (aspectRatio === "9:16" ? 1.26 : 1.06);
   const stageHeight = Math.min(
-    Math.max(targetStageHeight, 300),
-    SCREEN_HEIGHT * (aspectRatio === "9:16" ? 0.52 : 0.48),
+    Math.max(targetStageHeight, 320),
+    SCREEN_HEIGHT * (aspectRatio === "9:16" ? 0.58 : 0.54),
   );
 
   const handleTrimChange = useCallback((start: number, end: number) => {
@@ -847,6 +936,7 @@ export default function EditorScreen() {
     const nextSnapshot = JSON.stringify({
       title: normalizedTitle,
       templateId,
+      templateTweaks: serializedTemplateTweaks,
       aspectRatio,
       trimStart: roundedTrimStart,
       trimEnd: roundedTrimEnd,
@@ -892,6 +982,7 @@ export default function EditorScreen() {
             id: currentLocalProjectId,
             title: normalizedTitle,
             templateId,
+            templateTweaks: serializedTemplateTweaks,
             aspectRatio,
             photoUri,
             photoName,
@@ -902,18 +993,57 @@ export default function EditorScreen() {
             status: "draft",
           });
         } else if (currentProjectId) {
-          await updateProject({
-            projectId: currentProjectId,
-            title: normalizedTitle,
-            templateId,
-            aspectRatio,
-            trimStart: roundedTrimStart,
-            trimEnd: roundedTrimEnd,
-            photoUri,
-            photoName,
-            audioUri,
-            audioName,
-          });
+          if (!remoteTemplateTweaksUnsupportedRef.current) {
+            try {
+              await updateProject({
+                projectId: currentProjectId,
+                title: normalizedTitle,
+                templateId,
+                templateTweaks: serializedTemplateTweaks,
+                aspectRatio,
+                trimStart: roundedTrimStart,
+                trimEnd: roundedTrimEnd,
+                photoUri,
+                photoName,
+                audioUri,
+                audioName,
+              });
+            } catch (error) {
+              if (!isTemplateTweaksValidationError(error)) {
+                throw error;
+              }
+              remoteTemplateTweaksUnsupportedRef.current = true;
+              await updateProject({
+                projectId: currentProjectId,
+                title: normalizedTitle,
+                templateId,
+                aspectRatio,
+                trimStart: roundedTrimStart,
+                trimEnd: roundedTrimEnd,
+                photoUri,
+                photoName,
+                audioUri,
+                audioName,
+              });
+            }
+          } else {
+            await updateProject({
+              projectId: currentProjectId,
+              title: normalizedTitle,
+              templateId,
+              aspectRatio,
+              trimStart: roundedTrimStart,
+              trimEnd: roundedTrimEnd,
+              photoUri,
+              photoName,
+              audioUri,
+              audioName,
+            });
+          }
+          await setCachedTemplateTweaks(
+            String(currentProjectId),
+            serializedTemplateTweaks,
+          );
         } else {
           return;
         }
@@ -943,6 +1073,7 @@ export default function EditorScreen() {
     forceAutosaveTick,
     projectTitle,
     templateId,
+    serializedTemplateTweaks,
     aspectRatio,
     trimStart,
     trimEnd,
@@ -993,8 +1124,6 @@ export default function EditorScreen() {
       }
     })();
   }, [isLocalGuest, createLocalDraftProject, createDraftProject, router]);
-
-  const serializedTemplateTweaks = serializeTemplateTweaksParam(templateTweaks);
 
   const handleSwapMedia = useCallback(
     (initialTab: "photo" | "audio") => {
@@ -1132,9 +1261,20 @@ export default function EditorScreen() {
       if (normalizedNext.recordOpacity !== templateTweaks.recordOpacity) {
         track("template_tweak_changed", { control: "record_opacity" });
       }
+      if (normalizedNext.backgroundBlur !== templateTweaks.backgroundBlur) {
+        track("template_tweak_changed", { control: "background_blur" });
+      }
+      if (normalizedNext.rotationStartDeg !== templateTweaks.rotationStartDeg) {
+        track("template_tweak_changed", { control: "rotation_start_angle" });
+      }
+      if (normalizedNext.rotationDirection !== templateTweaks.rotationDirection) {
+        track("template_tweak_changed", { control: "rotation_direction" });
+      }
       if (
         (normalizedNext.stageBackgroundColor ?? "") !==
-        (templateTweaks.stageBackgroundColor ?? "")
+          (templateTweaks.stageBackgroundColor ?? "") ||
+        (normalizedNext.stageBackgroundImageUri ?? "") !==
+          (templateTweaks.stageBackgroundImageUri ?? "")
       ) {
         track("template_tweak_changed", { control: "stage_background" });
       }

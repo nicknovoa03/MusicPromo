@@ -7,7 +7,11 @@ export interface RenderRequest {
   templateTweaks?: {
     spinSpeed?: number;
     recordOpacity?: number;
+    backgroundBlur?: number;
+    rotationStartDeg?: number;
+    rotationDirection?: "cw" | "ccw";
     stageBackgroundColor?: string | null;
+    stageBackgroundImageUri?: string | null;
   };
   photoUri: string;
   audioUri: string;

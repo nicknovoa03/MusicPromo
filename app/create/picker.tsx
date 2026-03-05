@@ -44,7 +44,7 @@ interface MediaSelection {
   audioArtworkUri: string | null;
 }
 
-const DEFAULT_NEW_PROJECT_TRIM_END = 15;
+const DEFAULT_NEW_PROJECT_TRIM_END = 5;
 
 function firstParam(param: string | string[] | undefined) {
   return Array.isArray(param) ? param[0] : param;

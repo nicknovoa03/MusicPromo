@@ -128,8 +128,9 @@ export default function HomeScreen() {
             audioName: project.audioName ?? "",
             aspectRatio: project.aspectRatio,
             templateId: resolveTemplateId(project.templateId),
+            templateTweaks: project.templateTweaks ?? "",
             trimStart: String(project.trimStart ?? 0),
-            trimEnd: String(project.trimEnd ?? 15),
+            trimEnd: String(project.trimEnd ?? 5),
           },
         });
         return;
@@ -144,8 +145,9 @@ export default function HomeScreen() {
           audioName: project.audioName ?? "",
           aspectRatio: project.aspectRatio,
           templateId: resolveTemplateId(project.templateId),
+          templateTweaks: project.templateTweaks ?? "",
           trimStart: String(project.trimStart ?? 0),
-          trimEnd: String(project.trimEnd ?? 15),
+          trimEnd: String(project.trimEnd ?? 5),
         },
       });
     },

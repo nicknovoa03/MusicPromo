@@ -24,6 +24,7 @@ import {
 } from "@/lib/graphicPopTemplateSpec";
 import { normalizeMediaUri } from "@/lib/mediaUri";
 import {
+  getVinylCenterGeometry,
   getVinylToneSpec,
   toFfmpegColor,
   type VinylToneId,
@@ -42,7 +43,11 @@ export interface RenderOptions {
   templateTweaks?: {
     spinSpeed?: number;
     recordOpacity?: number;
+    backgroundBlur?: number;
+    rotationStartDeg?: number;
+    rotationDirection?: "cw" | "ccw";
     stageBackgroundColor?: string | null;
+    stageBackgroundImageUri?: string | null;
   };
   onProgress?: (percent: number) => void;
   debugRenderModeBadge?: boolean;
@@ -88,12 +93,19 @@ const HIGH_QUALITY_VIDEO_BITRATE = "8M";
 const FAST_MODE_VIDEO_BITRATE = "1.2M";
 const AUDIO_BITRATE = "256k";
 const PHOTO_INPUT_RANGE = "pc";
-const VIDEO_OUTPUT_RANGE = "tv";
+const VIDEO_OUTPUT_RANGE = "pc";
 const BASE_SPIN_ROTATION_SECONDS = 4;
 const MIN_SPIN_SPEED = 0.25;
 const MAX_SPIN_SPEED = 4;
 const MIN_RECORD_OPACITY = 0.35;
 const MAX_RECORD_OPACITY = 1;
+const MIN_BACKGROUND_BLUR = 0;
+const MAX_BACKGROUND_BLUR = 24;
+const MIN_ROTATION_START_DEG = -180;
+const MAX_ROTATION_START_DEG = 180;
+const OUTER_RIM_ALPHA_BYTE = 97; // rgba(10,14,22,0.38)
+const INNER_RIM_ALPHA_BYTE = 36; // rgba(255,255,255,0.14)
+const INNER_RIM_DIAMETER_RATIO = 0.955;
 
 const RENDER_PATH_COLORS: Record<RenderPath, string> = {
   primary: "#38d17b",
@@ -332,6 +344,10 @@ function sanitizeHexColor(value?: string | null): string | null {
   return /^#[0-9a-fA-F]{6}$/.test(trimmed) ? trimmed : null;
 }
 
+function sanitizeRotationDirection(value?: string | null): "cw" | "ccw" {
+  return value === "ccw" ? "ccw" : "cw";
+}
+
 function hexToRgb(hex: string): { r: number; g: number; b: number } {
   const normalized = hex.trim().replace(/^#/, "");
   if (!/^[0-9a-fA-F]{6}$/.test(normalized)) {
@@ -491,7 +507,27 @@ async function renderVinylVideoWithVariant(
     MAX_SPIN_SPEED,
     1,
   );
-  const spinRotateExpression = `2*PI*t*${normalizedSpinSpeed.toFixed(3)}/${BASE_SPIN_ROTATION_SECONDS}`;
+  const normalizedBackgroundBlur = clampNumber(
+    templateTweaks?.backgroundBlur,
+    MIN_BACKGROUND_BLUR,
+    MAX_BACKGROUND_BLUR,
+    0,
+  );
+  const normalizedRotationStartDeg = clampNumber(
+    templateTweaks?.rotationStartDeg,
+    MIN_ROTATION_START_DEG,
+    MAX_ROTATION_START_DEG,
+    0,
+  );
+  const normalizedRotationDirection = sanitizeRotationDirection(
+    templateTweaks?.rotationDirection,
+  );
+  const rotationDirectionMultiplier =
+    normalizedRotationDirection === "ccw" ? -1 : 1;
+  const rotationStartRadians = (normalizedRotationStartDeg * Math.PI) / 180;
+  const spinRotateExpression = `${rotationStartRadians.toFixed(
+    6,
+  )}+${rotationDirectionMultiplier}*2*PI*t*${normalizedSpinSpeed.toFixed(3)}/${BASE_SPIN_ROTATION_SECONDS}`;
   const normalizedRecordOpacity = clampNumber(
     templateTweaks?.recordOpacity,
     MIN_RECORD_OPACITY,
@@ -501,12 +537,17 @@ async function renderVinylVideoWithVariant(
   const stageBackgroundHex =
     sanitizeHexColor(templateTweaks?.stageBackgroundColor) ??
     variant.stageBackgroundHex;
+  const stageBackgroundImageUri = normalizeMediaUri(
+    templateTweaks?.stageBackgroundImageUri,
+  );
+  const backgroundBlurSigma =
+    normalizedBackgroundBlur <= 0
+      ? 0
+      : Math.max(0.8, normalizedBackgroundBlur);
   const layout = getSimpleSpinTemplateLayout({ width, height, aspectRatio });
   const {
     discSize,
     discRadius,
-    labelRadius,
-    holeRadius,
     discX,
     discY,
     glowSize,
@@ -519,6 +560,9 @@ async function renderVinylVideoWithVariant(
     ambientGlowY,
   } = layout;
   const vinylTone = getVinylToneSpec(variant.toneId);
+  const centerGeometry = getVinylCenterGeometry(variant.toneId, discSize);
+  const labelRadius = centerGeometry.labelRadius;
+  const holeRadius = centerGeometry.holeRadius;
   const shadeRgb = hexToRgb(vinylTone.shadeHexColor);
   const holeRgb = hexToRgb(vinylTone.holeHexColor);
   const glowRgb = hexToRgb(variant.glowHex);
@@ -529,11 +573,31 @@ async function renderVinylVideoWithVariant(
   const cdOuterRingRadius = Math.round(discRadius * 0.84);
   const cdMidRingRadius = Math.round(discRadius * 0.64);
   const cdInnerRingRadius = Math.round(discRadius * 0.42);
+  const outerRimWidth = Math.max(discSize * 0.017, 1.2);
+  const outerRimInnerRadius = Math.max(discRadius - outerRimWidth, 0);
+  const innerRimRadius = (discSize * INNER_RIM_DIAMETER_RATIO) / 2;
+  const innerRimThickness = 1;
+  const innerRimInnerRadius = Math.max(innerRimRadius - innerRimThickness, 0);
 
-  const [preparedPhotoUri, preparedAudioUri] = await Promise.all([
-    ensureRenderableInputUri(photoUri, "photo"),
-    ensureRenderableInputUri(audioUri, "audio"),
-  ]);
+  const preparedPhotoUriPromise = ensureRenderableInputUri(photoUri, "photo");
+  const preparedAudioUriPromise = ensureRenderableInputUri(audioUri, "audio");
+  const preparedBackgroundUriPromise: Promise<string | null> = stageBackgroundImageUri
+    ? ensureRenderableInputUri(stageBackgroundImageUri, "photo").catch(
+        (error: unknown) => {
+          throw new Error(
+            `Unable to read selected background image for rendering. ${error instanceof Error ? error.message : "Please reselect the background image and try again."}`,
+          );
+        },
+      )
+    : Promise.resolve(null);
+  const [preparedPhotoUri, preparedAudioUri, preparedBackgroundUri] =
+    await Promise.all([
+      preparedPhotoUriPromise,
+      preparedAudioUriPromise,
+      preparedBackgroundUriPromise,
+    ]);
+  const hasBackgroundImage = Boolean(preparedBackgroundUri);
+  const audioInputIndex = hasBackgroundImage ? 2 : 1;
 
   const outputPath = Paths.join(Paths.cache, `export_${Date.now()}.mp4`);
   let photoInputUriForRender = preparedPhotoUri;
@@ -543,14 +607,27 @@ async function renderVinylVideoWithVariant(
     audioTrimEndSec: number,
     mode: RenderPath,
   ) => {
-    const lines: string[] = [
-      `color=c=${toFfmpegColor(stageBackgroundHex, 255)}:s=${width}x${height}:d=${duration}[bg]`,
+    const lines: string[] = [];
+    if (hasBackgroundImage) {
+      const blurFilter =
+        backgroundBlurSigma > 0
+          ? `,gblur=sigma=${backgroundBlurSigma.toFixed(2)}:steps=2`
+          : "";
+      lines.push(
+        `[1:v]${buildPhotoScaleCropFilter(width, height)}${blurFilter}[bg]`,
+      );
+    } else {
+      lines.push(
+        `color=c=${toFfmpegColor(stageBackgroundHex, 255)}:s=${width}x${height}:d=${duration}[bg]`,
+      );
+    }
+    lines.push(
       `[0:v]${buildPhotoScaleCropFilter(discSize, discSize)}[disc_raw]`,
       `[disc_raw]format=rgba,geq='r=r(X,Y):g=g(X,Y):b=b(X,Y):a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${discRadius},2)),255,0)'[disc_circle]`,
       `color=c=${toFfmpegColor(vinylTone.shadeHexColor, 255)}:s=${discSize}x${discSize}:d=${duration}[disc_shade_raw]`,
       `[disc_shade_raw]format=rgba,geq='r=${shadeRgb.r}:g=${shadeRgb.g}:b=${shadeRgb.b}:a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${discRadius},2)),${vinylTone.shadeAlphaByte},0)'[disc_shade]`,
       `[disc_circle][disc_shade]overlay=0:0:format=auto[disc_dark]`,
-    ];
+    );
 
     if (variant.includeCdSheen) {
       lines.push(
@@ -576,6 +653,16 @@ async function renderVinylVideoWithVariant(
     }
 
     lines.push(
+      `color=c=#0a0e16@1.0:s=${discSize}x${discSize}:d=${duration}[outer_rim_raw]`,
+      `[outer_rim_raw]format=rgba,geq='r=10:g=14:b=22:a=if(between(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${outerRimInnerRadius.toFixed(3)},2),pow(${discRadius},2)),${OUTER_RIM_ALPHA_BYTE},0)'[outer_rim]`,
+      `${discBaseLabel}[outer_rim]overlay=0:0:format=auto[disc_with_outer_rim]`,
+      `color=c=#ffffff@1.0:s=${discSize}x${discSize}:d=${duration}[inner_rim_raw]`,
+      `[inner_rim_raw]format=rgba,geq='r=255:g=255:b=255:a=if(between(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${innerRimInnerRadius.toFixed(3)},2),pow(${innerRimRadius.toFixed(3)},2)),${INNER_RIM_ALPHA_BYTE},0)'[inner_rim]`,
+      `[disc_with_outer_rim][inner_rim]overlay=0:0:format=auto[disc_with_rims]`,
+    );
+    discBaseLabel = "[disc_with_rims]";
+
+    lines.push(
       `color=c=${toFfmpegColor(vinylTone.labelHexColor, vinylTone.labelAlphaByte)}:s=${discSize}x${discSize}:d=${duration}[label_raw]`,
       `[label_raw]format=rgba,geq='r=r(X,Y):g=g(X,Y):b=b(X,Y):a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${labelRadius},2)),${vinylTone.labelAlphaByte},0)'[label]`,
       `${discBaseLabel}[label]overlay=0:0:format=auto[disc_labeled]`,
@@ -591,6 +678,8 @@ async function renderVinylVideoWithVariant(
       `[glow_raw]format=rgba,geq='r=${glowRgb.r}:g=${glowRgb.g}:b=${glowRgb.b}:a=if(lte(pow(X-${glowRadius},2)+pow(Y-${glowRadius},2),pow(${glowRadius},2)),${variant.glowAlphaByte},0)'[glow]`,
       `[scene_ambient][glow]overlay=${glowX}:${glowY}:format=auto[scene_0]`,
       `[scene_0][disc_rot]overlay=${discX}:${discY}:format=auto[scene_1]`,
+    );
+    lines.push(
       ...buildRenderModeBadgeFilterGraph({
         inputLabel: "[scene_1]",
         width,
@@ -598,7 +687,9 @@ async function renderVinylVideoWithVariant(
         mode,
         enabled: debugRenderModeBadge,
       }),
-      `[1:a]atrim=start=${audioTrimStartSec}:end=${audioTrimEndSec},asetpts=PTS-STARTPTS[audio_out]`,
+    );
+    lines.push(
+      `[${audioInputIndex}:a]atrim=start=${audioTrimStartSec}:end=${audioTrimEndSec},asetpts=PTS-STARTPTS[audio_out]`,
     );
 
     return lines.join(";");
@@ -607,9 +698,22 @@ async function renderVinylVideoWithVariant(
   const buildSafeFallbackFilterComplex = (
     audioTrimStartSec: number,
     audioTrimEndSec: number,
-  ) =>
-    [
-      `color=c=${toFfmpegColor(stageBackgroundHex, 255)}:s=${width}x${height}:d=${duration}[safe_bg]`,
+  ) => {
+    const lines: string[] = [];
+    if (hasBackgroundImage) {
+      const blurFilter =
+        backgroundBlurSigma > 0
+          ? `,gblur=sigma=${backgroundBlurSigma.toFixed(2)}:steps=2`
+          : "";
+      lines.push(
+        `[1:v]${buildPhotoScaleCropFilter(width, height)}${blurFilter}[safe_bg]`,
+      );
+    } else {
+      lines.push(
+        `color=c=${toFfmpegColor(stageBackgroundHex, 255)}:s=${width}x${height}:d=${duration}[safe_bg]`,
+      );
+    }
+    lines.push(
       `[0:v]${buildPhotoScaleCropFilter(discSize, discSize)}[safe_disc_raw]`,
       `[safe_disc_raw]format=rgba,geq='r=r(X,Y):g=g(X,Y):b=b(X,Y):a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${discRadius},2)),255,0)'[safe_disc]`,
       `color=c=${toFfmpegColor(variant.ambientGlowHex, 255)}:s=${ambientGlowSize}x${ambientGlowSize}:d=${duration}[safe_ambient_glow_raw]`,
@@ -617,6 +721,8 @@ async function renderVinylVideoWithVariant(
       `[safe_bg][safe_ambient_glow]overlay=${ambientGlowX}:${ambientGlowY}:format=auto[safe_scene_0]`,
       `[safe_disc]format=rgba,colorchannelmixer=aa=${normalizedRecordOpacity.toFixed(3)}[safe_disc_dim]`,
       `[safe_scene_0][safe_disc_dim]overlay=${discX}:${discY}:format=auto[safe_scene]`,
+    );
+    lines.push(
       ...buildRenderModeBadgeFilterGraph({
         inputLabel: "[safe_scene]",
         width,
@@ -624,17 +730,20 @@ async function renderVinylVideoWithVariant(
         mode: "safe_fallback",
         enabled: debugRenderModeBadge,
       }),
-      `[1:a]atrim=start=${audioTrimStartSec}:end=${audioTrimEndSec},asetpts=PTS-STARTPTS[audio_out]`,
-    ].join(";");
+      `[${audioInputIndex}:a]atrim=start=${audioTrimStartSec}:end=${audioTrimEndSec},asetpts=PTS-STARTPTS[audio_out]`,
+    );
+    return lines.join(";");
+  };
 
   const buildPrimaryCommand = (
     audioInputUri: string,
+    backgroundInputUri: string | null,
     audioTrimStartSec: number,
     audioTrimEndSec: number,
     mode: RenderPath,
     encoder: "hardware" | "software",
-  ) =>
-    [
+  ) => {
+    const args = [
       "-y",
       "-loop",
       "1",
@@ -642,6 +751,18 @@ async function renderVinylVideoWithVariant(
       String(fps),
       "-i",
       photoInputUriForRender,
+    ];
+    if (backgroundInputUri) {
+      args.push(
+        "-loop",
+        "1",
+        "-framerate",
+        String(fps),
+        "-i",
+        backgroundInputUri,
+      );
+    }
+    args.push(
       "-i",
       audioInputUri,
       "-filter_complex",
@@ -661,14 +782,17 @@ async function renderVinylVideoWithVariant(
       String(duration),
       "-shortest",
       outputPath,
-    ];
+    );
+    return args;
+  };
 
   const buildSafeFallbackCommand = (
     audioInputUri: string,
+    backgroundInputUri: string | null,
     audioTrimStartSec: number,
     audioTrimEndSec: number,
-  ) =>
-    [
+  ) => {
+    const args = [
       "-y",
       "-loop",
       "1",
@@ -676,6 +800,18 @@ async function renderVinylVideoWithVariant(
       String(fps),
       "-i",
       photoInputUriForRender,
+    ];
+    if (backgroundInputUri) {
+      args.push(
+        "-loop",
+        "1",
+        "-framerate",
+        String(fps),
+        "-i",
+        backgroundInputUri,
+      );
+    }
+    args.push(
       "-i",
       audioInputUri,
       "-filter_complex",
@@ -695,7 +831,9 @@ async function renderVinylVideoWithVariant(
       String(duration),
       "-shortest",
       outputPath,
-    ];
+    );
+    return args;
+  };
 
   let statisticsCallback: ((stats: Statistics) => void) | undefined;
   let sessionId: number | null = null;
@@ -842,6 +980,7 @@ async function renderVinylVideoWithVariant(
 
     const primaryCommand = buildPrimaryCommand(
       audioInputUri,
+      preparedBackgroundUri,
       audioTrimStartForRender,
       audioTrimEndForRender,
       "primary",
@@ -849,6 +988,7 @@ async function renderVinylVideoWithVariant(
     );
     const fallbackCommand = buildPrimaryCommand(
       audioInputUri,
+      preparedBackgroundUri,
       audioTrimStartForRender,
       audioTrimEndForRender,
       "fallback",
@@ -856,6 +996,7 @@ async function renderVinylVideoWithVariant(
     );
     const safeFallbackCommand = buildSafeFallbackCommand(
       audioInputUri,
+      preparedBackgroundUri,
       audioTrimStartForRender,
       audioTrimEndForRender,
     );

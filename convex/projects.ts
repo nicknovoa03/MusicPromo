@@ -18,6 +18,7 @@ export const create = mutation({
   args: {
     title: v.optional(v.string()),
     templateId: v.optional(v.string()),
+    templateTweaks: v.optional(v.string()),
     aspectRatio: v.union(v.literal("9:16"), v.literal("1:1")),
     photoUri: v.optional(v.string()),
     photoName: v.optional(v.string()),
@@ -41,6 +42,7 @@ export const create = mutation({
       userId: user._id,
       title: args.title,
       templateId: args.templateId,
+      templateTweaks: args.templateTweaks,
       aspectRatio: args.aspectRatio,
       photoUri: args.photoUri,
       photoName: args.photoName,
@@ -83,6 +85,7 @@ export const update = mutation({
     projectId: v.id("projects"),
     title: v.optional(v.string()),
     templateId: v.optional(v.string()),
+    templateTweaks: v.optional(v.string()),
     aspectRatio: v.optional(v.union(v.literal("9:16"), v.literal("1:1"))),
     photoUri: v.optional(v.string()),
     photoName: v.optional(v.string()),
@@ -106,6 +109,9 @@ export const update = mutation({
     const updates: Record<string, string | number | undefined> = {};
     if (args.title !== undefined) updates.title = args.title;
     if (args.templateId !== undefined) updates.templateId = args.templateId;
+    if (args.templateTweaks !== undefined) {
+      updates.templateTweaks = args.templateTweaks;
+    }
     if (args.aspectRatio !== undefined) updates.aspectRatio = args.aspectRatio;
     if (args.photoUri !== undefined) updates.photoUri = args.photoUri;
     if (args.photoName !== undefined) updates.photoName = args.photoName;

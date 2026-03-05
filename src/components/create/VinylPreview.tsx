@@ -3,6 +3,7 @@ import { Animated, Easing, Image, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { colors } from "@/constants/tokens";
 import {
+  getVinylCenterGeometry,
   getVinylToneSpec,
   toRgba,
   type VinylToneId,
@@ -22,6 +23,8 @@ interface VinylPreviewProps {
   tone?: VinylToneId;
   spinSpeed?: number;
   discOpacity?: number;
+  rotationStartDeg?: number;
+  rotationDirection?: "cw" | "ccw";
 }
 
 const GROOVE_SCALES = [0.95, 0.89, 0.83, 0.77, 0.71, 0.65, 0.59, 0.53, 0.47];
@@ -41,12 +44,21 @@ export function VinylPreview({
   tone = "simple-spin",
   spinSpeed = 1,
   discOpacity = 1,
+  rotationStartDeg = 0,
+  rotationDirection = "cw",
 }: VinylPreviewProps) {
   const spinProgress = useRef(new Animated.Value(0)).current;
   const toneSpec = getVinylToneSpec(tone);
   const isCdStyleTone = toneSpec.id === "simple-spin";
   const isGraphicTone = toneSpec.id === "graphic-pop";
   const normalizedSpinSpeed = Math.min(Math.max(spinSpeed, 0.25), 4);
+  const normalizedRotationStartDeg = Math.max(
+    -180,
+    Math.min(rotationStartDeg, 180),
+  );
+  const normalizedRotationDirection =
+    rotationDirection === "ccw" ? "ccw" : "cw";
+  const rotationDelta = normalizedRotationDirection === "ccw" ? -360 : 360;
   const spinDurationMs = Math.max(
     Math.round(SPIN_DURATION_MS / normalizedSpinSpeed),
     400,
@@ -56,6 +68,7 @@ export function VinylPreview({
   useEffect(() => {
     if (!spinning) {
       spinProgress.stopAnimation();
+      spinProgress.setValue(0);
       return;
     }
 
@@ -78,14 +91,15 @@ export function VinylPreview({
 
   const rotation = spinProgress.interpolate({
     inputRange: [0, 1],
-    outputRange: ["0deg", "360deg"],
+    outputRange: [
+      `${normalizedRotationStartDeg}deg`,
+      `${normalizedRotationStartDeg + rotationDelta}deg`,
+    ],
   });
 
-  const labelSize = size * (isCdStyleTone ? 0.36 : isGraphicTone ? 0.19 : 0.28);
-  const holeSize = Math.max(
-    size * (isCdStyleTone ? 0.13 : isGraphicTone ? 0.068 : 0.05),
-    6,
-  );
+  const centerGeometry = getVinylCenterGeometry(toneSpec.id, size);
+  const labelSize = centerGeometry.labelDiameter;
+  const holeSize = centerGeometry.holeDiameter;
   const spindleRingSize = Math.max(holeSize * (isGraphicTone ? 1.7 : 2.3), 14);
   const outerRimWidth = Math.max(size * 0.017, 1.2);
   const innerRimSize = size * 0.955;

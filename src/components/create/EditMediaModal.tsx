@@ -174,6 +174,7 @@ export function EditMediaModal({
           <ScrollView
             contentContainerStyle={styles.content}
             showsVerticalScrollIndicator={false}
+            scrollEnabled={false}
           >
             <View style={styles.section}>
             <Text style={styles.sectionLabel}>Aspect Ratio</Text>
