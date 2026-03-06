@@ -1,10 +1,10 @@
 import type { ComponentType } from "react";
 import { SimpleSpinTemplateStage } from "@/components/create/SimpleSpinTemplateStage";
-import { SpinningCdTemplateStage } from "@/components/create/SpinningCdTemplateStage";
+import { GraphicPopTemplateStage } from "@/components/create/GraphicPopTemplateStage";
 import {
   type RenderOptions,
+  renderGraphicPopVideo,
   renderSimpleSpinVideo,
-  renderSpinningCdVideo,
 } from "@/lib/renderVideo";
 import type { VinylToneId } from "@/lib/vinylTemplateSpec";
 
@@ -17,7 +17,155 @@ export interface TemplateStageProps {
   playbackLabel: string;
   trackTitle: string;
   subtitle: string;
+  templateTweaks?: TemplateTweaks;
   onTogglePlay?: () => void;
+}
+
+export interface TemplateTweaks {
+  spinSpeed: number;
+  recordTransparency: number;
+  backgroundBlur: number;
+  rotationStartDeg: number;
+  rotationDirection: "cw" | "ccw";
+  stageBackgroundColor?: string | null;
+  stageBackgroundImageUri?: string | null;
+}
+
+export const DEFAULT_TEMPLATE_TWEAKS: TemplateTweaks = {
+  spinSpeed: 1,
+  recordTransparency: 0,
+  backgroundBlur: 0,
+  rotationStartDeg: 0,
+  rotationDirection: "cw",
+  stageBackgroundColor: null,
+  stageBackgroundImageUri: null,
+};
+
+export interface TemplateTweaksRoutePayload {
+  v: 1 | 2 | 3 | 4;
+  spinSpeed: number;
+  recordTransparency?: number;
+  recordOpacity?: number;
+  backgroundBlur?: number;
+  rotationStartDeg?: number;
+  rotationDirection?: "cw" | "ccw";
+  stageBackgroundColor: string | null;
+  stageBackgroundImageUri?: string | null;
+}
+
+const MIN_SPIN_SPEED = 0.25;
+const MAX_SPIN_SPEED = 4;
+const MIN_RECORD_TRANSPARENCY = 0;
+const MAX_RECORD_TRANSPARENCY = 0.65;
+const MIN_BACKGROUND_BLUR = 0;
+const MAX_BACKGROUND_BLUR = 24;
+const MIN_ROTATION_START_DEG = -180;
+const MAX_ROTATION_START_DEG = 180;
+
+function clampNumber(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min;
+  return Math.max(min, Math.min(value, max));
+}
+
+function sanitizeBackgroundColor(value?: string | null): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return /^#[0-9a-fA-F]{6}$/.test(trimmed) ? trimmed : null;
+}
+
+function sanitizeBackgroundImageUri(value?: string | null): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return trimmed;
+}
+
+function sanitizeRotationDirection(
+  value?: string | null,
+): "cw" | "ccw" {
+  return value === "ccw" ? "ccw" : "cw";
+}
+
+function opacityToTransparency(opacity: number): number {
+  return clampNumber(1 - opacity, MIN_RECORD_TRANSPARENCY, MAX_RECORD_TRANSPARENCY);
+}
+
+export function normalizeTemplateTweaks(
+  input?: (Partial<TemplateTweaks> & { recordOpacity?: number }) | null,
+): TemplateTweaks {
+  const recordTransparencyInput = Number.isFinite(input?.recordTransparency)
+    ? input?.recordTransparency
+    : Number.isFinite(input?.recordOpacity)
+      ? opacityToTransparency(input?.recordOpacity ?? 1)
+      : DEFAULT_TEMPLATE_TWEAKS.recordTransparency;
+  return {
+    spinSpeed: clampNumber(
+      input?.spinSpeed ?? DEFAULT_TEMPLATE_TWEAKS.spinSpeed,
+      MIN_SPIN_SPEED,
+      MAX_SPIN_SPEED,
+    ),
+    recordTransparency: clampNumber(
+      recordTransparencyInput ?? DEFAULT_TEMPLATE_TWEAKS.recordTransparency,
+      MIN_RECORD_TRANSPARENCY,
+      MAX_RECORD_TRANSPARENCY,
+    ),
+    backgroundBlur: clampNumber(
+      input?.backgroundBlur ?? DEFAULT_TEMPLATE_TWEAKS.backgroundBlur,
+      MIN_BACKGROUND_BLUR,
+      MAX_BACKGROUND_BLUR,
+    ),
+    rotationStartDeg: clampNumber(
+      input?.rotationStartDeg ?? DEFAULT_TEMPLATE_TWEAKS.rotationStartDeg,
+      MIN_ROTATION_START_DEG,
+      MAX_ROTATION_START_DEG,
+    ),
+    rotationDirection: sanitizeRotationDirection(input?.rotationDirection),
+    stageBackgroundColor: sanitizeBackgroundColor(input?.stageBackgroundColor),
+    stageBackgroundImageUri: sanitizeBackgroundImageUri(
+      input?.stageBackgroundImageUri,
+    ),
+  };
+}
+
+export function serializeTemplateTweaksParam(value: TemplateTweaks): string {
+  const normalized = normalizeTemplateTweaks(value);
+  const payload: TemplateTweaksRoutePayload = {
+    v: 4,
+    spinSpeed: normalized.spinSpeed,
+    recordTransparency: normalized.recordTransparency,
+    backgroundBlur: normalized.backgroundBlur,
+    rotationStartDeg: normalized.rotationStartDeg,
+    rotationDirection: normalized.rotationDirection,
+    stageBackgroundColor: normalized.stageBackgroundColor ?? null,
+    stageBackgroundImageUri: normalized.stageBackgroundImageUri ?? null,
+  };
+  return encodeURIComponent(JSON.stringify(payload));
+}
+
+export function parseTemplateTweaksParam(
+  rawParam?: string | null,
+): TemplateTweaks | null {
+  if (!rawParam) return null;
+  try {
+    const decoded = decodeURIComponent(rawParam);
+    const parsed = JSON.parse(decoded) as Partial<TemplateTweaksRoutePayload>;
+    if (!parsed || (parsed.v !== 1 && parsed.v !== 2 && parsed.v !== 3 && parsed.v !== 4)) {
+      return null;
+    }
+    return normalizeTemplateTweaks({
+      spinSpeed: parsed.spinSpeed,
+      recordTransparency: parsed.recordTransparency,
+      recordOpacity: parsed.recordOpacity,
+      backgroundBlur: parsed.backgroundBlur,
+      rotationStartDeg: parsed.rotationStartDeg,
+      rotationDirection: parsed.rotationDirection,
+      stageBackgroundColor: parsed.stageBackgroundColor,
+      stageBackgroundImageUri: parsed.stageBackgroundImageUri,
+    });
+  } catch {
+    return null;
+  }
 }
 
 export interface TemplateDefinition {
@@ -36,7 +184,7 @@ export const DEFAULT_TEMPLATE_ID = "simple-spin";
 const TEMPLATE_DEFINITIONS: Record<string, TemplateDefinition> = {
   "simple-spin": {
     id: "simple-spin",
-    name: "Simple Spin",
+    name: "Vinyl",
     StageComponent: SimpleSpinTemplateStage,
     renderVideo: renderSimpleSpinVideo,
     parity: {
@@ -44,14 +192,14 @@ const TEMPLATE_DEFINITIONS: Record<string, TemplateDefinition> = {
       vinylTone: "simple-spin",
     },
   },
-  "spinning-cd": {
-    id: "spinning-cd",
-    name: "Deck",
-    StageComponent: SpinningCdTemplateStage,
-    renderVideo: renderSpinningCdVideo,
+  "graphic-pop": {
+    id: "graphic-pop",
+    name: "CD",
+    StageComponent: GraphicPopTemplateStage,
+    renderVideo: renderGraphicPopVideo,
     parity: {
-      layoutSpec: "spinningCdTemplateSpec",
-      vinylTone: "spinning-cd",
+      layoutSpec: "graphicPopTemplateSpec",
+      vinylTone: "graphic-pop",
     },
   },
 };
@@ -66,5 +214,8 @@ export function getTemplateDefinition(templateId?: string | null): TemplateDefin
 }
 
 export function listTemplateDefinitions(): TemplateDefinition[] {
-  return Object.values(TEMPLATE_DEFINITIONS);
+  return [
+    TEMPLATE_DEFINITIONS["graphic-pop"],
+    TEMPLATE_DEFINITIONS["simple-spin"],
+  ];
 }

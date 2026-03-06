@@ -1,4 +1,4 @@
-export type VinylToneId = "simple-spin" | "spinning-cd";
+export type VinylToneId = "simple-spin" | "graphic-pop";
 
 export interface VinylToneSpec {
   id: VinylToneId;
@@ -10,31 +10,72 @@ export interface VinylToneSpec {
   holeAlphaByte: number;
   showGroovesInPreview: boolean;
   showSheenInPreview: boolean;
+  showCenterTextureInPreview: boolean;
+}
+
+interface VinylCenterRatioSpec {
+  labelDiameterRatio: number;
+  holeDiameterRatio: number;
+}
+
+interface VinylEdgeSpec {
+  outerRimWidthRatio: number;
+  outerRimMinWidth: number;
+  outerRimHexColor: string;
+  outerRimAlphaByte: number;
+  innerRimDiameterRatio: number;
+  innerRimThickness: number;
+  innerRimHexColor: string;
+  innerRimAlphaByte: number;
 }
 
 const VINYL_TONES: Record<VinylToneId, VinylToneSpec> = {
   "simple-spin": {
     id: "simple-spin",
-    shadeHexColor: "#000000",
-    shadeAlphaByte: 132,
-    labelHexColor: "#e8e2d5",
-    labelAlphaByte: 238,
-    holeHexColor: "#000000",
-    holeAlphaByte: 255,
+    shadeHexColor: "#c2cee4",
+    shadeAlphaByte: 0,
+    labelHexColor: "#f9fbff",
+    labelAlphaByte: 118,
+    holeHexColor: "#0a0e16",
+    holeAlphaByte: 232,
     showGroovesInPreview: false,
     showSheenInPreview: false,
+    showCenterTextureInPreview: false,
   },
-  "spinning-cd": {
-    id: "spinning-cd",
-    shadeHexColor: "#000000",
-    shadeAlphaByte: 146,
-    labelHexColor: "#e8e2d5",
-    labelAlphaByte: 235,
-    holeHexColor: "#000000",
-    holeAlphaByte: 255,
+  "graphic-pop": {
+    id: "graphic-pop",
+    shadeHexColor: "#d2d8e0",
+    shadeAlphaByte: 0,
+    labelHexColor: "#f3f5f8",
+    labelAlphaByte: 54,
+    holeHexColor: "#11141a",
+    holeAlphaByte: 228,
     showGroovesInPreview: false,
     showSheenInPreview: false,
+    showCenterTextureInPreview: false,
   },
+};
+
+const VINYL_CENTER_RATIO_SPECS: Record<VinylToneId, VinylCenterRatioSpec> = {
+  "simple-spin": {
+    labelDiameterRatio: 0.36,
+    holeDiameterRatio: 0.13,
+  },
+  "graphic-pop": {
+    labelDiameterRatio: 0.19,
+    holeDiameterRatio: 0.068,
+  },
+};
+
+const VINYL_EDGE_SPEC: VinylEdgeSpec = {
+  outerRimWidthRatio: 0.017,
+  outerRimMinWidth: 1.2,
+  outerRimHexColor: "#0a0e16",
+  outerRimAlphaByte: 97,
+  innerRimDiameterRatio: 0.955,
+  innerRimThickness: 1,
+  innerRimHexColor: "#ffffff",
+  innerRimAlphaByte: 36,
 };
 
 function clampByte(value: number): number {
@@ -71,4 +112,65 @@ export function toRgba(hex: string, alphaByte: number): string {
 
 export function getVinylToneSpec(tone: VinylToneId): VinylToneSpec {
   return VINYL_TONES[tone];
+}
+
+export function getVinylCenterGeometry(tone: VinylToneId, discSize: number): {
+  labelDiameter: number;
+  labelRadius: number;
+  holeDiameter: number;
+  holeRadius: number;
+} {
+  const safeDiscSize = Math.max(Math.round(discSize), 1);
+  const ratios = VINYL_CENTER_RATIO_SPECS[tone];
+  const labelDiameter = Math.max(
+    Math.round(safeDiscSize * ratios.labelDiameterRatio),
+    1,
+  );
+  const holeDiameter = Math.max(
+    Math.round(safeDiscSize * ratios.holeDiameterRatio),
+    6,
+  );
+
+  return {
+    labelDiameter,
+    labelRadius: Math.round(labelDiameter / 2),
+    holeDiameter,
+    holeRadius: Math.round(holeDiameter / 2),
+  };
+}
+
+export function getVinylEdgeSpec(): VinylEdgeSpec {
+  return VINYL_EDGE_SPEC;
+}
+
+export function getVinylEdgeGeometry(discSize: number): {
+  outerRimWidth: number;
+  outerRimInnerRadius: number;
+  innerRimDiameter: number;
+  innerRimRadius: number;
+  innerRimInnerRadius: number;
+  innerRimThickness: number;
+} {
+  const safeDiscSize = Math.max(Math.round(discSize), 1);
+  const discRadius = Math.round(safeDiscSize / 2);
+  const outerRimWidth = Math.max(
+    safeDiscSize * VINYL_EDGE_SPEC.outerRimWidthRatio,
+    VINYL_EDGE_SPEC.outerRimMinWidth,
+  );
+  const outerRimInnerRadius = Math.max(discRadius - outerRimWidth, 0);
+  const innerRimRadius =
+    (safeDiscSize * VINYL_EDGE_SPEC.innerRimDiameterRatio) / 2;
+  const innerRimInnerRadius = Math.max(
+    innerRimRadius - VINYL_EDGE_SPEC.innerRimThickness,
+    0,
+  );
+
+  return {
+    outerRimWidth,
+    outerRimInnerRadius,
+    innerRimDiameter: innerRimRadius * 2,
+    innerRimRadius,
+    innerRimInnerRadius,
+    innerRimThickness: VINYL_EDGE_SPEC.innerRimThickness,
+  };
 }

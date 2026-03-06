@@ -13,8 +13,15 @@ A template's preview and export must read the same shared spec values for:
 ## Current Shared Spec Files
 
 - `src/lib/simpleSpinTemplateSpec.ts`
-- `src/lib/spinningCdTemplateSpec.ts`
+- `src/lib/graphicPopTemplateSpec.ts`
 - `src/lib/vinylTemplateSpec.ts`
+
+## 2026-03-05 Parity Hardening Notes
+
+- Shared vinyl center geometry now lives in `vinylTemplateSpec` and is consumed by both preview and export.
+- Shared vinyl edge geometry/rim styling now lives in `vinylTemplateSpec` and is consumed by both preview and export.
+- Export background blur now maps directly from template control intent (no hidden downscale that made blur feel "off").
+- Export color range mapping is full-range to better match preview vibrance on-device.
 
 ## Registration Contract
 

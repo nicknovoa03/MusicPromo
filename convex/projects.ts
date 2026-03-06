@@ -18,6 +18,7 @@ export const create = mutation({
   args: {
     title: v.optional(v.string()),
     templateId: v.optional(v.string()),
+    templateTweaks: v.optional(v.string()),
     aspectRatio: v.union(v.literal("9:16"), v.literal("1:1")),
     photoUri: v.optional(v.string()),
     photoName: v.optional(v.string()),
@@ -37,21 +38,41 @@ export const create = mutation({
     }
 
     const now = Date.now();
-    return await ctx.db.insert("projects", {
+    const projectDoc: {
+      userId: typeof user._id;
+      aspectRatio: "9:16" | "1:1";
+      status: "draft";
+      createdAt: number;
+      updatedAt: number;
+      title?: string;
+      templateId?: string;
+      templateTweaks?: string;
+      photoUri?: string;
+      photoName?: string;
+      audioUri?: string;
+      audioName?: string;
+      trimStart?: number;
+      trimEnd?: number;
+    } = {
       userId: user._id,
-      title: args.title,
-      templateId: args.templateId,
       aspectRatio: args.aspectRatio,
-      photoUri: args.photoUri,
-      photoName: args.photoName,
-      audioUri: args.audioUri,
-      audioName: args.audioName,
-      trimStart: args.trimStart,
-      trimEnd: args.trimEnd,
       status: "draft",
       createdAt: now,
       updatedAt: now,
-    });
+    };
+    if (args.title !== undefined) projectDoc.title = args.title;
+    if (args.templateId !== undefined) projectDoc.templateId = args.templateId;
+    if (args.templateTweaks !== undefined) {
+      projectDoc.templateTweaks = args.templateTweaks;
+    }
+    if (args.photoUri !== undefined) projectDoc.photoUri = args.photoUri;
+    if (args.photoName !== undefined) projectDoc.photoName = args.photoName;
+    if (args.audioUri !== undefined) projectDoc.audioUri = args.audioUri;
+    if (args.audioName !== undefined) projectDoc.audioName = args.audioName;
+    if (args.trimStart !== undefined) projectDoc.trimStart = args.trimStart;
+    if (args.trimEnd !== undefined) projectDoc.trimEnd = args.trimEnd;
+
+    return await ctx.db.insert("projects", projectDoc);
   },
 });
 
@@ -83,6 +104,7 @@ export const update = mutation({
     projectId: v.id("projects"),
     title: v.optional(v.string()),
     templateId: v.optional(v.string()),
+    templateTweaks: v.optional(v.string()),
     aspectRatio: v.optional(v.union(v.literal("9:16"), v.literal("1:1"))),
     photoUri: v.optional(v.string()),
     photoName: v.optional(v.string()),
@@ -106,6 +128,9 @@ export const update = mutation({
     const updates: Record<string, string | number | undefined> = {};
     if (args.title !== undefined) updates.title = args.title;
     if (args.templateId !== undefined) updates.templateId = args.templateId;
+    if (args.templateTweaks !== undefined) {
+      updates.templateTweaks = args.templateTweaks;
+    }
     if (args.aspectRatio !== undefined) updates.aspectRatio = args.aspectRatio;
     if (args.photoUri !== undefined) updates.photoUri = args.photoUri;
     if (args.photoName !== undefined) updates.photoName = args.photoName;

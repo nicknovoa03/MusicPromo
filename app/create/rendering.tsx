@@ -5,11 +5,11 @@ import {
   StyleSheet,
   Pressable,
   Alert,
-  Dimensions,
+  useWindowDimensions,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { usePostHog } from "posthog-react-native";
 import { useConvexAuth, useMutation } from "convex/react";
 import { ConvexError } from "convex/values";
@@ -17,42 +17,44 @@ import Constants from "expo-constants";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
+import { TemplateInfoBadge } from "@/components/create/TemplateInfoBadge";
 import type { EventName } from "@/lib/analytics";
+import {
+  cancelRendererWork,
+  renderVideoWithRenderer,
+  resolveRenderEngine,
+  type RenderEngine,
+} from "@/lib/rendering";
 import { sleep } from "@/lib/utils";
 import { decodeUriParam, encodeUriParam } from "@/lib/uri";
 import { normalizeMediaUri } from "@/lib/mediaUri";
-import { getTemplateDefinition, resolveTemplateId } from "@/lib/templates";
+import {
+  getTemplateDefinition,
+  normalizeTemplateTweaks,
+  parseTemplateTweaksParam,
+  resolveTemplateId,
+  serializeTemplateTweaksParam,
+} from "@/lib/templates";
 
 function isExpoGo(): boolean {
   return Constants.appOwnership === "expo";
 }
 
-type RenderVideoModule = typeof import("@/lib/renderVideo");
-let renderModule: RenderVideoModule | null = null;
-const SCREEN_WIDTH = Dimensions.get("window").width;
-const SCREEN_HEIGHT = Dimensions.get("window").height;
 const STAGE_HORIZONTAL_PADDING = spacing.lg * 2;
-const DEFAULT_TRIM_DURATION = 15;
+const DEFAULT_TRIM_DURATION = 5;
 const ENABLE_RENDER_MODE_BADGE = false;
-const FAST_EXPORT_DURATION_SECONDS: number | null = null;
 const ENABLE_FAST_RENDER_MODE = false;
+const FAST_EXPORT_DURATION_SECONDS: number | null = ENABLE_FAST_RENDER_MODE
+  ? 3
+  : null;
 
-async function getRenderModule(): Promise<RenderVideoModule> {
-  if (isExpoGo()) {
-    throw new Error(
-      "Video rendering requires a development build.\n\nIt cannot run in Expo Go. Run 'npx expo run:android' or 'npx expo run:ios' to test.",
-    );
-  }
-  if (!renderModule) {
-    renderModule = await import("@/lib/renderVideo");
-  }
-  return renderModule;
-}
-
-async function cancelCurrentRender(): Promise<void> {
-  if (isExpoGo() || !renderModule) return;
+async function cancelCurrentRender(params: {
+  engine?: RenderEngine;
+  templateId?: string;
+}): Promise<void> {
+  if (isExpoGo()) return;
   try {
-    await renderModule.cancelCurrentRender();
+    await cancelRendererWork(params);
   } catch {
     // Ignore
   }
@@ -93,11 +95,17 @@ function isUnauthenticatedConvexError(error: unknown) {
 
 export default function RenderingScreen() {
   const router = useRouter();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const posthog = usePostHog();
   const params = useLocalSearchParams<{
     projectId?: string;
     title?: string;
     templateId?: string;
+    templateTweaks?: string;
+    spinSpeed?: string;
+    recordTransparency?: string;
+    stageBackgroundColor?: string;
     photoUri: string;
     photoName?: string;
     audioUri: string;
@@ -105,6 +113,7 @@ export default function RenderingScreen() {
     trimStart: string;
     trimEnd: string;
     aspectRatio: string;
+    showTemplateInfo?: string;
   }>();
 
   const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
@@ -113,18 +122,42 @@ export default function RenderingScreen() {
   const projectTitle = firstParam(params.title)?.trim() || "New Project";
   const audioName = firstParam(params.audioName) || "";
   const aspectRatio = firstParam(params.aspectRatio) === "1:1" ? "1:1" : "9:16";
+  const showTemplateInfo = firstParam(params.showTemplateInfo) === "1";
   const templateId = resolveTemplateId(firstParam(params.templateId));
+  const parsedTemplateTweaks = parseTemplateTweaksParam(
+    firstParam(params.templateTweaks),
+  );
+  const templateTweaks = parsedTemplateTweaks
+    ? parsedTemplateTweaks
+    : normalizeTemplateTweaks({
+        spinSpeed: Number(firstParam(params.spinSpeed)),
+        recordTransparency: Number.isFinite(Number(firstParam(params.recordTransparency)))
+          ? Number(firstParam(params.recordTransparency))
+          : undefined,
+        stageBackgroundColor: firstParam(params.stageBackgroundColor) ?? undefined,
+      });
   const previewTemplateDefinition = getTemplateDefinition(templateId);
   const TemplateStageComponent = previewTemplateDefinition.StageComponent;
   const previewPhotoUri = normalizeMediaUri(
     decodeUriParam(firstParam(params.photoUri)),
   );
   const trackTitle = displayMediaLabel(audioName, "Untitled track");
-  const stageWidth = Math.min(SCREEN_WIDTH - STAGE_HORIZONTAL_PADDING, 440);
-  const stageHeight = Math.min(
-    Math.max(stageWidth * (aspectRatio === "9:16" ? 1.4 : 1.2), 460),
-    SCREEN_HEIGHT * 0.72,
+  const stageWidthRatio = aspectRatio === "9:16" ? 9 / 16 : 1;
+  const maxStageWidth = Math.min(windowWidth - STAGE_HORIZONTAL_PADDING, 440);
+  const reservedVerticalSpace =
+    insets.top +
+    insets.bottom +
+    48 + // header row
+    32 + // "Exporting" label + top margin
+    88 + // large percentage text + margin
+    52 + // bottom message block
+    spacing.lg; // content bottom padding
+  const maxStageHeight = Math.max(
+    220,
+    Math.min(windowHeight * 0.64, windowHeight - reservedVerticalSpace),
   );
+  const stageWidth = Math.min(maxStageWidth, maxStageHeight * stageWidthRatio);
+  const stageHeight = stageWidth / stageWidthRatio;
 
   const [progress, setProgress] = useState(0);
   const [renderState, setRenderState] = useState<RenderState>("rendering");
@@ -133,6 +166,8 @@ export default function RenderingScreen() {
   const hasStarted = useRef(false);
   const isScreenActiveRef = useRef(true);
   const isCanceledRef = useRef(false);
+  const activeEngineRef = useRef<RenderEngine>(resolveRenderEngine({ templateId }));
+  const activeTemplateIdRef = useRef<string>(templateId);
 
   const track = useCallback(
     (event: EventName, props?: Record<string, string>) => {
@@ -145,7 +180,10 @@ export default function RenderingScreen() {
     return () => {
       isScreenActiveRef.current = false;
       isCanceledRef.current = true;
-      void cancelCurrentRender();
+      void cancelCurrentRender({
+        engine: activeEngineRef.current,
+        templateId: activeTemplateIdRef.current,
+      });
     };
   }, []);
 
@@ -169,10 +207,31 @@ export default function RenderingScreen() {
         : Math.min(trimEnd, trimStart + FAST_EXPORT_DURATION_SECONDS);
     const aspectRatio =
       firstParam(params.aspectRatio) === "1:1" ? "1:1" : "9:16";
+    const showTemplateInfo = firstParam(params.showTemplateInfo) === "1";
     const templateId = resolveTemplateId(firstParam(params.templateId));
-    const selectedTemplateDefinition = getTemplateDefinition(templateId);
+    const parsedTemplateTweaks = parseTemplateTweaksParam(
+      firstParam(params.templateTweaks),
+    );
+    const templateTweaks = parsedTemplateTweaks
+      ? parsedTemplateTweaks
+      : normalizeTemplateTweaks({
+          spinSpeed: Number(firstParam(params.spinSpeed)),
+          recordTransparency: Number.isFinite(Number(firstParam(params.recordTransparency)))
+            ? Number(firstParam(params.recordTransparency))
+            : undefined,
+          stageBackgroundColor:
+            firstParam(params.stageBackgroundColor) ?? undefined,
+        });
+    const serializedTemplateTweaks = serializeTemplateTweaksParam(templateTweaks);
+    const selectedEngine = resolveRenderEngine({ templateId });
+    activeEngineRef.current = selectedEngine;
+    activeTemplateIdRef.current = templateId;
 
-    track("video_export_started", { aspectRatio });
+    track("video_export_started", {
+      aspectRatio,
+      engine: selectedEngine,
+      templateId,
+    });
 
     if (!projectIdRef.current && existingProjectId) {
       projectIdRef.current = existingProjectId;
@@ -191,6 +250,7 @@ export default function RenderingScreen() {
             trimStart,
             trimEnd,
             templateId,
+            templateTweaks: serializedTemplateTweaks,
           });
           projectIdRef.current = projectId;
         } catch (err) {
@@ -209,8 +269,16 @@ export default function RenderingScreen() {
     }
 
     try {
-      await getRenderModule();
-      const videoUri = await selectedTemplateDefinition.renderVideo({
+      if (isExpoGo()) {
+        throw new Error(
+          "Video rendering requires a development build.\n\nIt cannot run in Expo Go. Run 'npx expo run:android' or 'npx expo run:ios' to test.",
+        );
+      }
+
+      const renderResult = await renderVideoWithRenderer({
+        engine: selectedEngine,
+        templateId,
+        templateTweaks,
         photoUri,
         audioUri,
         trimStart,
@@ -222,18 +290,24 @@ export default function RenderingScreen() {
           setProgress(percent);
         },
       });
+      const videoUri = renderResult.videoUri;
 
       if (!isScreenActiveRef.current || isCanceledRef.current) return;
 
       setProgress(100);
       setRenderState("complete");
-      track("video_exported");
+      track("video_exported", {
+        engine: renderResult.engine,
+        templateId: renderResult.templateId,
+      });
 
       if (projectIdRef.current) {
         try {
           await updateProject({
             projectId: projectIdRef.current,
+            title: title?.trim() || "New Project",
             templateId,
+            templateTweaks: serializedTemplateTweaks,
             aspectRatio,
             photoUri,
             photoName,
@@ -257,6 +331,10 @@ export default function RenderingScreen() {
           videoUri: encodeUriParam(videoUri),
           projectId: projectIdRef.current ?? "",
           posterUri: encodeUriParam(photoUri),
+          templateId,
+          templateTweaks: serializedTemplateTweaks,
+          aspectRatio,
+          showTemplateInfo: showTemplateInfo ? "1" : "0",
         },
       });
     } catch (err) {
@@ -295,7 +373,10 @@ export default function RenderingScreen() {
           style: "destructive",
           onPress: () => {
             isCanceledRef.current = true;
-            void cancelCurrentRender();
+            void cancelCurrentRender({
+              engine: activeEngineRef.current,
+              templateId: activeTemplateIdRef.current,
+            });
             router.back();
           },
         },
@@ -357,16 +438,28 @@ export default function RenderingScreen() {
             <Text style={styles.percentageText}>{progress}%</Text>
 
             <View style={styles.stageWrap}>
-              <TemplateStageComponent
-                width={stageWidth}
-                height={stageHeight}
-                aspectRatio={aspectRatio}
-                photoUri={previewPhotoUri}
-                isPlaying={renderState === "rendering"}
-                playbackLabel="Now Playing"
-                trackTitle={trackTitle}
-                subtitle={projectTitle}
-              />
+              <View style={[styles.stageFrame, { width: stageWidth, height: stageHeight }]}>
+                <TemplateStageComponent
+                  width={stageWidth}
+                  height={stageHeight}
+                  aspectRatio={aspectRatio}
+                  photoUri={previewPhotoUri}
+                  isPlaying={renderState === "rendering"}
+                  playbackLabel="Now Playing"
+                  trackTitle={trackTitle}
+                  subtitle={projectTitle}
+                  templateTweaks={templateTweaks}
+                />
+                {showTemplateInfo ? (
+                  <TemplateInfoBadge
+                    templateId={templateId}
+                    templateTweaks={templateTweaks}
+                    aspectRatio={aspectRatio}
+                    compact
+                    style={styles.stageTemplateInfoBadge}
+                  />
+                ) : null}
+              </View>
             </View>
 
             <Text style={styles.message}>
@@ -388,7 +481,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.xs,
   },
   headerButton: {
     width: 40,
@@ -406,14 +499,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "flex-start",
     paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xl,
+    paddingBottom: spacing.lg,
   },
   progressLabel: {
     ...typography.caption,
     color: colors.dark.textSecondary,
     textTransform: "uppercase",
     letterSpacing: 0.8,
-    marginTop: spacing.lg,
+    marginTop: spacing.sm,
     marginBottom: spacing.xs,
   },
   percentageText: {
@@ -421,12 +514,21 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: colors.dark.text,
     fontVariant: ["tabular-nums"],
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
   },
   stageWrap: {
     width: "100%",
     alignItems: "center",
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  stageFrame: {
+    position: "relative",
+  },
+  stageTemplateInfoBadge: {
+    position: "absolute",
+    top: spacing.sm,
+    left: spacing.sm,
+    right: spacing.sm,
   },
   message: {
     ...typography.body,

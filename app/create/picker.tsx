@@ -7,10 +7,14 @@ import {
   Image,
   Alert,
   ActivityIndicator,
+  Platform,
+  useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
+import { StatusBar } from "expo-status-bar";
+import { useIsFocused } from "@react-navigation/native";
 import { useConvexAuth, useQuery } from "convex/react";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
@@ -27,9 +31,15 @@ import { persistPickedMediaFile } from "@/lib/mediaStorage";
 import { decodeUriParam, encodeUriParam } from "@/lib/uri";
 import { normalizeMediaUri } from "@/lib/mediaUri";
 import { useLocalSession } from "@/providers/localSession";
-import { resolveTemplateId } from "@/lib/templates";
+import {
+  normalizeTemplateTweaks,
+  parseTemplateTweaksParam,
+  resolveTemplateId,
+  serializeTemplateTweaksParam,
+} from "@/lib/templates";
 
 type Tab = "photo" | "audio";
+type LoadingTarget = Tab | null;
 
 interface MediaSelection {
   photoUri: string | null;
@@ -39,14 +49,20 @@ interface MediaSelection {
   audioArtworkUri: string | null;
 }
 
-const VIDEO_LENGTH_PRESETS = [15, 30, 60] as const;
-const DEFAULT_NEW_PROJECT_TRIM_END = 15;
+const DEFAULT_NEW_PROJECT_TRIM_END = 5;
+const IPHONE_EDGE_RADIUS = 36;
 
 function firstParam(param: string | string[] | undefined) {
   return Array.isArray(param) ? param[0] : param;
 }
 
-export default function PickerScreen() {
+interface PickerScreenProps {
+  tabEmbedded?: boolean;
+}
+
+export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps) {
+  const { width: windowWidth } = useWindowDimensions();
+  const isFocused = useIsFocused();
   const router = useRouter();
   const params = useLocalSearchParams<{
     projectId?: string;
@@ -58,8 +74,13 @@ export default function PickerScreen() {
     audioName?: string;
     aspectRatio?: "9:16" | "1:1";
     templateId?: string;
+    templateTweaks?: string;
     trimStart?: string;
     trimEnd?: string;
+    spinSpeed?: string;
+    recordTransparency?: string;
+    stageBackgroundColor?: string;
+    showTemplateInfo?: string;
     initialTab?: Tab;
     returnToEditor?: string;
   }>();
@@ -69,12 +90,26 @@ export default function PickerScreen() {
   const title = firstParam(params.title);
   const aspectRatio = firstParam(params.aspectRatio);
   const templateId = resolveTemplateId(firstParam(params.templateId));
+  const templateTweaksParam = firstParam(params.templateTweaks);
+  const showTemplateInfoParam = firstParam(params.showTemplateInfo);
   const trimStart = firstParam(params.trimStart);
   const trimEnd = firstParam(params.trimEnd);
+  const spinSpeed = firstParam(params.spinSpeed);
+  const recordTransparency = firstParam(params.recordTransparency);
+  const stageBackgroundColor = firstParam(params.stageBackgroundColor);
+  const parsedTemplateTweaks = parseTemplateTweaksParam(templateTweaksParam);
+  const templateTweaks = parsedTemplateTweaks
+    ? parsedTemplateTweaks
+    : normalizeTemplateTweaks({
+        spinSpeed: spinSpeed ? Number(spinSpeed) : undefined,
+        recordTransparency: recordTransparency
+          ? Number(recordTransparency)
+          : undefined,
+        stageBackgroundColor: stageBackgroundColor ?? undefined,
+      });
+  const serializedTemplateTweaks = serializeTemplateTweaksParam(templateTweaks);
   const initialPhotoUri = normalizeMediaUri(decodeUriParam(firstParam(params.photoUri)));
   const initialAudioUri = normalizeMediaUri(decodeUriParam(firstParam(params.audioUri)));
-  const initialTab =
-    firstParam(params.initialTab) === "audio" ? "audio" : "photo";
   const returnToEditor = firstParam(params.returnToEditor) === "1";
   const { isAuthenticated } = useConvexAuth();
   const { isLocalGuest } = useLocalSession();
@@ -83,7 +118,6 @@ export default function PickerScreen() {
     DEFAULT_LOCAL_PROFILE_PREFERENCES
   );
 
-  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
   const [media, setMedia] = useState<MediaSelection>({
     photoUri: initialPhotoUri || null,
     photoName: firstParam(params.photoName) || null,
@@ -91,7 +125,8 @@ export default function PickerScreen() {
     audioName: firstParam(params.audioName) || null,
     audioArtworkUri: null,
   });
-  const [loading, setLoading] = useState(false);
+  const [loadingTarget, setLoadingTarget] = useState<LoadingTarget>(null);
+  const [contentHeight, setContentHeight] = useState(0);
 
   useEffect(() => {
     let isActive = true;
@@ -129,7 +164,7 @@ export default function PickerScreen() {
       return;
     }
 
-    setLoading(true);
+    setLoadingTarget("photo");
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ["images"],
@@ -157,12 +192,15 @@ export default function PickerScreen() {
         track("photo_selected", { source: "camera_roll" });
       }
     } finally {
-      setLoading(false);
+      setLoadingTarget((current) => (current === "photo" ? null : current));
     }
   }, [track]);
 
   const pickAudio = useCallback(async () => {
-    setLoading(true);
+    const hadAudioSelected = !!media.audioUri;
+    const hadPhotoSelected = !!media.photoUri;
+
+    setLoadingTarget("audio");
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: ["audio/mpeg", "audio/wav", "audio/x-m4a", "audio/mp4"],
@@ -187,12 +225,34 @@ export default function PickerScreen() {
           audioName: asset.name,
           audioArtworkUri,
         }));
+
+        if (hadAudioSelected && hadPhotoSelected && audioArtworkUri) {
+          Alert.alert(
+            "Use new album artwork?",
+            "You changed audio. Replace your current photo with this track's artwork?",
+            [
+              { text: "Keep current photo", style: "cancel" },
+              {
+                text: "Use artwork",
+                onPress: () => {
+                  setMedia((prev) => ({
+                    ...prev,
+                    photoUri: audioArtworkUri,
+                    photoName: "Album Artwork",
+                  }));
+                  track("photo_selected", { source: "audio_artwork" });
+                },
+              },
+            ],
+          );
+        }
+
         track("audio_selected", { format: asset.mimeType ?? "unknown" });
       }
     } finally {
-      setLoading(false);
+      setLoadingTarget((current) => (current === "audio" ? null : current));
     }
-  }, [track]);
+  }, [media.audioUri, media.photoUri, track]);
 
   useEffect(() => {
     let isActive = true;
@@ -218,32 +278,23 @@ export default function PickerScreen() {
     };
   }, [media.audioUri, media.audioArtworkUri, media.audioName]);
 
-  const handleAdd = useCallback(() => {
-    if (activeTab === "photo") {
-      if (media.photoUri && !media.audioUri) {
-        setActiveTab("audio");
-        return;
-      }
-    } else {
-      if (media.audioUri && !media.photoUri) {
-        setActiveTab("photo");
-        return;
-      }
-    }
-
-    if (media.photoUri && media.audioUri) {
+  const navigateToEditor = useCallback(
+    (selection: MediaSelection) => {
+      if (!selection.photoUri || !selection.audioUri) return;
       const nextAspectRatio = aspectRatio ?? preferredAspectRatio;
       const nextTrimStart = trimStart ?? "0";
       const nextTrimEnd = trimEnd ?? String(DEFAULT_NEW_PROJECT_TRIM_END);
       const nextParams: Record<string, string> = {
-        photoUri: encodeUriParam(media.photoUri),
-        photoName: media.photoName ?? "Photo",
-        audioUri: encodeUriParam(media.audioUri),
-        audioName: media.audioName ?? "Audio",
+        photoUri: encodeUriParam(selection.photoUri),
+        photoName: selection.photoName ?? "Photo",
+        audioUri: encodeUriParam(selection.audioUri),
+        audioName: selection.audioName ?? "Audio",
         aspectRatio: nextAspectRatio,
         templateId,
         trimStart: nextTrimStart,
         trimEnd: nextTrimEnd,
+        templateTweaks: serializedTemplateTweaks,
+        showTemplateInfo: showTemplateInfoParam === "1" ? "1" : "0",
       };
 
       if (projectId) nextParams.projectId = projectId;
@@ -254,20 +305,48 @@ export default function PickerScreen() {
         pathname: "/create/editor" as const,
         params: nextParams,
       });
-    }
-  }, [
-    activeTab,
-    media,
-    router,
-    projectId,
-    localProjectId,
-    title,
-    aspectRatio,
-    trimStart,
-    trimEnd,
-    templateId,
-    preferredAspectRatio,
-  ]);
+    },
+    [
+      aspectRatio,
+      preferredAspectRatio,
+      trimStart,
+      trimEnd,
+      serializedTemplateTweaks,
+      showTemplateInfoParam,
+      templateId,
+      projectId,
+      localProjectId,
+      title,
+      router,
+    ],
+  );
+
+  const handleUseArtworkAsPhoto = useCallback(() => {
+    if (!media.audioArtworkUri) return;
+    setMedia((prev) => ({
+      ...prev,
+      photoUri: media.audioArtworkUri,
+      photoName: "Album Artwork",
+    }));
+    track("photo_selected", { source: "audio_artwork" });
+  }, [media.audioArtworkUri, track]);
+
+  const handleAdd = useCallback(() => {
+    if (!media.photoUri || !media.audioUri) return;
+    navigateToEditor(media);
+  }, [media, navigateToEditor]);
+
+  const resetPickerState = useCallback(() => {
+    setMedia({
+      photoUri: null,
+      photoName: null,
+      audioUri: null,
+      audioName: null,
+      audioArtworkUri: null,
+    });
+    setLoadingTarget(null);
+    setContentHeight(0);
+  }, []);
 
   const handleCancel = useCallback(() => {
     if (returnToEditor) {
@@ -285,14 +364,18 @@ export default function PickerScreen() {
           templateId,
           trimStart: trimStart ?? "0",
           trimEnd: trimEnd ?? String(DEFAULT_NEW_PROJECT_TRIM_END),
+          templateTweaks: serializedTemplateTweaks,
+          showTemplateInfo: showTemplateInfoParam === "1" ? "1" : "0",
         },
       });
       return;
     }
 
-    router.replace("/(tabs)" as const);
+    resetPickerState();
+    router.replace("/" as const);
   }, [
     returnToEditor,
+    resetPickerState,
     router,
     projectId,
     localProjectId,
@@ -306,14 +389,39 @@ export default function PickerScreen() {
     preferredAspectRatio,
     trimStart,
     trimEnd,
+    serializedTemplateTweaks,
+    showTemplateInfoParam,
   ]);
 
-  const canAdd = activeTab === "photo" ? !!media.photoUri : !!media.audioUri;
   const bothSelected = !!media.photoUri && !!media.audioUri;
+  const showArtworkQuickFill = !media.photoUri && !!media.audioArtworkUri;
+  const isPickingPhoto = loadingTarget === "photo";
+  const isPickingAudio = loadingTarget === "audio";
+  const activeAspectRatio = aspectRatio ?? preferredAspectRatio;
+  const dockOverlayCompensation = tabEmbedded ? 82 : 0;
+  const contentSidePadding = spacing.md;
+  const contentHorizontalPadding = contentSidePadding * 2;
+  const contentTopPadding = spacing.md;
+  const contentBottomPadding = spacing.lg + dockOverlayCompensation;
+  const cardGap = spacing.md;
+  const availableWidth = Math.max(0, windowWidth - contentHorizontalPadding);
+  const availableHeight = Math.max(
+    0,
+    contentHeight - contentTopPadding - contentBottomPadding,
+  );
+  const availableHeightForSquares = Math.max(0, availableHeight - cardGap);
+  const mediaCardHeight =
+    contentHeight > 0
+      ? availableHeightForSquares / 2
+      : 0;
+  const mediaCardStyle =
+    mediaCardHeight > 0
+      ? { width: availableWidth, height: mediaCardHeight }
+      : styles.squareCardPending;
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
-      {/* Header */}
+      {isFocused ? <StatusBar style="dark" /> : null}
       <View style={styles.header}>
         <Pressable
           onPress={handleCancel}
@@ -324,150 +432,40 @@ export default function PickerScreen() {
           <Text style={styles.cancelText}>Cancel</Text>
         </Pressable>
 
-        <View style={styles.tabs}>
-          <Pressable
-            style={[styles.tab, activeTab === "photo" && styles.tabActive]}
-            onPress={() => setActiveTab("photo")}
-            accessibilityLabel="Photos tab"
-            accessibilityRole="tab"
-            accessibilityState={{ selected: activeTab === "photo" }}
-          >
-            <Text
-              style={[
-                styles.tabText,
-                activeTab === "photo" && styles.tabTextActive,
-              ]}
-            >
-              Photos
-            </Text>
-          </Pressable>
-          <Pressable
-            style={[styles.tab, activeTab === "audio" && styles.tabActive]}
-            onPress={() => setActiveTab("audio")}
-            accessibilityLabel="Audio tab"
-            accessibilityRole="tab"
-            accessibilityState={{ selected: activeTab === "audio" }}
-          >
-            <Text
-              style={[
-                styles.tabText,
-                activeTab === "audio" && styles.tabTextActive,
-              ]}
-            >
-              Audio
-            </Text>
-          </Pressable>
-        </View>
+        <Text style={styles.headerTitle}>Select Media</Text>
 
         <Pressable
           onPress={handleAdd}
           style={[styles.headerAction, styles.headerActionRight]}
-          disabled={!canAdd}
+          disabled={!bothSelected}
           accessibilityLabel={bothSelected ? "Continue to editor" : "Add media"}
           accessibilityRole="button"
-          accessibilityState={{ disabled: !canAdd }}
+          accessibilityState={{ disabled: !bothSelected }}
         >
-          <Text style={[styles.addText, !canAdd && styles.addTextDisabled]}>
-            {bothSelected ? "Next" : "Add"}
+          <Text style={[styles.addText, !bothSelected && styles.addTextDisabled]}>
+            Add
           </Text>
         </Pressable>
       </View>
 
-      {/* Content */}
-      {activeTab === "photo" ? (
-        <View style={styles.content}>
-          {media.photoUri ? (
-            <View style={styles.selectedMedia}>
-              <Image
-                source={{ uri: media.photoUri }}
-                style={styles.photoPreview}
-                accessibilityLabel="Selected photo"
-              />
-              <View style={styles.selectedInfo}>
-                <View style={styles.selectedRow}>
-                  <Ionicons
-                    name="checkmark-circle"
-                    size={20}
-                    color={colors.accent.success}
-                  />
-                  <Text style={styles.selectedName} numberOfLines={1}>
-                    {media.photoName}
-                  </Text>
-                </View>
-                <Pressable
-                  onPress={pickPhoto}
-                  style={styles.changeButton}
-                  accessibilityLabel="Change photo"
-                  accessibilityRole="button"
-                >
-                  <Text style={styles.changeText}>Change</Text>
-                </Pressable>
-              </View>
-            </View>
-          ) : (
-            <Pressable
-              style={({ pressed }) => [
-                styles.pickArea,
-                pressed && styles.pickAreaPressed,
-              ]}
-              onPress={pickPhoto}
-              disabled={loading}
-              accessibilityLabel="Select a photo from camera roll"
-              accessibilityRole="button"
-            >
-              {loading ? (
-                <ActivityIndicator color={colors.accent.primary} size="large" />
-              ) : (
-                <>
-                  <View style={styles.pickIcon}>
-                    <Ionicons
-                      name="image-outline"
-                      size={40}
-                      color={colors.accent.primary}
-                    />
-                  </View>
-                  <Text style={styles.pickTitle}>Select Photo</Text>
-                  <Text style={styles.pickHint}>
-                    Choose an image from your camera roll
-                  </Text>
-                </>
-              )}
-            </Pressable>
-          )}
-        </View>
-      ) : (
-        <View style={styles.content}>
-          {media.photoUri ? (
-            <Pressable
-              style={({ pressed }) => [
-                styles.linkedMediaCard,
-                pressed && styles.linkedMediaCardPressed,
-              ]}
-              onPress={() => setActiveTab("photo")}
-              accessibilityLabel="View selected photo"
-              accessibilityRole="button"
-            >
-              <Image
-                source={{ uri: media.photoUri }}
-                style={styles.linkedMediaThumb}
-                accessibilityLabel="Selected photo thumbnail"
-              />
-              <View style={styles.linkedMediaInfo}>
-                <Text style={styles.linkedMediaLabel}>Selected Photo</Text>
-                <Text style={styles.linkedMediaName} numberOfLines={1}>
-                  {media.photoName ?? "Photo"}
-                </Text>
-              </View>
-              <Ionicons
-                name="chevron-forward"
-                size={16}
-                color={colors.light.textSecondary}
-              />
-            </Pressable>
-          ) : null}
-
+      <View
+        style={[
+          styles.content,
+          {
+            paddingHorizontal: contentSidePadding,
+            paddingBottom: contentBottomPadding,
+          },
+        ]}
+        onLayout={(event) => {
+          const nextHeight = event.nativeEvent.layout.height;
+          if (Math.abs(nextHeight - contentHeight) > 1) {
+            setContentHeight(nextHeight);
+          }
+        }}
+      >
+        <View style={[styles.pickerCard, mediaCardStyle, styles.photoCard]}>
           {media.audioUri ? (
-            <View style={styles.selectedMedia}>
+            <View style={styles.selectionWrap}>
               <View style={styles.audioThumb}>
                 {media.audioArtworkUri ? (
                   <Image
@@ -483,24 +481,21 @@ export default function PickerScreen() {
                   />
                 )}
               </View>
-              <View style={styles.selectedInfo}>
-                <View style={styles.selectedRow}>
-                  <Ionicons
-                    name="checkmark-circle"
-                    size={20}
-                    color={colors.accent.success}
-                  />
-                  <Text style={styles.selectedName} numberOfLines={1}>
-                    {media.audioName}
+              <View style={styles.selectionInfoRow}>
+                <View style={styles.selectionTitleWrap}>
+                  <Text style={styles.selectionLabel}>Selected Audio</Text>
+                  <Text style={styles.selectionName} numberOfLines={1}>
+                    {media.audioName ?? "Audio"}
                   </Text>
                 </View>
                 <Pressable
                   onPress={pickAudio}
-                  style={styles.changeButton}
+                  style={styles.selectionAction}
+                  disabled={isPickingPhoto || isPickingAudio}
                   accessibilityLabel="Change audio"
                   accessibilityRole="button"
                 >
-                  <Text style={styles.changeText}>Change</Text>
+                  <Text style={styles.selectionActionText}>Change</Text>
                 </Pressable>
               </View>
             </View>
@@ -508,73 +503,128 @@ export default function PickerScreen() {
             <Pressable
               style={({ pressed }) => [
                 styles.pickArea,
+                styles.pickAreaAudio,
                 pressed && styles.pickAreaPressed,
               ]}
               onPress={pickAudio}
-              disabled={loading}
+              disabled={isPickingPhoto || isPickingAudio}
               accessibilityLabel="Select an audio file"
               accessibilityRole="button"
             >
-              {loading ? (
+              {isPickingAudio ? (
                 <ActivityIndicator color={colors.accent.primary} size="large" />
               ) : (
                 <>
                   <View style={styles.pickIcon}>
                     <Ionicons
                       name="musical-note-outline"
-                      size={40}
+                      size={34}
                       color={colors.accent.primary}
                     />
                   </View>
                   <Text style={styles.pickTitle}>Select Audio</Text>
                   <Text style={styles.pickHint}>MP3, WAV, or M4A files</Text>
+                  <View style={styles.pickButton}>
+                    <Text style={styles.pickButtonText}>Pick audio</Text>
+                  </View>
                 </>
               )}
             </Pressable>
           )}
         </View>
-      )}
 
-      {/* Bottom status bar */}
-      <View style={styles.statusBar}>
-        <View style={styles.statusItem}>
-          <Ionicons
-            name={media.photoUri ? "checkmark-circle" : "ellipse-outline"}
-            size={16}
-            color={
-              media.photoUri
-                ? colors.accent.success
-                : colors.light.textSecondary
-            }
-          />
-          <Text
-            style={[
-              styles.statusText,
-              media.photoUri && styles.statusTextDone,
-            ]}
-          >
-            Photo
-          </Text>
-        </View>
-        <View style={styles.statusDivider} />
-        <View style={styles.statusItem}>
-          <Ionicons
-            name={media.audioUri ? "checkmark-circle" : "ellipse-outline"}
-            size={16}
-            color={
-              media.audioUri
-                ? colors.accent.success
-                : colors.light.textSecondary
-            }
-          />
-          <Text
-            style={[
-              styles.statusText,
-              media.audioUri && styles.statusTextDone,
-            ]}
-          >
-            Audio
-          </Text>
+        <View style={[styles.pickerCard, mediaCardStyle]}>
+          {media.photoUri ? (
+            <View style={styles.selectionWrap}>
+              <View style={styles.photoPreviewFrame}>
+                <Image
+                  source={{ uri: media.photoUri }}
+                  style={styles.photoPreview}
+                  accessibilityLabel="Selected photo"
+                />
+                <View style={styles.aspectRatioBadge}>
+                  <Text style={styles.aspectRatioBadgeText}>{activeAspectRatio}</Text>
+                </View>
+              </View>
+              <View style={styles.selectionInfoRow}>
+                <View style={styles.selectionTitleWrap}>
+                  <Text style={styles.selectionLabel}>Selected Photo</Text>
+                  <Text style={styles.selectionName} numberOfLines={1}>
+                    {media.photoName ?? "Photo"}
+                  </Text>
+                </View>
+                <Pressable
+                  onPress={pickPhoto}
+                  style={styles.selectionAction}
+                  disabled={isPickingPhoto || isPickingAudio}
+                  accessibilityLabel="Change photo"
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.selectionActionText}>Change</Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.pickAreaWrap}>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.pickArea,
+                  pressed && styles.pickAreaPressed,
+                ]}
+                onPress={pickPhoto}
+                disabled={isPickingPhoto || isPickingAudio}
+                accessibilityLabel="Select a photo from camera roll"
+                accessibilityRole="button"
+              >
+                {isPickingPhoto ? (
+                  <ActivityIndicator color={colors.accent.primary} size="large" />
+                ) : (
+                  <>
+                    <View style={styles.pickIcon}>
+                      <Ionicons
+                        name="image-outline"
+                        size={34}
+                        color={colors.accent.primary}
+                      />
+                    </View>
+                    <Text style={styles.pickTitle}>Select Photo</Text>
+                    <Text style={styles.pickHint}>
+                      Choose an image from your library
+                    </Text>
+                    <View style={styles.pickButton}>
+                      <Text style={styles.pickButtonText}>Pick a photo</Text>
+                    </View>
+                  </>
+                )}
+              </Pressable>
+
+              {showArtworkQuickFill ? (
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.quickFillCard,
+                    pressed && styles.quickFillCardPressed,
+                  ]}
+                  onPress={handleUseArtworkAsPhoto}
+                  disabled={isPickingPhoto || isPickingAudio}
+                  accessibilityLabel="Use detected album artwork as cover image"
+                  accessibilityRole="button"
+                >
+                  <Image
+                    source={{ uri: media.audioArtworkUri ?? undefined }}
+                    style={styles.quickFillArtwork}
+                    accessibilityLabel="Detected album artwork"
+                  />
+                  <View style={styles.quickFillTextWrap}>
+                    <Text style={styles.quickFillTitle}>Use album artwork</Text>
+                    <Text style={styles.quickFillHint} numberOfLines={2}>
+                      Reuse the track artwork as your photo in one tap.
+                    </Text>
+                  </View>
+                  <Ionicons name="flash" size={18} color={colors.accent.primary} />
+                </Pressable>
+              ) : null}
+            </View>
+          )}
         </View>
       </View>
     </SafeAreaView>
@@ -603,9 +653,14 @@ const styles = StyleSheet.create({
   headerActionRight: {
     alignItems: "flex-end",
   },
+  headerTitle: {
+    ...typography.button,
+    color: colors.light.text,
+    fontWeight: "700",
+  },
   cancelText: {
     ...typography.body,
-    color: colors.light.text,
+    color: colors.accent.primary,
   },
   addText: {
     ...typography.button,
@@ -614,116 +669,127 @@ const styles = StyleSheet.create({
   addTextDisabled: {
     opacity: 0.35,
   },
-  tabs: {
-    flexDirection: "row",
-    backgroundColor: colors.light.surface,
-    borderRadius: radius.full,
-    padding: 2,
-  },
-  tab: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.full,
-  },
-  tabActive: {
-    backgroundColor: colors.light.background,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  tabText: {
-    ...typography.caption,
-    fontWeight: "600",
-    color: colors.light.textSecondary,
-  },
-  tabTextActive: {
-    color: colors.light.text,
-  },
   content: {
     flex: 1,
-    padding: spacing.lg,
-  },
-  linkedMediaCard: {
-    flexDirection: "row",
     alignItems: "center",
-    backgroundColor: colors.light.surface,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.light.border,
-    padding: spacing.sm,
-    marginBottom: spacing.md,
-    gap: spacing.sm,
+    justifyContent: "flex-start",
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.lg,
+    gap: spacing.md,
   },
-  linkedMediaCardPressed: {
-    opacity: 0.85,
-  },
-  linkedMediaThumb: {
-    width: 44,
-    height: 44,
-    borderRadius: radius.sm,
-  },
-  linkedMediaInfo: {
+  squareCardPending: {
+    width: "100%",
     flex: 1,
   },
-  linkedMediaLabel: {
-    ...typography.caption,
-    color: colors.light.textSecondary,
-    marginBottom: 2,
+  pickerCard: {
+    width: "100%",
+    borderRadius: IPHONE_EDGE_RADIUS,
+    borderWidth: 2,
+    borderStyle: "dashed",
+    borderColor: "#D5DBE5",
+    backgroundColor: "#F9FAFC",
+    padding: spacing.md,
+    overflow: "hidden",
   },
-  linkedMediaName: {
-    ...typography.body,
-    color: colors.light.text,
-    fontWeight: "600",
+  photoCard: {
+    marginTop: spacing.xs,
+  },
+  pickAreaWrap: {
+    flex: 1,
+    gap: spacing.sm,
   },
   pickArea: {
     flex: 1,
+    minHeight: 0,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.light.surface,
-    borderRadius: radius.lg,
-    borderWidth: 2,
-    borderColor: colors.light.border,
-    borderStyle: "dashed",
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+  },
+  pickAreaAudio: {
+    paddingBottom: spacing.md,
   },
   pickAreaPressed: {
-    opacity: 0.7,
-    backgroundColor: colors.light.border,
+    opacity: 0.82,
   },
   pickIcon: {
-    width: 72,
-    height: 72,
-    borderRadius: radius.full,
-    backgroundColor: colors.light.background,
+    width: 64,
+    height: 64,
+    borderRadius: radius.md,
+    backgroundColor: "#F3F6FB",
     alignItems: "center",
     justifyContent: "center",
     marginBottom: spacing.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.light.border,
   },
   pickTitle: {
-    ...typography.button,
+    ...typography.h2,
     color: colors.light.text,
     marginBottom: spacing.xs,
+    fontSize: 30,
+    fontWeight: "700",
+    textAlign: "center",
   },
   pickHint: {
-    ...typography.caption,
+    ...typography.body,
     color: colors.light.textSecondary,
+    textAlign: "center",
+    marginBottom: spacing.lg,
   },
-  selectedMedia: {
-    backgroundColor: colors.light.surface,
-    borderRadius: radius.lg,
+  pickButton: {
+    minHeight: 44,
+    minWidth: 156,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.full,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#3A80EC",
+  },
+  pickButtonText: {
+    ...typography.button,
+    color: "#FFFFFF",
+    fontWeight: "700",
+  },
+  selectionWrap: {
+    flex: 1,
     overflow: "hidden",
+    borderRadius: IPHONE_EDGE_RADIUS - spacing.sm,
+    backgroundColor: "#FFFFFF",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.light.border,
   },
   photoPreview: {
+    flex: 1,
     width: "100%",
-    aspectRatio: 1,
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
+    minHeight: 0,
+  },
+  photoPreviewFrame: {
+    flex: 1,
+    minHeight: 0,
+    position: "relative",
+  },
+  aspectRatioBadge: {
+    position: "absolute",
+    right: spacing.sm,
+    bottom: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.full,
+    backgroundColor: "rgba(15, 23, 42, 0.72)",
+  },
+  aspectRatioBadgeText: {
+    ...typography.caption,
+    color: "#FFFFFF",
+    fontWeight: "700",
+    letterSpacing: 0.4,
   },
   audioThumb: {
+    flex: 1,
     width: "100%",
-    height: 160,
-    backgroundColor: colors.light.border,
+    minHeight: 0,
+    backgroundColor: "#EAF0FB",
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
@@ -732,62 +798,73 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
   },
-  selectedInfo: {
+  selectionInfoRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    gap: spacing.sm,
     padding: spacing.md,
   },
-  selectedRow: {
+  selectionTitleWrap: {
+    flex: 1,
+    gap: 2,
+  },
+  selectionLabel: {
+    ...typography.caption,
+    color: colors.light.textSecondary,
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  selectionName: {
+    ...typography.body,
+    color: colors.light.text,
+    fontWeight: "600",
+  },
+  selectionAction: {
+    minHeight: 36,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.full,
+    backgroundColor: "#EEF3FC",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  selectionActionText: {
+    ...typography.caption,
+    color: colors.accent.primary,
+    fontWeight: "700",
+  },
+  quickFillCard: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
-    flex: 1,
-  },
-  selectedName: {
-    ...typography.body,
-    color: colors.light.text,
-    flex: 1,
-  },
-  changeButton: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.full,
-    backgroundColor: colors.light.background,
+    borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.light.border,
+    borderColor: "rgba(88,86,214,0.35)",
+    backgroundColor: "rgba(88,86,214,0.08)",
+    padding: spacing.sm,
   },
-  changeText: {
+  quickFillCardPressed: {
+    opacity: 0.88,
+  },
+  quickFillArtwork: {
+    width: 52,
+    height: 52,
+    borderRadius: radius.sm,
+  },
+  quickFillTextWrap: {
+    flex: 1,
+    gap: 2,
+  },
+  quickFillTitle: {
     ...typography.caption,
-    fontWeight: "600",
     color: colors.accent.primary,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
-  statusBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: spacing.md,
-    paddingBottom: spacing.lg,
-    gap: spacing.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.light.border,
-  },
-  statusItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-  },
-  statusText: {
+  quickFillHint: {
     ...typography.caption,
-    color: colors.light.textSecondary,
-  },
-  statusTextDone: {
-    color: colors.accent.success,
-    fontWeight: "600",
-  },
-  statusDivider: {
-    width: 24,
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.light.border,
+    color: colors.light.text,
+    lineHeight: 17,
   },
 });

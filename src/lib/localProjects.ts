@@ -10,6 +10,7 @@ export type LocalProject = {
   id: string;
   title?: string;
   templateId?: string;
+  templateTweaks?: string;
   aspectRatio: LocalProjectAspectRatio;
   photoUri?: string;
   photoName?: string;
@@ -27,6 +28,7 @@ type UpsertLocalProjectInput = {
   id?: string;
   title?: string;
   templateId?: string;
+  templateTweaks?: string;
   aspectRatio: LocalProjectAspectRatio;
   photoUri?: string;
   photoName?: string;
@@ -69,6 +71,7 @@ function normalizeProject(value: unknown): LocalProject | null {
     id,
     title: asTrimmedString(input.title),
     templateId: asTrimmedString(input.templateId),
+    templateTweaks: asTrimmedString(input.templateTweaks),
     aspectRatio: normalizeAspectRatio(input.aspectRatio),
     photoUri: normalizeOptionalMediaUri(asTrimmedString(input.photoUri)),
     photoName: asTrimmedString(input.photoName),
@@ -143,6 +146,8 @@ export async function upsertLocalProject(
     id,
     title: input.title?.trim() || existing?.title,
     templateId: input.templateId?.trim() || existing?.templateId,
+    templateTweaks:
+      input.templateTweaks?.trim() || existing?.templateTweaks,
     aspectRatio: normalizeAspectRatio(input.aspectRatio),
     photoUri: normalizeOptionalMediaUri(input.photoUri) || existing?.photoUri,
     photoName: input.photoName?.trim() || existing?.photoName,

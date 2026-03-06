@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Platform,
   StyleSheet,
   Text,
   View,
 } from "react-native";
-import { Tabs, useRouter } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
+import { Redirect, Tabs, usePathname, useRouter } from "expo-router";
+import { Icon, Label, NativeTabs } from "expo-router/unstable-native-tabs";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { usePostHog } from "posthog-react-native";
 import { useAuth, useUser } from "@clerk/clerk-expo";
@@ -28,8 +30,19 @@ function extractNotificationType(data: unknown) {
   return typeof type === "string" ? type : "unknown";
 }
 
+function LiquidGlassTabBarBackground() {
+  return (
+    <View style={styles.glassRoot} pointerEvents="none">
+      <View style={styles.glassTint} />
+      <View style={styles.glassTopSheen} />
+      <View style={styles.glassInnerStroke} />
+    </View>
+  );
+}
+
 export default function TabsLayout() {
   const router = useRouter();
+  const pathname = usePathname();
   const { isAuthenticated } = useConvexAuth();
   const getOrCreateUser = useMutation(api.users.getOrCreate);
   const upsertPushToken = useMutation(api.pushTokens.upsertForCurrentUser);
@@ -39,8 +52,8 @@ export default function TabsLayout() {
   const { isLocalGuest } = useLocalSession();
   const { user } = useUser();
   const didBootstrapPush = useRef(false);
-  const didRouteToOnboarding = useRef(false);
   const hasWarnedMissingConvexToken = useRef(false);
+  const previousPathnameRef = useRef<string | null>(null);
   const [localOnboardingReady, setLocalOnboardingReady] = useState(false);
   const [localOnboardingCompleted, setLocalOnboardingCompleted] = useState(false);
 
@@ -56,7 +69,7 @@ export default function TabsLayout() {
   useEffect(() => {
     if (hasSession) return;
     didBootstrapPush.current = false;
-    didRouteToOnboarding.current = false;
+    hasWarnedMissingConvexToken.current = false;
   }, [hasSession]);
 
   useEffect(() => {
@@ -88,20 +101,15 @@ export default function TabsLayout() {
   );
 
   useEffect(() => {
-    if (!hasSession || !hasOnboardingStatus) return;
-
-    if (!isOnboardingCompleted) {
-      if (didRouteToOnboarding.current) return;
-      didRouteToOnboarding.current = true;
-      router.replace("/onboarding");
+    if (
+      !isAuthenticated ||
+      currentUser === undefined ||
+      !isSignedIn ||
+      !userId ||
+      didBootstrapPush.current
+    ) {
       return;
     }
-
-    didRouteToOnboarding.current = false;
-  }, [hasOnboardingStatus, hasSession, isOnboardingCompleted, router]);
-
-  useEffect(() => {
-    if (!isAuthenticated || didBootstrapPush.current) return;
     didBootstrapPush.current = true;
 
     (async () => {
@@ -132,6 +140,13 @@ export default function TabsLayout() {
         await getOrCreateUser();
       } catch (error) {
         const message = error instanceof Error ? error.message : "";
+        if (message.includes("Unauthenticated")) {
+          shouldContinue = false;
+          // Allow a later retry once Convex auth catches up with the Clerk session.
+          didBootstrapPush.current = false;
+          console.warn("Convex auth not ready yet. Will retry bootstrap shortly.");
+          return;
+        }
         if (message.includes("Account deleted")) {
           shouldContinue = false;
           try {
@@ -150,6 +165,9 @@ export default function TabsLayout() {
     })();
   }, [
     isAuthenticated,
+    currentUser,
+    isSignedIn,
+    userId,
     getOrCreateUser,
     upsertPushToken,
     router,
@@ -166,7 +184,7 @@ export default function TabsLayout() {
           response.notification.request.content.data
         ),
       });
-      router.replace("/(tabs)");
+      router.replace("/");
     };
 
     handleInitialNotificationTap(handleTapped).catch((error) => {
@@ -198,20 +216,70 @@ export default function TabsLayout() {
     }
   }, [user]);
 
-  if (isAuthenticated && (!hasOnboardingStatus || !isOnboardingCompleted)) {
+  useEffect(() => {
+    if (Platform.OS !== "ios") return;
+    const previousPathname = previousPathnameRef.current;
+    const enteredCreate = pathname === "/create" && previousPathname !== "/create";
+
+    if (enteredCreate) {
+      track("create_started");
+    }
+
+    previousPathnameRef.current = pathname;
+  }, [pathname, track]);
+
+  if (!hasSession) {
+    return null;
+  }
+  if (!hasOnboardingStatus) {
     return (
       <View style={styles.gateContainer}>
         <ActivityIndicator size="large" color={colors.accent.primary} />
-        <Text style={styles.gateText}>Loading your workspace...</Text>
+        <Text style={styles.gateText}>
+          {isLocalGuest ? "Preparing guest workspace..." : "Loading your workspace..."}
+        </Text>
       </View>
     );
   }
-  if (isLocalGuest && (!hasOnboardingStatus || !isOnboardingCompleted)) {
+  if (!isOnboardingCompleted) {
+    return <Redirect href="/onboarding" />;
+  }
+  if (Platform.OS === "ios") {
     return (
-      <View style={styles.gateContainer}>
-        <ActivityIndicator size="large" color={colors.accent.primary} />
-        <Text style={styles.gateText}>Preparing guest workspace...</Text>
-      </View>
+      <NativeTabs
+        blurEffect="systemThinMaterialLight"
+        backgroundColor={colors.light.background}
+        shadowColor="transparent"
+        iconColor={{
+          default: colors.light.textSecondary,
+          selected: colors.light.text,
+        }}
+        labelStyle={{
+          default: {
+            fontSize: typography.caption.fontSize,
+            fontWeight: "500",
+            color: colors.light.textSecondary,
+          },
+          selected: {
+            fontSize: typography.caption.fontSize,
+            fontWeight: "600",
+            color: colors.light.text,
+          },
+        }}
+      >
+        <NativeTabs.Trigger name="index">
+          <Icon sf={{ default: "house", selected: "house.fill" }} />
+          <Label>Home</Label>
+        </NativeTabs.Trigger>
+        <NativeTabs.Trigger name="create">
+          <Icon sf={{ default: "plus.circle", selected: "plus.circle.fill" }} />
+          <Label>Create</Label>
+        </NativeTabs.Trigger>
+        <NativeTabs.Trigger name="profile">
+          <Icon sf={{ default: "person", selected: "person.fill" }} />
+          <Label>Profile</Label>
+        </NativeTabs.Trigger>
+      </NativeTabs>
     );
   }
 
@@ -221,17 +289,41 @@ export default function TabsLayout() {
         headerShown: false,
         tabBarActiveTintColor: colors.light.text,
         tabBarInactiveTintColor: colors.light.textSecondary,
+        tabBarBackground: () => <LiquidGlassTabBarBackground />,
         tabBarStyle: {
-          backgroundColor: colors.light.background,
-          borderTopColor: colors.light.border,
-          borderTopWidth: StyleSheet.hairlineWidth,
-          height: 88,
-          paddingBottom: 30,
+          position: "absolute",
+          left: 14,
+          right: 14,
+          bottom: 0,
+          height: 82,
+          borderTopWidth: 0,
+          backgroundColor: "transparent",
+          borderTopLeftRadius: 28,
+          borderTopRightRadius: 28,
+          borderBottomLeftRadius: 0,
+          borderBottomRightRadius: 0,
+          overflow: "hidden",
+          paddingBottom: 8,
           paddingTop: 8,
+          ...Platform.select({
+            ios: {
+              shadowColor: "#102440",
+              shadowOpacity: 0.18,
+              shadowRadius: 14,
+              shadowOffset: { width: 0, height: 2 },
+            },
+            android: {
+              elevation: 10,
+            },
+          }),
+        },
+        tabBarItemStyle: {
+          borderRadius: 20,
         },
         tabBarLabelStyle: {
           fontSize: typography.caption.fontSize,
-          fontWeight: "500",
+          fontWeight: "600",
+          marginTop: -1,
         },
       }}
     >
@@ -272,6 +364,35 @@ export default function TabsLayout() {
 }
 
 const styles = StyleSheet.create({
+  glassRoot: {
+    flex: 1,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    overflow: "hidden",
+  },
+  glassTint: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(245,250,255,0.74)",
+  },
+  glassTopSheen: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: StyleSheet.hairlineWidth + 1,
+    backgroundColor: "rgba(255,255,255,0.42)",
+  },
+  glassInnerStroke: {
+    ...StyleSheet.absoluteFillObject,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.72)",
+  },
   gateContainer: {
     flex: 1,
     alignItems: "center",

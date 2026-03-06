@@ -12,10 +12,11 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  type LayoutChangeEvent,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { usePostHog } from "posthog-react-native";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { ConvexError } from "convex/values";
@@ -25,11 +26,10 @@ import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
 import { AudioTrimmer } from "@/components/create/AudioTrimmer";
-import {
-  AspectRatioToggle,
-  type AspectRatio,
-} from "@/components/create/AspectRatioToggle";
-import { TemplateToggle } from "@/components/create/TemplateToggle";
+import { type AspectRatio } from "@/components/create/AspectRatioToggle";
+import { EditMediaModal } from "@/components/create/EditMediaModal";
+import { TemplateCustomizeModal } from "@/components/create/TemplateCustomizeModal";
+import { TemplateInfoBadge } from "@/components/create/TemplateInfoBadge";
 import type { EventName } from "@/lib/analytics";
 import { decodeUriParam, encodeUriParam, fileNameFromUri } from "@/lib/uri";
 import { normalizeMediaUri } from "@/lib/mediaUri";
@@ -37,21 +37,26 @@ import { sleep } from "@/lib/utils";
 import { useLocalSession } from "@/providers/localSession";
 import { upsertLocalProject } from "@/lib/localProjects";
 import {
+  getCachedTemplateTweaks,
+  setCachedTemplateTweaks,
+} from "@/lib/templateTweaksCache";
+import {
+  DEFAULT_TEMPLATE_TWEAKS,
   getTemplateDefinition,
   listTemplateDefinitions,
+  normalizeTemplateTweaks,
+  parseTemplateTweaksParam,
   resolveTemplateId,
+  serializeTemplateTweaksParam,
+  type TemplateTweaks,
 } from "@/lib/templates";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const SCREEN_HEIGHT = Dimensions.get("window").height;
-const STAGE_HORIZONTAL_PADDING = spacing.lg * 2;
+const STAGE_HORIZONTAL_PADDING = spacing.xs * 2;
 const FALLBACK_AUDIO_DURATION = 180;
-const DEFAULT_TRIM_DURATION = 15;
+const DEFAULT_TRIM_DURATION = 5;
 const DEFAULT_PROJECT_TITLE = "New Project";
-const TEMPLATE_OPTIONS = listTemplateDefinitions().map((template, index) => ({
-  id: template.id,
-  label: `T${index + 1}`,
-}));
 
 type MissingFilesState = {
   photo: boolean;
@@ -76,6 +81,12 @@ function parseAspectRatioParam(
   return firstParam(value) === "1:1" ? "1:1" : "9:16";
 }
 
+function parseShowTemplateInfoParam(
+  value: string | string[] | undefined,
+): boolean {
+  return firstParam(value) === "1";
+}
+
 function asProjectId(value?: string) {
   if (!value) return null;
   return value as Id<"projects">;
@@ -86,6 +97,15 @@ function isUnauthenticatedConvexError(error: unknown) {
   if (!error.data || typeof error.data !== "object") return false;
   const code = (error.data as { code?: unknown }).code;
   return code === "UNAUTHENTICATED";
+}
+
+function isTemplateTweaksValidationError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const message = error.message || "";
+  return (
+    message.includes("ArgumentValidationError") &&
+    message.includes("templateTweaks")
+  );
 }
 
 function isGeneratedMediaName(value: string) {
@@ -220,8 +240,13 @@ export default function EditorScreen() {
     audioName?: string;
     aspectRatio?: AspectRatio;
     templateId?: string;
+    templateTweaks?: string;
     trimStart?: string;
     trimEnd?: string;
+    spinSpeed?: string;
+    recordTransparency?: string;
+    stageBackgroundColor?: string;
+    showTemplateInfo?: string;
     returnToEditor?: string;
   }>();
 
@@ -237,6 +262,7 @@ export default function EditorScreen() {
   const paramAudioUri = normalizeMediaUri(decodeUriParam(firstParam(params.audioUri)));
   const paramPhotoName = firstParam(params.photoName);
   const paramAudioName = firstParam(params.audioName);
+  const hasRouteMediaSnapshot = Boolean(paramPhotoUri || paramAudioUri);
   const [currentProjectId, setCurrentProjectId] = useState<Id<"projects"> | null>(
     existingProjectId,
   );
@@ -258,9 +284,26 @@ export default function EditorScreen() {
     projectDetails?.audioName ||
     fallbackMediaNameFromUri(audioUri, "Audio");
   const initialAspectRatio = parseAspectRatioParam(params.aspectRatio);
-  const routeTemplateIdParam = firstParam(params.templateId);
-  const [templateId, setTemplateId] = useState(
-    resolveTemplateId(routeTemplateIdParam),
+  const initialTemplateId = resolveTemplateId(firstParam(params.templateId));
+  const initialSpinSpeed = parseNumberParam(
+    params.spinSpeed,
+    DEFAULT_TEMPLATE_TWEAKS.spinSpeed,
+  );
+  const initialRecordTransparency = parseNumberParam(
+    params.recordTransparency,
+    DEFAULT_TEMPLATE_TWEAKS.recordTransparency,
+  );
+  const initialStageBackgroundColor =
+    firstParam(params.stageBackgroundColor) || null;
+  const parsedTemplateTweaks = parseTemplateTweaksParam(
+    firstParam(params.templateTweaks),
+  );
+  const initialTemplateTweaks = normalizeTemplateTweaks(
+    parsedTemplateTweaks ?? {
+      spinSpeed: initialSpinSpeed,
+      recordTransparency: initialRecordTransparency,
+      stageBackgroundColor: initialStageBackgroundColor,
+    },
   );
   const initialTrimStart = parseNumberParam(params.trimStart, 0);
   const initialTrimEndRaw = parseNumberParam(params.trimEnd, DEFAULT_TRIM_DURATION);
@@ -268,10 +311,23 @@ export default function EditorScreen() {
     initialTrimEndRaw > initialTrimStart
       ? initialTrimEndRaw
       : initialTrimStart + DEFAULT_TRIM_DURATION;
+  const initialShowTemplateInfo = parseShowTemplateInfoParam(
+    params.showTemplateInfo,
+  );
 
   const createProject = useMutation(api.projects.create);
   const updateProject = useMutation(api.projects.update);
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>(initialAspectRatio);
+  const [templateId, setTemplateId] = useState(initialTemplateId);
+  const [templateTweaks, setTemplateTweaks] =
+    useState<TemplateTweaks>(initialTemplateTweaks);
+  const [showTemplateInfo, setShowTemplateInfo] = useState<boolean>(
+    initialShowTemplateInfo,
+  );
+  const serializedTemplateTweaks = serializeTemplateTweaksParam(templateTweaks);
+  const [isEditMediaModalVisible, setIsEditMediaModalVisible] = useState(false);
+  const [isTemplateCustomizeVisible, setIsTemplateCustomizeVisible] =
+    useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [trimStart, setTrimStart] = useState(initialTrimStart);
   const [trimEnd, setTrimEnd] = useState(initialTrimEnd);
@@ -290,12 +346,16 @@ export default function EditorScreen() {
   const [editorSaveStatus, setEditorSaveStatus] = useState<
     "idle" | "saving" | "saved" | "error"
   >("idle");
+  const [previewViewport, setPreviewViewport] = useState({
+    width: 0,
+    height: 0,
+  });
   const [forceAutosaveTick, setForceAutosaveTick] = useState(0);
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const remoteTemplateTweaksUnsupportedRef = useRef(false);
   const forceAutosaveTickRef = useRef(0);
   const initialSnapshotRef = useRef<string | null>(null);
   const lastSavedSnapshotRef = useRef<string | null>(null);
-  const hasManuallySelectedTemplateRef = useRef(false);
   const hasTrackedEditStartedRef = useRef(false);
   const previousMediaUrisRef = useRef<{ photoUri: string; audioUri: string } | null>(null);
   const draftCreationPromiseRef = useRef<Promise<Id<"projects"> | null> | null>(
@@ -329,27 +389,51 @@ export default function EditorScreen() {
   }, [initialLocalProjectId]);
 
   useEffect(() => {
-    if (!routeTemplateIdParam) return;
-    const resolvedTemplateId = resolveTemplateId(routeTemplateIdParam);
-    setTemplateId((previousTemplateId) =>
-      previousTemplateId === resolvedTemplateId
-        ? previousTemplateId
-        : resolvedTemplateId,
-    );
-    hasManuallySelectedTemplateRef.current = false;
-  }, [routeTemplateIdParam]);
+    setTemplateId(resolveTemplateId(firstParam(params.templateId)));
+  }, [params.templateId]);
 
   useEffect(() => {
-    if (routeTemplateIdParam) return;
-    if (hasManuallySelectedTemplateRef.current) return;
-    const projectTemplateId = resolveTemplateId(projectDetails?.templateId);
-    setTemplateId((previousTemplateId) =>
-      previousTemplateId === projectTemplateId
-        ? previousTemplateId
-        : projectTemplateId,
-    );
-  }, [routeTemplateIdParam, projectDetails?.templateId]);
+    if (firstParam(params.templateTweaks) && hasRouteMediaSnapshot) return;
+    const savedTemplateTweaksRaw = projectDetails?.templateTweaks;
+    if (!savedTemplateTweaksRaw) return;
+    const parsed = parseTemplateTweaksParam(savedTemplateTweaksRaw);
+    if (!parsed) return;
+    setTemplateTweaks((prev) => {
+      const prevSerialized = serializeTemplateTweaksParam(prev);
+      const nextSerialized = serializeTemplateTweaksParam(parsed);
+      return prevSerialized === nextSerialized ? prev : parsed;
+    });
+  }, [hasRouteMediaSnapshot, params.templateTweaks, projectDetails?.templateTweaks]);
 
+  useEffect(() => {
+    if (firstParam(params.templateTweaks) && hasRouteMediaSnapshot) return;
+    if (!currentProjectId) return;
+    if (projectDetails?.templateTweaks) return;
+
+    let isCancelled = false;
+    void (async () => {
+      const cached = await getCachedTemplateTweaks(String(currentProjectId));
+      if (!cached || isCancelled) return;
+      const parsed = parseTemplateTweaksParam(cached);
+      if (!parsed) return;
+      setTemplateTweaks((prev) => {
+        const prevSerialized = serializeTemplateTweaksParam(prev);
+        const nextSerialized = serializeTemplateTweaksParam(parsed);
+        return prevSerialized === nextSerialized ? prev : parsed;
+      });
+    })();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [
+    currentProjectId,
+    hasRouteMediaSnapshot,
+    params.templateTweaks,
+    projectDetails?.templateTweaks,
+  ]);
+
+  const templateDefinitions = listTemplateDefinitions();
   const TemplateStageComponent = getTemplateDefinition(templateId).StageComponent;
 
   const createDraftProject = useCallback(async () => {
@@ -366,6 +450,20 @@ export default function EditorScreen() {
     const pending = (async (): Promise<Id<"projects"> | null> => {
       const tryCreate = async (retries = 1): Promise<Id<"projects"> | null> => {
         try {
+          if (!remoteTemplateTweaksUnsupportedRef.current) {
+            return await createProject({
+              title: normalizedTitle,
+              aspectRatio,
+              photoUri,
+              photoName,
+              audioUri,
+              audioName,
+              trimStart: roundedTrimStart,
+              trimEnd: roundedTrimEnd,
+              templateId,
+              templateTweaks: serializedTemplateTweaks,
+            });
+          }
           return await createProject({
             title: normalizedTitle,
             aspectRatio,
@@ -378,6 +476,23 @@ export default function EditorScreen() {
             templateId,
           });
         } catch (error) {
+          if (
+            !remoteTemplateTweaksUnsupportedRef.current &&
+            isTemplateTweaksValidationError(error)
+          ) {
+            remoteTemplateTweaksUnsupportedRef.current = true;
+            return await createProject({
+              title: normalizedTitle,
+              aspectRatio,
+              photoUri,
+              photoName,
+              audioUri,
+              audioName,
+              trimStart: roundedTrimStart,
+              trimEnd: roundedTrimEnd,
+              templateId,
+            });
+          }
           if (isUnauthenticatedConvexError(error) && retries > 0) {
             await sleep(600);
             return await tryCreate(retries - 1);
@@ -394,6 +509,10 @@ export default function EditorScreen() {
       const createdProjectId = await pending;
       if (createdProjectId) {
         setCurrentProjectId(createdProjectId);
+        await setCachedTemplateTweaks(
+          String(createdProjectId),
+          serializedTemplateTweaks,
+        );
       }
       return createdProjectId;
     } finally {
@@ -411,6 +530,7 @@ export default function EditorScreen() {
     photoName,
     audioName,
     templateId,
+    serializedTemplateTweaks,
     createProject,
   ]);
 
@@ -429,6 +549,7 @@ export default function EditorScreen() {
       const project = await upsertLocalProject({
         title: normalizedTitle,
         templateId,
+        templateTweaks: serializedTemplateTweaks,
         aspectRatio,
         photoUri,
         photoName,
@@ -463,6 +584,7 @@ export default function EditorScreen() {
     photoName,
     audioName,
     templateId,
+    serializedTemplateTweaks,
   ]);
 
   useEffect(() => {
@@ -576,7 +698,7 @@ export default function EditorScreen() {
     };
   }, [audioUri, missingFiles.audio]);
 
-  const minTrimDuration = Math.min(15, Math.max(audioDurationSec, 1));
+  const minTrimDuration = Math.min(5, Math.max(audioDurationSec, 1));
   const maxTrimDuration = Math.max(
     minTrimDuration,
     Math.min(audioDurationSec, 45),
@@ -600,11 +722,36 @@ export default function EditorScreen() {
     trimEnd,
   ]);
 
-  const stageWidth = Math.min(SCREEN_WIDTH - STAGE_HORIZONTAL_PADDING, 440);
-  const targetStageHeight = stageWidth * (aspectRatio === "9:16" ? 1.22 : 1.02);
-  const stageHeight = Math.min(
-    Math.max(targetStageHeight, 300),
-    SCREEN_HEIGHT * (aspectRatio === "9:16" ? 0.52 : 0.48),
+  const stageWidthRatio = aspectRatio === "9:16" ? 9 / 16 : 1;
+  const fallbackMaxStageWidth = Math.min(SCREEN_WIDTH - STAGE_HORIZONTAL_PADDING, 520);
+  const fallbackMaxStageHeight = SCREEN_HEIGHT * (aspectRatio === "9:16" ? 0.72 : 0.57);
+  const measuredMaxStageWidth =
+    previewViewport.width > 0
+      ? Math.max(previewViewport.width - spacing.sm * 2, 0)
+      : fallbackMaxStageWidth;
+  const measuredMaxStageHeight =
+    previewViewport.height > 0
+      ? Math.max(previewViewport.height - spacing.sm * 2, 0)
+      : fallbackMaxStageHeight;
+  const maxStageWidth = Math.min(fallbackMaxStageWidth, measuredMaxStageWidth);
+  const maxStageHeight = Math.min(fallbackMaxStageHeight, measuredMaxStageHeight);
+  const stageWidth = Math.max(
+    1,
+    Math.min(maxStageWidth, maxStageHeight * stageWidthRatio),
+  );
+  const stageHeight = stageWidth / stageWidthRatio;
+
+  const handlePreviewContainerLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      const { width, height } = event.nativeEvent.layout;
+      setPreviewViewport((prev) => {
+        if (Math.abs(prev.width - width) < 1 && Math.abs(prev.height - height) < 1) {
+          return prev;
+        }
+        return { width, height };
+      });
+    },
+    [],
   );
 
   const handleTrimChange = useCallback((start: number, end: number) => {
@@ -618,16 +765,6 @@ export default function EditorScreen() {
     setTrimStart(nextStart);
     setTrimEnd(nextEnd);
   }, [audioDurationSec, minTrimDuration, maxTrimDuration]);
-
-  const handleTemplateChange = useCallback((nextTemplateId: string) => {
-    const resolvedTemplateId = resolveTemplateId(nextTemplateId);
-    hasManuallySelectedTemplateRef.current = true;
-    setTemplateId((previousTemplateId) =>
-      previousTemplateId === resolvedTemplateId
-        ? previousTemplateId
-        : resolvedTemplateId,
-    );
-  }, []);
 
   const unloadPreviewSound = useCallback(async () => {
     const sound = previewSoundRef.current;
@@ -834,6 +971,142 @@ export default function EditorScreen() {
     track,
   ]);
 
+  const persistProjectSnapshot = useCallback(async (): Promise<boolean> => {
+    const hasRemoteProject = !!currentProjectId;
+    const hasLocalProject = !!currentLocalProjectId;
+    if (!hasRemoteProject && !hasLocalProject) return false;
+    if (hasRemoteProject && shouldWaitForProjectMedia) return false;
+
+    const roundedTrimStart = Math.round(trimStart * 100) / 100;
+    const roundedTrimEnd = Math.round(trimEnd * 100) / 100;
+    const normalizedTitle = projectTitle.trim() || DEFAULT_PROJECT_TITLE;
+    const trackedProjectId = currentProjectId
+      ? String(currentProjectId)
+      : (currentLocalProjectId ?? "local_draft");
+    const nextSnapshot = JSON.stringify({
+      title: normalizedTitle,
+      templateId,
+      templateTweaks: serializedTemplateTweaks,
+      aspectRatio,
+      trimStart: roundedTrimStart,
+      trimEnd: roundedTrimEnd,
+      photoUri,
+      audioUri,
+    });
+
+    if (nextSnapshot === lastSavedSnapshotRef.current) {
+      return true;
+    }
+
+    setEditorSaveStatus("saving");
+    try {
+      if (isLocalGuest && currentLocalProjectId) {
+        await upsertLocalProject({
+          id: currentLocalProjectId,
+          title: normalizedTitle,
+          templateId,
+          templateTweaks: serializedTemplateTweaks,
+          aspectRatio,
+          photoUri,
+          photoName,
+          audioUri,
+          audioName,
+          trimStart: roundedTrimStart,
+          trimEnd: roundedTrimEnd,
+          status: "draft",
+        });
+      } else if (currentProjectId) {
+        if (!remoteTemplateTweaksUnsupportedRef.current) {
+          try {
+            await updateProject({
+              projectId: currentProjectId,
+              title: normalizedTitle,
+              templateId,
+              templateTweaks: serializedTemplateTweaks,
+              aspectRatio,
+              trimStart: roundedTrimStart,
+              trimEnd: roundedTrimEnd,
+              photoUri,
+              photoName,
+              audioUri,
+              audioName,
+            });
+          } catch (error) {
+            if (!isTemplateTweaksValidationError(error)) {
+              throw error;
+            }
+            remoteTemplateTweaksUnsupportedRef.current = true;
+            await updateProject({
+              projectId: currentProjectId,
+              title: normalizedTitle,
+              templateId,
+              aspectRatio,
+              trimStart: roundedTrimStart,
+              trimEnd: roundedTrimEnd,
+              photoUri,
+              photoName,
+              audioUri,
+              audioName,
+            });
+          }
+        } else {
+          await updateProject({
+            projectId: currentProjectId,
+            title: normalizedTitle,
+            templateId,
+            aspectRatio,
+            trimStart: roundedTrimStart,
+            trimEnd: roundedTrimEnd,
+            photoUri,
+            photoName,
+            audioUri,
+            audioName,
+          });
+        }
+        await setCachedTemplateTweaks(
+          String(currentProjectId),
+          serializedTemplateTweaks,
+        );
+      } else {
+        return false;
+      }
+
+      lastSavedSnapshotRef.current = nextSnapshot;
+      if (!initialSnapshotRef.current) {
+        initialSnapshotRef.current = nextSnapshot;
+      }
+      setEditorSaveStatus("saved");
+      track("project_autosave_succeeded", {
+        projectId: trackedProjectId,
+      });
+      return true;
+    } catch {
+      setEditorSaveStatus("error");
+      track("project_autosave_failed", {
+        projectId: trackedProjectId,
+      });
+      return false;
+    }
+  }, [
+    currentProjectId,
+    currentLocalProjectId,
+    shouldWaitForProjectMedia,
+    trimStart,
+    trimEnd,
+    projectTitle,
+    templateId,
+    serializedTemplateTweaks,
+    aspectRatio,
+    photoUri,
+    photoName,
+    audioUri,
+    audioName,
+    isLocalGuest,
+    track,
+    upsertLocalProject,
+    updateProject,
+  ]);
+
   useEffect(() => {
     const hasRemoteProject = !!currentProjectId;
     const hasLocalProject = !!currentLocalProjectId;
@@ -849,6 +1122,7 @@ export default function EditorScreen() {
     const nextSnapshot = JSON.stringify({
       title: normalizedTitle,
       templateId,
+      templateTweaks: serializedTemplateTweaks,
       aspectRatio,
       trimStart: roundedTrimStart,
       trimEnd: roundedTrimEnd,
@@ -884,57 +1158,18 @@ export default function EditorScreen() {
 
     if (autosaveTimerRef.current) {
       clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = null;
     }
     setEditorSaveStatus("saving");
 
-    autosaveTimerRef.current = setTimeout(async () => {
-      try {
-        if (isLocalGuest && currentLocalProjectId) {
-          await upsertLocalProject({
-            id: currentLocalProjectId,
-            title: normalizedTitle,
-            templateId,
-            aspectRatio,
-            photoUri,
-            photoName,
-            audioUri,
-            audioName,
-            trimStart: roundedTrimStart,
-            trimEnd: roundedTrimEnd,
-            status: "draft",
-          });
-        } else if (currentProjectId) {
-          await updateProject({
-            projectId: currentProjectId,
-            title: normalizedTitle,
-            templateId,
-            aspectRatio,
-            trimStart: roundedTrimStart,
-            trimEnd: roundedTrimEnd,
-            photoUri,
-            photoName,
-            audioUri,
-            audioName,
-          });
-        } else {
-          return;
-        }
-        lastSavedSnapshotRef.current = nextSnapshot;
-        setEditorSaveStatus("saved");
-        track("project_autosave_succeeded", {
-          projectId: trackedProjectId,
-        });
-      } catch {
-        setEditorSaveStatus("error");
-        track("project_autosave_failed", {
-          projectId: trackedProjectId,
-        });
-      }
+    autosaveTimerRef.current = setTimeout(() => {
+      void persistProjectSnapshot();
     }, 700);
 
     return () => {
       if (autosaveTimerRef.current) {
         clearTimeout(autosaveTimerRef.current);
+        autosaveTimerRef.current = null;
       }
     };
   }, [
@@ -945,6 +1180,7 @@ export default function EditorScreen() {
     forceAutosaveTick,
     projectTitle,
     templateId,
+    serializedTemplateTweaks,
     aspectRatio,
     trimStart,
     trimEnd,
@@ -953,8 +1189,7 @@ export default function EditorScreen() {
     audioUri,
     audioName,
     track,
-    upsertLocalProject,
-    updateProject,
+    persistProjectSnapshot,
   ]);
 
   useEffect(() => {
@@ -985,16 +1220,27 @@ export default function EditorScreen() {
   const handleCloseEditor = useCallback(() => {
     void (async () => {
       try {
+        if (autosaveTimerRef.current) {
+          clearTimeout(autosaveTimerRef.current);
+          autosaveTimerRef.current = null;
+        }
+        await persistProjectSnapshot();
         if (isLocalGuest) {
           await createLocalDraftProject();
         } else {
           await createDraftProject();
         }
       } finally {
-        router.replace("/(tabs)" as const);
+        router.replace("/" as const);
       }
     })();
-  }, [isLocalGuest, createLocalDraftProject, createDraftProject, router]);
+  }, [
+    isLocalGuest,
+    createLocalDraftProject,
+    createDraftProject,
+    persistProjectSnapshot,
+    router,
+  ]);
 
   const handleSwapMedia = useCallback(
     (initialTab: "photo" | "audio") => {
@@ -1010,6 +1256,8 @@ export default function EditorScreen() {
           audioName,
           aspectRatio,
           templateId,
+          templateTweaks: serializedTemplateTweaks,
+          showTemplateInfo: showTemplateInfo ? "1" : "0",
           trimStart: String(trimStart),
           trimEnd: String(trimEnd),
           initialTab,
@@ -1028,6 +1276,8 @@ export default function EditorScreen() {
       audioName,
       aspectRatio,
       templateId,
+      serializedTemplateTweaks,
+      showTemplateInfo,
       trimStart,
       trimEnd,
     ],
@@ -1041,33 +1291,44 @@ export default function EditorScreen() {
     !isCheckingFiles;
 
   const handleExport = useCallback(() => {
-    if (!canExport) {
-      return;
-    }
-    const [safeTrimStart, safeTrimEnd] = clampTrimRange(
-      trimStart,
-      trimEnd,
-      audioDurationSec,
-      minTrimDuration,
-      maxTrimDuration,
-    );
+    void (async () => {
+      if (!canExport) {
+        return;
+      }
 
-    router.push({
-      pathname: "/create/rendering",
-      params: {
-        projectId: currentProjectId ? String(currentProjectId) : "",
-        localProjectId: currentLocalProjectId ?? "",
-        title: projectTitle,
-        photoUri: encodeUriParam(photoUri),
-        photoName,
-        audioUri: encodeUriParam(audioUri),
-        audioName,
-        trimStart: String(safeTrimStart),
-        trimEnd: String(safeTrimEnd),
-        aspectRatio,
-        templateId,
-      },
-    });
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+        autosaveTimerRef.current = null;
+      }
+      await persistProjectSnapshot();
+
+      const [safeTrimStart, safeTrimEnd] = clampTrimRange(
+        trimStart,
+        trimEnd,
+        audioDurationSec,
+        minTrimDuration,
+        maxTrimDuration,
+      );
+
+      router.push({
+        pathname: "/create/rendering",
+        params: {
+          projectId: currentProjectId ? String(currentProjectId) : "",
+          localProjectId: currentLocalProjectId ?? "",
+          title: projectTitle,
+          photoUri: encodeUriParam(photoUri),
+          photoName,
+          audioUri: encodeUriParam(audioUri),
+          audioName,
+          trimStart: String(safeTrimStart),
+          trimEnd: String(safeTrimEnd),
+          aspectRatio,
+          templateId,
+          templateTweaks: serializedTemplateTweaks,
+          showTemplateInfo: showTemplateInfo ? "1" : "0",
+        },
+      });
+    })();
   }, [
     canExport,
     router,
@@ -1085,7 +1346,112 @@ export default function EditorScreen() {
     maxTrimDuration,
     aspectRatio,
     templateId,
+    serializedTemplateTweaks,
+    showTemplateInfo,
+    persistProjectSnapshot,
   ]);
+
+  const handleTemplateChange = useCallback((nextTemplateId: string) => {
+    const resolvedId = resolveTemplateId(nextTemplateId);
+    setTemplateId((prev) => (prev === resolvedId ? prev : resolvedId));
+  }, []);
+
+  const handleOpenEditMedia = useCallback(() => {
+    track("editor_controls_opened", { surface: "edit_media" });
+    setIsEditMediaModalVisible(true);
+  }, [track]);
+
+  const handleCloseEditMedia = useCallback(() => {
+    setIsEditMediaModalVisible(false);
+  }, []);
+
+  const handleApplyEditMedia = useCallback(
+    (next: { aspectRatio: AspectRatio; templateId: string }) => {
+      setAspectRatio(next.aspectRatio);
+      handleTemplateChange(next.templateId);
+      setIsEditMediaModalVisible(false);
+    },
+    [handleTemplateChange],
+  );
+
+  const handleOpenTemplateCustomize = useCallback(() => {
+    track("editor_controls_opened", { surface: "template" });
+    setIsTemplateCustomizeVisible(true);
+  }, [track]);
+
+  const handleToggleTemplateInfo = useCallback(() => {
+    setShowTemplateInfo((prev) => {
+      const next = !prev;
+      track("editor_controls_opened", {
+        surface: next ? "template_info_on" : "template_info_off",
+      });
+      return next;
+    });
+  }, [track]);
+
+  const handleToggleAspectRatio = useCallback(() => {
+    setAspectRatio((prev) => {
+      const next = prev === "9:16" ? "1:1" : "9:16";
+      track("editor_controls_opened", {
+        surface: next === "9:16" ? "aspect_ratio_9x16" : "aspect_ratio_1x1",
+      });
+      return next;
+    });
+  }, [track]);
+
+  const handleCloseTemplateCustomize = useCallback(() => {
+    setIsTemplateCustomizeVisible(false);
+  }, []);
+
+  const handleApplyTemplateCustomize = useCallback(
+    (next: TemplateTweaks) => {
+      const normalizedNext = normalizeTemplateTweaks(next);
+      if (normalizedNext.spinSpeed !== templateTweaks.spinSpeed) {
+        track("template_tweak_changed", { control: "spin_speed" });
+      }
+      if (normalizedNext.recordTransparency !== templateTweaks.recordTransparency) {
+        track("template_tweak_changed", { control: "record_transparency" });
+      }
+      if (normalizedNext.backgroundBlur !== templateTweaks.backgroundBlur) {
+        track("template_tweak_changed", { control: "background_blur" });
+      }
+      if (normalizedNext.rotationStartDeg !== templateTweaks.rotationStartDeg) {
+        track("template_tweak_changed", { control: "rotation_start_angle" });
+      }
+      if (normalizedNext.rotationDirection !== templateTweaks.rotationDirection) {
+        track("template_tweak_changed", { control: "rotation_direction" });
+      }
+      if (
+        (normalizedNext.stageBackgroundColor ?? "") !==
+          (templateTweaks.stageBackgroundColor ?? "") ||
+        (normalizedNext.stageBackgroundImageUri ?? "") !==
+          (templateTweaks.stageBackgroundImageUri ?? "")
+      ) {
+        track("template_tweak_changed", { control: "stage_background" });
+      }
+      setTemplateTweaks(normalizedNext);
+      setIsTemplateCustomizeVisible(false);
+    },
+    [templateTweaks, track],
+  );
+
+  const handleTemplateSelectedFromEditMedia = useCallback(
+    (nextTemplateId: string) => {
+      track("template_selected_from_edit_media", {
+        templateId: resolveTemplateId(nextTemplateId),
+      });
+    },
+    [track],
+  );
+
+  const handleSwapMediaFromEditMedia = useCallback(
+    (tab: "photo" | "audio") => {
+      track("media_swap_started_from_edit_media", { media_type: tab });
+      setIsEditMediaModalVisible(false);
+      handleSwapMedia(tab);
+    },
+    [handleSwapMedia, track],
+  );
 
   const trimmedDuration = Math.max(0, trimEnd - trimStart);
   const showMissingNotice = !isCheckingFiles && (missingFiles.photo || missingFiles.audio);
@@ -1107,14 +1473,16 @@ export default function EditorScreen() {
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       <View style={styles.header}>
-        <Pressable
-          onPress={handleCloseEditor}
-          style={styles.headerButton}
-          accessibilityLabel="Go back"
-          accessibilityRole="button"
-        >
-          <Ionicons name="close" size={24} color={colors.dark.text} />
-        </Pressable>
+        <View style={[styles.headerSide, styles.headerSideLeft]}>
+          <Pressable
+            onPress={handleCloseEditor}
+            style={styles.headerButton}
+            accessibilityLabel="Go back"
+            accessibilityRole="button"
+          >
+            <Ionicons name="close" size={24} color={colors.dark.text} />
+          </Pressable>
+        </View>
 
         <Pressable
           onPress={handleOpenProjectNameModal}
@@ -1132,24 +1500,26 @@ export default function EditorScreen() {
           />
         </Pressable>
 
-        <Pressable
-          onPress={handleExport}
-          style={({ pressed }) => [
-            styles.exportButton,
-            !canExport && styles.exportButtonDisabled,
-            pressed && canExport && styles.exportButtonPressed,
-          ]}
-          disabled={!canExport}
-          accessibilityLabel="Export video"
-          accessibilityRole="button"
-          accessibilityState={{ disabled: !canExport }}
-        >
-          {isCheckingFiles ? (
-            <ActivityIndicator size="small" color="#FFFFFF" />
-          ) : (
-            <Text style={styles.exportText}>Export</Text>
-          )}
-        </Pressable>
+        <View style={[styles.headerSide, styles.headerSideRight]}>
+          <Pressable
+            onPress={handleExport}
+            style={({ pressed }) => [
+              styles.exportButton,
+              !canExport && styles.exportButtonDisabled,
+              pressed && canExport && styles.exportButtonPressed,
+            ]}
+            disabled={!canExport}
+            accessibilityLabel="Export video"
+            accessibilityRole="button"
+            accessibilityState={{ disabled: !canExport }}
+          >
+            {isCheckingFiles ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Text style={styles.exportText}>Export</Text>
+            )}
+          </Pressable>
+        </View>
       </View>
 
       <Modal
@@ -1247,76 +1617,87 @@ export default function EditorScreen() {
         </View>
       )}
 
-      <View style={styles.previewContainer}>
-        <TemplateStageComponent
-          width={stageWidth}
-          height={stageHeight}
-          aspectRatio={aspectRatio}
-          photoUri={photoUri && !isCheckingFiles && !missingFiles.photo ? photoUri : null}
-          isPlaying={isPlaying}
-          playbackLabel={playbackLabel}
-          trackTitle={trackTitle}
-          subtitle={subtitle}
-          onTogglePlay={handlePlayPause}
-        />
-      </View>
-
-      <View style={styles.controls}>
-        <View style={styles.controlsTopRow}>
-          <TemplateToggle
-            value={templateId}
-            options={TEMPLATE_OPTIONS}
-            onChange={handleTemplateChange}
+      <View style={styles.previewContainer} onLayout={handlePreviewContainerLayout}>
+        <View style={[styles.previewStageFrame, { width: stageWidth, height: stageHeight }]}>
+          <TemplateStageComponent
+            width={stageWidth}
+            height={stageHeight}
+            aspectRatio={aspectRatio}
+            photoUri={photoUri && !missingFiles.photo ? photoUri : null}
+            isPlaying={isPlaying}
+            playbackLabel={playbackLabel}
+            trackTitle={trackTitle}
+            subtitle={subtitle}
+            templateTweaks={templateTweaks}
+            onTogglePlay={handlePlayPause}
           />
-          <AspectRatioToggle value={aspectRatio} onChange={setAspectRatio} />
+          <View style={styles.previewActionRow}>
+            <Pressable
+              onPress={handleOpenTemplateCustomize}
+              style={({ pressed }) => [
+                styles.previewTemplateButton,
+                pressed && styles.previewTemplateButtonPressed,
+              ]}
+              accessibilityLabel="Open template settings"
+              accessibilityRole="button"
+            >
+              <Ionicons name="settings-outline" size={18} color={colors.dark.text} />
+            </Pressable>
+            <Pressable
+              onPress={handleToggleTemplateInfo}
+              style={({ pressed }) => [
+                styles.previewInfoToggleButton,
+                showTemplateInfo && styles.previewInfoToggleButtonActive,
+                pressed && styles.previewTemplateButtonPressed,
+              ]}
+              accessibilityLabel={
+                showTemplateInfo
+                  ? "Hide template information"
+                  : "Show template information"
+              }
+              accessibilityRole="button"
+              accessibilityState={{ selected: showTemplateInfo }}
+            >
+              <Ionicons
+                name="information-circle-outline"
+                size={18}
+                color={showTemplateInfo ? colors.dark.background : colors.dark.text}
+              />
+            </Pressable>
+            <Pressable
+              onPress={handleOpenEditMedia}
+              style={({ pressed }) => [
+                styles.previewEditTemplateButton,
+                pressed && styles.previewEditTemplateButtonPressed,
+              ]}
+              accessibilityLabel="Edit template settings"
+              accessibilityRole="button"
+            >
+              <Ionicons name="images-outline" size={15} color={colors.dark.text} />
+              <Text style={styles.previewEditTemplateText}>Edit Template</Text>
+            </Pressable>
+          </View>
+          <Pressable
+            onPress={handleToggleAspectRatio}
+            style={({ pressed }) => [
+              styles.previewAspectRatioBadge,
+              pressed && styles.previewAspectRatioBadgePressed,
+            ]}
+            accessibilityLabel={`Switch aspect ratio (currently ${aspectRatio})`}
+            accessibilityRole="button"
+          >
+            <Text style={styles.previewAspectRatioText}>{aspectRatio}</Text>
+          </Pressable>
+          {showTemplateInfo ? (
+            <TemplateInfoBadge
+              templateId={templateId}
+              templateTweaks={templateTweaks}
+              aspectRatio={aspectRatio}
+              compact
+              style={styles.previewTemplateInfoBadge}
+            />
+          ) : null}
         </View>
-        <Text style={styles.timestamp}>
-          {formatClock(previewPositionSec)} / {formatClock(trimmedDuration)}
-        </Text>
-      </View>
-
-      <View style={styles.mediaChips}>
-        <Pressable
-          style={[styles.chip, missingFiles.photo && styles.chipMissing]}
-          onPress={() => handleSwapMedia("photo")}
-          accessibilityLabel={`Photo: ${photoName}. Tap to change.`}
-          accessibilityRole="button"
-        >
-          <Ionicons
-            name={missingFiles.photo ? "warning" : "image"}
-            size={16}
-            color={missingFiles.photo ? colors.accent.warning : colors.accent.primary}
-          />
-          <Text style={styles.chipText} numberOfLines={1}>
-            {photoName}
-          </Text>
-          <Ionicons
-            name="swap-horizontal"
-            size={14}
-            color={colors.dark.textSecondary}
-          />
-        </Pressable>
-
-        <Pressable
-          style={[styles.chip, missingFiles.audio && styles.chipMissing]}
-          onPress={() => handleSwapMedia("audio")}
-          accessibilityLabel={`Audio: ${audioName}. Tap to change.`}
-          accessibilityRole="button"
-        >
-          <Ionicons
-            name={missingFiles.audio ? "warning" : "musical-note"}
-            size={16}
-            color={missingFiles.audio ? colors.accent.warning : colors.accent.primary}
-          />
-          <Text style={styles.chipText} numberOfLines={1}>
-            {audioName}
-          </Text>
-          <Ionicons
-            name="swap-horizontal"
-            size={14}
-            color={colors.dark.textSecondary}
-          />
-        </Pressable>
       </View>
 
       <View style={styles.trimmerSection}>
@@ -1326,6 +1707,7 @@ export default function EditorScreen() {
           startSec={trimStart}
           endSec={trimEnd}
           onTrimChange={handleTrimChange}
+          centerTimeLabel={`${formatClock(previewPositionSec)} / ${formatClock(trimmedDuration)}`}
           isPlaying={isPlaying}
           playbackProgressSec={previewPositionSec}
           onTogglePlay={handlePlayPause}
@@ -1333,6 +1715,30 @@ export default function EditorScreen() {
           maxDuration={maxTrimDuration}
         />
       </View>
+
+      <EditMediaModal
+        visible={isEditMediaModalVisible}
+        aspectRatio={aspectRatio}
+        templateId={templateId}
+        templateDefinitions={templateDefinitions}
+        onTemplateSelectionChanged={handleTemplateSelectedFromEditMedia}
+        onClose={handleCloseEditMedia}
+        onApply={handleApplyEditMedia}
+        onSwapPhoto={() => handleSwapMediaFromEditMedia("photo")}
+        onSwapAudio={() => handleSwapMediaFromEditMedia("audio")}
+        photoLabel={photoName}
+        audioLabel={audioName}
+      />
+
+      <TemplateCustomizeModal
+        visible={isTemplateCustomizeVisible}
+        templateId={templateId}
+        photoUri={photoUri}
+        value={templateTweaks}
+        showTemplateInfo={showTemplateInfo}
+        onClose={handleCloseTemplateCustomize}
+        onApply={handleApplyTemplateCustomize}
+      />
     </SafeAreaView>
   );
 }
@@ -1345,9 +1751,19 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
+  },
+  headerSide: {
+    width: 96,
+    minHeight: 40,
+    justifyContent: "center",
+  },
+  headerSideLeft: {
+    alignItems: "flex-start",
+  },
+  headerSideRight: {
+    alignItems: "flex-end",
   },
   headerButton: {
     width: 40,
@@ -1362,6 +1778,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: colors.dark.text,
     maxWidth: "88%",
+    textAlign: "center",
   },
   headerTitleButton: {
     flex: 1,
@@ -1369,8 +1786,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    textAlign: "center",
-    marginHorizontal: spacing.sm,
+    marginHorizontal: spacing.xs,
   },
   exportButton: {
     minWidth: 84,
@@ -1501,209 +1917,103 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 0,
   },
-  turntableStage: {
-    width: "100%",
-    borderRadius: radius.lg,
-    overflow: "hidden",
-    backgroundColor: "#BCBEC2",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(255,255,255,0.2)",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 14 },
-    shadowOpacity: 0.35,
-    shadowRadius: 24,
-    elevation: 10,
-  },
-  stageBackdropImage: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.26,
-  },
-  stageBackdropTint: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(196,198,204,0.88)",
-  },
-  stageHaloTop: {
-    position: "absolute",
-    top: -90,
-    right: -72,
-    width: 260,
-    height: 220,
-    borderRadius: 130,
-    backgroundColor: "rgba(255,255,255,0.4)",
-    transform: [{ rotate: "-12deg" }],
-  },
-  stageHaloBottom: {
-    position: "absolute",
-    bottom: -110,
-    left: -40,
-    width: 300,
-    height: 210,
-    borderRadius: 160,
-    backgroundColor: "rgba(255,255,255,0.36)",
-    transform: [{ rotate: "15deg" }],
-  },
-  stageBottomShade: {
-    position: "absolute",
-    left: -70,
-    right: -70,
-    bottom: 0,
-    height: 210,
-    borderTopLeftRadius: 240,
-    borderTopRightRadius: 240,
-    backgroundColor: "rgba(18,18,24,0.18)",
-  },
-  stageVinylWrap: {
-    position: "absolute",
-  },
-  tonearmPivot: {
-    position: "absolute",
-    top: 30,
-    right: 28,
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: "rgba(122,123,129,0.25)",
-  },
-  tonearmArm: {
-    position: "absolute",
-    top: 56,
-    right: 58,
-    width: 10,
-    height: 196,
-    borderRadius: radius.full,
-    backgroundColor: "#CED1D4",
-    borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.28)",
-  },
-  tonearmHead: {
-    position: "absolute",
-    top: 244,
-    right: 45,
-    width: 26,
-    height: 40,
-    borderRadius: 8,
-    backgroundColor: "#24252B",
-    transform: [{ rotate: "26deg" }],
-  },
-  stageTextBlock: {
-    position: "absolute",
-    left: spacing.lg,
-    right: spacing.lg,
-    bottom: 94,
-    gap: spacing.xs,
-  },
-  nowPlayingLabel: {
-    ...typography.body,
-    color: "#FFFFFF",
-    fontSize: 32,
-    lineHeight: 34,
-    fontWeight: "700",
-    textShadowColor: "rgba(0,0,0,0.35)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
-  },
-  trackTitle: {
-    ...typography.body,
-    color: "rgba(255,255,255,0.96)",
-    fontSize: 18,
-    fontWeight: "700",
-    textShadowColor: "rgba(0,0,0,0.35)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
-  },
-  trackSubtitlePill: {
-    alignSelf: "flex-start",
-    marginTop: spacing.xs,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.full,
-    backgroundColor: "rgba(255,255,255,0.9)",
-  },
-  trackSubtitle: {
-    ...typography.caption,
-    color: "rgba(21,22,26,0.9)",
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  stageTransport: {
-    position: "absolute",
-    left: spacing.lg,
-    right: spacing.lg,
-    bottom: spacing.lg,
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  stageTransportSpacer: {
-    flex: 1,
-  },
-  stageControlPill: {
-    minWidth: 56,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: "#1E1F24",
+  previewStageFrame: {
+    position: "relative",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing.md,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 4,
   },
-  stageControlPillPressed: {
-    opacity: 0.82,
-    transform: [{ scale: 0.97 }],
-  },
-  stageControlPillGhost: {
-    marginLeft: spacing.sm,
-  },
-  controls: {
-    alignItems: "stretch",
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.xs,
-    gap: spacing.sm,
-  },
-  controlsTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  timestamp: {
-    ...typography.caption,
-    color: colors.dark.textSecondary,
-    fontVariant: ["tabular-nums"],
-    textAlign: "center",
-  },
-  mediaChips: {
-    flexDirection: "row",
-    paddingHorizontal: spacing.lg,
-    gap: spacing.sm,
-    paddingBottom: spacing.sm,
-  },
-  chip: {
-    flex: 1,
+  previewActionRow: {
+    position: "absolute",
+    left: spacing.sm,
+    bottom: spacing.sm,
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.xs,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+  },
+  previewTemplateButton: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.full,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.dark.surface,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+  previewInfoToggleButton: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.full,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.dark.surface,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+  previewInfoToggleButtonActive: {
+    backgroundColor: colors.dark.text,
+    borderColor: "rgba(255,255,255,0.72)",
+  },
+  previewTemplateButtonPressed: {
+    opacity: 0.82,
+    transform: [{ scale: 0.96 }],
+  },
+  previewEditTemplateButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    minHeight: 40,
+    paddingHorizontal: spacing.sm,
     borderRadius: radius.full,
     backgroundColor: colors.dark.surface,
-  },
-  chipMissing: {
     borderWidth: 1,
-    borderColor: "rgba(255,149,0,0.5)",
+    borderColor: "rgba(255,255,255,0.12)",
   },
-  chipText: {
+  previewEditTemplateButtonPressed: {
+    opacity: 0.82,
+  },
+  previewEditTemplateText: {
     ...typography.caption,
     color: colors.dark.text,
-    flex: 1,
+    fontWeight: "700",
+  },
+  previewAspectRatioBadge: {
+    position: "absolute",
+    right: spacing.sm,
+    bottom: spacing.sm,
+    minHeight: 40,
+    minWidth: 56,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.full,
+    backgroundColor: colors.dark.surface,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+  previewAspectRatioText: {
+    ...typography.caption,
+    color: colors.dark.text,
+    fontWeight: "700",
+    letterSpacing: 0.3,
+  },
+  previewAspectRatioBadgePressed: {
+    opacity: 0.82,
+    transform: [{ scale: 0.96 }],
+  },
+  previewTemplateInfoBadge: {
+    position: "absolute",
+    top: spacing.sm,
+    left: spacing.sm,
+    right: spacing.sm,
   },
   trimmerSection: {
     paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
     paddingBottom: spacing.lg,
     gap: spacing.sm,
   },
@@ -1713,5 +2023,7 @@ const styles = StyleSheet.create({
     color: colors.dark.textSecondary,
     textTransform: "uppercase",
     letterSpacing: 0.5,
+    textAlign: "center",
+    alignSelf: "center",
   },
 });

@@ -4,19 +4,26 @@ import {
   Text,
   StyleSheet,
   Pressable,
-  Image,
   Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { usePostHog } from "posthog-react-native";
 import * as Sharing from "expo-sharing";
 import * as MediaLibrary from "expo-media-library";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
+import { TemplateInfoBadge } from "@/components/create/TemplateInfoBadge";
+import { VinylPreview } from "@/components/create/VinylPreview";
 import type { EventName } from "@/lib/analytics";
 import { decodeUriParam } from "@/lib/uri";
 import { normalizeMediaUri } from "@/lib/mediaUri";
+import {
+  getTemplateDefinition,
+  normalizeTemplateTweaks,
+  parseTemplateTweaksParam,
+  resolveTemplateId,
+} from "@/lib/templates";
 
 function firstParam(param: string | string[] | undefined) {
   return Array.isArray(param) ? param[0] : param;
@@ -29,9 +36,21 @@ export default function ShareScreen() {
     videoUri: string;
     projectId: string;
     posterUri?: string;
+    templateId?: string;
+    templateTweaks?: string;
+    aspectRatio?: string;
+    showTemplateInfo?: string;
   }>();
   const videoUri = normalizeMediaUri(decodeUriParam(firstParam(params.videoUri)));
   const posterUri = normalizeMediaUri(decodeUriParam(firstParam(params.posterUri)));
+  const templateId = resolveTemplateId(firstParam(params.templateId));
+  const parsedTemplateTweaks = parseTemplateTweaksParam(
+    firstParam(params.templateTweaks),
+  );
+  const templateTweaks = parsedTemplateTweaks ?? normalizeTemplateTweaks();
+  const previewTone = getTemplateDefinition(templateId).parity.vinylTone;
+  const aspectRatio = firstParam(params.aspectRatio) === "1:1" ? "1:1" : "9:16";
+  const showTemplateInfo = firstParam(params.showTemplateInfo) === "1";
 
   const [savedToRoll, setSavedToRoll] = useState(false);
   const [saveError, setSaveError] = useState<"permission" | "failed" | null>(
@@ -159,11 +178,15 @@ export default function ShareScreen() {
         {/* Video preview */}
         <View style={styles.previewContainer}>
           {posterUri ? (
-            <Image
-              source={{ uri: posterUri }}
-              style={styles.previewImage}
-              resizeMode="cover"
-              accessibilityLabel="Exported video cover image"
+            <VinylPreview
+              imageUri={posterUri}
+              size={184}
+              spinning={false}
+              tone={previewTone}
+              spinSpeed={templateTweaks.spinSpeed}
+              discOpacity={Math.min(Math.max(1 - templateTweaks.recordTransparency, 0.35), 1)}
+              rotationStartDeg={templateTweaks.rotationStartDeg}
+              rotationDirection={templateTweaks.rotationDirection}
             />
           ) : (
             <Ionicons
@@ -172,6 +195,15 @@ export default function ShareScreen() {
               color={colors.dark.textSecondary}
             />
           )}
+          {showTemplateInfo ? (
+            <TemplateInfoBadge
+              templateId={templateId}
+              templateTweaks={templateTweaks}
+              aspectRatio={aspectRatio}
+              compact
+              style={styles.shareTemplateInfoBadge}
+            />
+          ) : null}
         </View>
 
         {/* Share buttons */}
@@ -269,15 +301,18 @@ const styles = StyleSheet.create({
     width: 200,
     height: 200,
     borderRadius: radius.lg,
-    backgroundColor: colors.dark.surface,
+    backgroundColor: "transparent",
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
     marginBottom: spacing.xl,
+    position: "relative",
   },
-  previewImage: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: radius.lg,
+  shareTemplateInfoBadge: {
+    position: "absolute",
+    left: spacing.xs,
+    right: spacing.xs,
+    bottom: spacing.xs,
   },
   actions: {
     width: "100%",

@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Slot, useRouter, useSegments } from "expo-router";
+import { Redirect, Slot, useSegments } from "expo-router";
 import { ClerkProvider, ClerkLoaded, useAuth } from "@clerk/clerk-expo";
 import { ConvexProviderWithClerk } from "convex/react-clerk";
 import { PostHogProvider } from "posthog-react-native";
@@ -22,24 +22,26 @@ function AuthGate() {
   const { isSignedIn, isLoaded } = useAuth();
   const { isHydrated, isLocalGuest, clearLocalSession } = useLocalSession();
   const segments = useSegments();
-  const router = useRouter();
 
   useEffect(() => {
-    if (!isLoaded || !isHydrated) return;
-
     if (isSignedIn && isLocalGuest) {
       void clearLocalSession();
     }
+  }, [isSignedIn, isLocalGuest, clearLocalSession]);
 
-    const hasSession = isSignedIn || isLocalGuest;
-    const inAuthGroup = segments[0] === "(auth)";
+  if (!isLoaded || !isHydrated) {
+    return null;
+  }
 
-    if (!hasSession && !inAuthGroup) {
-      router.replace("/(auth)/sign-in");
-    } else if (hasSession && inAuthGroup) {
-      router.replace("/(tabs)");
-    }
-  }, [isSignedIn, isLoaded, isHydrated, isLocalGuest, clearLocalSession, segments, router]);
+  const hasSession = Boolean(isSignedIn) || isLocalGuest;
+  const inAuthGroup = segments[0] === "(auth)";
+
+  if (!hasSession && !inAuthGroup) {
+    return <Redirect href="/(auth)/sign-in" />;
+  }
+  if (hasSession && inAuthGroup) {
+    return <Redirect href="/" />;
+  }
 
   return <Slot />;
 }
@@ -50,11 +52,11 @@ function AppStatusBar() {
   const child = segments[1];
 
   const isDarkSurface =
-    (root === "(tabs)" && child === "profile") ||
-    (root === "create" &&
-      (child === "editor" || child === "rendering" || child === "share"));
+    root === "create" &&
+    (child === "editor" || child === "rendering" || child === "share");
+  const isProfileSurface = root === "(tabs)" && child === "profile";
 
-  return <StatusBar style={isDarkSurface ? "light" : "dark"} />;
+  return <StatusBar style={isDarkSurface || isProfileSurface ? "light" : "dark"} />;
 }
 
 function AppWithProviders() {

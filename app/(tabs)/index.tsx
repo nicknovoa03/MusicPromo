@@ -3,6 +3,7 @@ import {
   View,
   Text,
   StyleSheet,
+  Platform,
   Pressable,
   FlatList,
   ActivityIndicator,
@@ -11,16 +12,18 @@ import {
   Alert,
   Modal,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useConvex, useMutation, useQuery } from "convex/react";
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
+import * as Haptics from "expo-haptics";
 import { usePostHog } from "posthog-react-native";
 import { api } from "../../convex/_generated/api";
 import type { Doc } from "../../convex/_generated/dataModel";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
 import type { EventName } from "@/lib/analytics";
 import { normalizeMediaUri } from "@/lib/mediaUri";
+import { getLocalArtistProfile } from "@/lib/localProfile";
 import { encodeUriParam } from "@/lib/uri";
 import { useLocalSession } from "@/providers/localSession";
 import {
@@ -48,17 +51,112 @@ function formatDate(timestamp: number) {
   });
 }
 
+function normalizeAvatarUri(value: string | null | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+let hasWarnedHapticsUnavailable = false;
+
+async function triggerSelectionHaptic(
+  type: "enter" | "toggle-on" | "toggle-off",
+) {
+  const hapticsCompat = Haptics as unknown as {
+    performAndroidHapticsAsync?: (
+      hapticType: Haptics.AndroidHaptics,
+    ) => Promise<void>;
+    impactAsync?: (
+      style?: Haptics.ImpactFeedbackStyle,
+    ) => Promise<void>;
+    selectionAsync?: () => Promise<void>;
+  };
+
+  const warnUnavailable = () => {
+    if (hasWarnedHapticsUnavailable) return;
+    hasWarnedHapticsUnavailable = true;
+    console.warn(
+      "Selection haptic unavailable in this dev client. Rebuild dev client to relink expo-haptics.",
+    );
+  };
+
+  const tryImpact = async (style: Haptics.ImpactFeedbackStyle) => {
+    if (typeof hapticsCompat.impactAsync !== "function") return false;
+    try {
+      await hapticsCompat.impactAsync(style);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const trySelection = async () => {
+    if (typeof hapticsCompat.selectionAsync !== "function") return false;
+    try {
+      await hapticsCompat.selectionAsync();
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  if (
+    Platform.OS === "android" &&
+    typeof hapticsCompat.performAndroidHapticsAsync === "function"
+  ) {
+    try {
+      const androidType =
+        type === "enter"
+          ? Haptics.AndroidHaptics.Context_Click
+          : Haptics.AndroidHaptics.Segment_Tick;
+      await hapticsCompat.performAndroidHapticsAsync(androidType);
+      return;
+    } catch (error) {
+      console.warn("Selection haptic failed:", error);
+      warnUnavailable();
+      return;
+    }
+  }
+
+  if (Platform.OS === "ios") {
+    const selectionWorked = await trySelection();
+    if (selectionWorked) return;
+    warnUnavailable();
+    return;
+  }
+
+  const impactStyle =
+    type === "enter"
+      ? Haptics.ImpactFeedbackStyle.Heavy
+      : type === "toggle-on"
+        ? Haptics.ImpactFeedbackStyle.Medium
+        : Haptics.ImpactFeedbackStyle.Light;
+  const impactWorked = await tryImpact(impactStyle);
+  if (impactWorked) return;
+
+  const selectionWorked = await trySelection();
+  if (selectionWorked) return;
+
+  warnUnavailable();
+}
+
 export default function HomeScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const convex = useConvex();
   const posthog = usePostHog();
   const { isLocalGuest } = useLocalSession();
+  const convexUser = useQuery(api.users.current);
   const projectsQuery = useQuery(api.projects.listByUser);
   const deleteProject = useMutation(api.projects.remove);
   const [localProjects, setLocalProjects] = useState<LocalProject[] | null>(null);
+  const [localAvatarUrl, setLocalAvatarUrl] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [actionProject, setActionProject] = useState<Project | null>(null);
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const longPressProjectIdRef = useRef<string | null>(null);
 
   const track = useCallback(
@@ -77,14 +175,19 @@ export default function HomeScreen() {
     useCallback(() => {
       if (!isLocalGuest) {
         setLocalProjects(null);
+        setLocalAvatarUrl(null);
         return;
       }
 
       let isActive = true;
       void (async () => {
-        const projects = await listLocalProjects();
+        const [projects, localProfile] = await Promise.all([
+          listLocalProjects(),
+          getLocalArtistProfile(),
+        ]);
         if (!isActive) return;
         setLocalProjects(projects);
+        setLocalAvatarUrl(localProfile.avatarImageUrl ?? null);
       })();
 
       return () => {
@@ -106,11 +209,26 @@ export default function HomeScreen() {
     }
   }, [convex, isLocalGuest, refreshLocalProjects]);
 
+  const profileAvatarUri = useMemo(() => {
+    if (isLocalGuest) return normalizeAvatarUri(localAvatarUrl);
+    return normalizeAvatarUri(convexUser?.avatarImageUrl ?? convexUser?.avatarUrl);
+  }, [convexUser?.avatarImageUrl, convexUser?.avatarUrl, isLocalGuest, localAvatarUrl]);
+
   const openProject = useCallback(
     (project: Project) => {
       const projectKey = getProjectId(project);
       if (longPressProjectIdRef.current === projectKey) {
         longPressProjectIdRef.current = null;
+        return;
+      }
+      if (isSelectionMode) {
+        const wasSelected = selectedProjectIds.includes(projectKey);
+        void triggerSelectionHaptic(wasSelected ? "toggle-off" : "toggle-on");
+        setSelectedProjectIds((prev) =>
+          prev.includes(projectKey)
+            ? prev.filter((id) => id !== projectKey)
+            : [...prev, projectKey],
+        );
         return;
       }
       if (deletingProjectId === projectKey) return;
@@ -128,8 +246,9 @@ export default function HomeScreen() {
             audioName: project.audioName ?? "",
             aspectRatio: project.aspectRatio,
             templateId: resolveTemplateId(project.templateId),
+            templateTweaks: project.templateTweaks ?? "",
             trimStart: String(project.trimStart ?? 0),
-            trimEnd: String(project.trimEnd ?? 30),
+            trimEnd: String(project.trimEnd ?? 5),
           },
         });
         return;
@@ -144,24 +263,53 @@ export default function HomeScreen() {
           audioName: project.audioName ?? "",
           aspectRatio: project.aspectRatio,
           templateId: resolveTemplateId(project.templateId),
+          templateTweaks: project.templateTweaks ?? "",
           trimStart: String(project.trimStart ?? 0),
-          trimEnd: String(project.trimEnd ?? 30),
+          trimEnd: String(project.trimEnd ?? 5),
         },
       });
     },
-    [deletingProjectId, router, track],
+    [deletingProjectId, isSelectionMode, router, selectedProjectIds, track],
   );
 
   const closeProjectActions = useCallback(() => {
     setActionProject(null);
   }, []);
 
+  const clearSelectionMode = useCallback(() => {
+    setIsSelectionMode(false);
+    setSelectedProjectIds([]);
+  }, []);
+
+  const toggleSelectionMode = useCallback(() => {
+    setIsSelectionMode((prev) => {
+      const next = !prev;
+      if (!next) {
+        setSelectedProjectIds([]);
+      } else {
+        closeProjectActions();
+      }
+      return next;
+    });
+  }, [closeProjectActions]);
+
+  const toggleProjectSelection = useCallback((projectKey: string) => {
+    const wasSelected = selectedProjectIds.includes(projectKey);
+    void triggerSelectionHaptic(wasSelected ? "toggle-off" : "toggle-on");
+    setSelectedProjectIds((prev) =>
+      prev.includes(projectKey)
+        ? prev.filter((id) => id !== projectKey)
+        : [...prev, projectKey],
+    );
+  }, [selectedProjectIds]);
+
   const openProjectActions = useCallback(
     (project: Project) => {
+      if (isSelectionMode) return;
       setActionProject(project);
       track("project_actions_opened", { projectId: getProjectId(project) });
     },
-    [track],
+    [isSelectionMode, track],
   );
 
   const runDeleteProject = useCallback(
@@ -228,15 +376,81 @@ export default function HomeScreen() {
   }, [isLocalGuest, localProjects, projectsQuery]);
   const isLoading = isLocalGuest ? localProjects === null : projectsQuery === undefined;
   const hasProjects = stableProjects.length > 0;
+  const selectedProjects = useMemo(
+    () =>
+      stableProjects.filter((project) =>
+        selectedProjectIds.includes(getProjectId(project)),
+      ),
+    [selectedProjectIds, stableProjects],
+  );
+
+  const runDeleteProjects = useCallback(
+    async (projects: Project[]) => {
+      if (!projects.length) return;
+      setIsBulkDeleting(true);
+      let failedCount = 0;
+      try {
+        for (const project of projects) {
+          try {
+            if (isLocalProject(project)) {
+              await removeLocalProject(project.id);
+            } else {
+              await deleteProject({ projectId: project._id });
+            }
+            track("project_deleted", { projectId: getProjectId(project) });
+          } catch {
+            failedCount += 1;
+          }
+        }
+
+        if (isLocalGuest) {
+          await refreshLocalProjects();
+        }
+
+        if (failedCount > 0) {
+          Alert.alert(
+            "Some projects could not be deleted",
+            `${failedCount} project${failedCount === 1 ? "" : "s"} failed to delete.`,
+          );
+        }
+      } finally {
+        setIsBulkDeleting(false);
+        clearSelectionMode();
+      }
+    },
+    [clearSelectionMode, deleteProject, isLocalGuest, refreshLocalProjects, track],
+  );
+
+  const handleBulkDelete = useCallback(() => {
+    if (!selectedProjects.length || isBulkDeleting) return;
+    track("project_delete_started", {
+      projectId: `bulk_${selectedProjects.length}`,
+    });
+    Alert.alert(
+      "Delete selected projects?",
+      `This will delete ${selectedProjects.length} project${selectedProjects.length === 1 ? "" : "s"}.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            void runDeleteProjects(selectedProjects);
+          },
+        },
+      ],
+    );
+  }, [isBulkDeleting, runDeleteProjects, selectedProjects, track]);
 
   const renderProjectCard = useCallback(
     ({ item }: { item: Project }) => {
       const projectKey = getProjectId(item);
       const previewUri = normalizeMediaUri(item.photoUri ?? item.exportedVideoUri);
       const isDeleting = deletingProjectId === projectKey;
+      const isSelected = selectedProjectIds.includes(projectKey);
 
       return (
-        <View style={styles.card}>
+        <View style={[styles.card, isSelectionMode && isSelected && styles.cardSelected]}>
           <Pressable
             style={({ pressed }) => [
               styles.cardPressable,
@@ -245,14 +459,38 @@ export default function HomeScreen() {
             onPress={() => openProject(item)}
             onLongPress={() => {
               longPressProjectIdRef.current = projectKey;
-              openProjectActions(item);
+              if (isSelectionMode) {
+                toggleProjectSelection(projectKey);
+                return;
+              }
+              void triggerSelectionHaptic("enter");
+              setIsSelectionMode(true);
+              setSelectedProjectIds([projectKey]);
             }}
             delayLongPress={220}
             disabled={isDeleting}
-            accessibilityLabel={`Open ${item.title ?? "Untitled Project"}`}
+            accessibilityLabel={
+              isSelectionMode
+                ? `${isSelected ? "Deselect" : "Select"} ${item.title ?? "Untitled Project"}`
+                : `Open ${item.title ?? "Untitled Project"}`
+            }
             accessibilityRole="button"
             accessibilityState={{ disabled: isDeleting }}
           >
+            {isSelectionMode ? (
+              <View
+                style={[
+                  styles.cardSelectBadge,
+                  isSelected && styles.cardSelectBadgeSelected,
+                ]}
+              >
+                <Ionicons
+                  name={isSelected ? "checkmark" : "ellipse-outline"}
+                  size={14}
+                  color={isSelected ? colors.light.background : colors.light.textSecondary}
+                />
+              </View>
+            ) : null}
             <View style={styles.thumbnail}>
               {previewUri ? (
                 <Image
@@ -276,49 +514,83 @@ export default function HomeScreen() {
             </View>
           </Pressable>
 
+          {!isSelectionMode ? (
+            <Pressable
+              style={styles.cardMenuButton}
+              onPress={() => openProjectActions(item)}
+              disabled={isDeleting}
+              accessibilityLabel={`Project actions for ${item.title ?? "Untitled Project"}`}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: isDeleting }}
+            >
+              {isDeleting ? (
+                <ActivityIndicator size="small" color={colors.light.textSecondary} />
+              ) : (
+                <Ionicons
+                  name="ellipsis-horizontal"
+                  size={16}
+                  color={colors.light.text}
+                />
+              )}
+            </Pressable>
+          ) : null}
+        </View>
+      );
+    },
+    [
+      deletingProjectId,
+      isSelectionMode,
+      openProject,
+      openProjectActions,
+      selectedProjectIds,
+      toggleProjectSelection,
+    ],
+  );
+
+  const isDeletingSelectedProject =
+    !!actionProject && deletingProjectId === getProjectId(actionProject);
+  const selectedCount = selectedProjectIds.length;
+  const isCancelSelectionAction = selectedCount === 0;
+  const bulkDeleteBottom = Math.max(90, insets.bottom + 68);
+
+  return (
+    <SafeAreaView style={styles.container} edges={["top"]}>
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>
+          {isSelectionMode ? `${selectedCount} Selected` : "Projects"}
+        </Text>
+        <View style={styles.headerActions}>
           <Pressable
-            style={styles.cardMenuButton}
-            onPress={() => openProjectActions(item)}
-            disabled={isDeleting}
-            accessibilityLabel={`Project actions for ${item.title ?? "Untitled Project"}`}
+            style={styles.selectModeButton}
+            onPress={isSelectionMode ? clearSelectionMode : toggleSelectionMode}
+            accessibilityLabel={
+              isSelectionMode ? "Exit multi-select mode" : "Enter multi-select mode"
+            }
             accessibilityRole="button"
-            accessibilityState={{ disabled: isDeleting }}
           >
-            {isDeleting ? (
-              <ActivityIndicator size="small" color={colors.light.textSecondary} />
+            <Ionicons
+              name={isSelectionMode ? "close-outline" : "checkbox-outline"}
+              size={20}
+              color={colors.light.text}
+            />
+          </Pressable>
+          <Pressable
+            style={styles.avatarButton}
+            onPress={() => router.push("/profile")}
+            accessibilityLabel="Open profile"
+            accessibilityRole="button"
+          >
+            {profileAvatarUri ? (
+              <Image source={{ uri: profileAvatarUri }} style={styles.avatarImage} />
             ) : (
               <Ionicons
-                name="ellipsis-horizontal"
-                size={16}
+                name="person-circle-outline"
+                size={32}
                 color={colors.light.text}
               />
             )}
           </Pressable>
         </View>
-      );
-    },
-    [deletingProjectId, openProject, openProjectActions],
-  );
-
-  const isDeletingSelectedProject =
-    !!actionProject && deletingProjectId === getProjectId(actionProject);
-
-  return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Projects</Text>
-        <Pressable
-          style={styles.avatarButton}
-          onPress={() => router.push("/(tabs)/profile")}
-          accessibilityLabel="Open profile"
-          accessibilityRole="button"
-        >
-          <Ionicons
-            name="person-circle-outline"
-            size={32}
-            color={colors.light.text}
-          />
-        </Pressable>
       </View>
 
       {/* TODO: Add cursor pagination if project history grows beyond v1 size. */}
@@ -441,14 +713,53 @@ export default function HomeScreen() {
         </View>
       </Modal>
 
-      <Pressable
-        style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
-        onPress={() => router.push("/create/picker" as const)}
-        accessibilityLabel="Create new project"
-        accessibilityRole="button"
-      >
-        <Ionicons name="add" size={28} color={colors.accent.fabIcon} />
-      </Pressable>
+      {isSelectionMode ? (
+        <Pressable
+          style={({ pressed }) => [
+            styles.bulkDeleteButton,
+            { bottom: bulkDeleteBottom },
+            isCancelSelectionAction && styles.bulkDeleteButtonCancel,
+            isBulkDeleting && styles.bulkDeleteButtonDisabled,
+            pressed && !isBulkDeleting && styles.bulkDeleteButtonPressed,
+          ]}
+          onPress={isCancelSelectionAction ? clearSelectionMode : handleBulkDelete}
+          disabled={isBulkDeleting}
+          accessibilityLabel={
+            isCancelSelectionAction ? "Cancel selection mode" : "Delete selected projects"
+          }
+          accessibilityRole="button"
+          accessibilityState={{ disabled: isBulkDeleting }}
+        >
+          {isBulkDeleting ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+            <>
+              <Ionicons
+                name={isCancelSelectionAction ? "close" : "trash-outline"}
+                size={18}
+                color="#FFFFFF"
+              />
+              <Text
+                style={[
+                  styles.bulkDeleteText,
+                  isCancelSelectionAction && styles.bulkDeleteTextCancel,
+                ]}
+              >
+                {isCancelSelectionAction ? "Cancel" : `Delete (${selectedCount})`}
+              </Text>
+            </>
+          )}
+        </Pressable>
+      ) : (
+        <Pressable
+          style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
+          onPress={() => router.push("/create/picker" as const)}
+          accessibilityLabel="Create new project"
+          accessibilityRole="button"
+        >
+          <Ionicons name="add" size={28} color={colors.accent.fabIcon} />
+        </Pressable>
+      )}
     </SafeAreaView>
   );
 }
@@ -457,6 +768,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.light.background,
+    position: "relative",
   },
   header: {
     flexDirection: "row",
@@ -469,11 +781,30 @@ const styles = StyleSheet.create({
     ...typography.h1,
     color: colors.light.text,
   },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  selectModeButton: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.full,
+    backgroundColor: colors.light.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   avatarButton: {
     width: 40,
     height: 40,
+    borderRadius: radius.full,
+    overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
+  },
+  avatarImage: {
+    width: "100%",
+    height: "100%",
   },
   emptyState: {
     flex: 1,
@@ -504,7 +835,7 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingHorizontal: spacing.lg,
-    paddingBottom: 140,
+    paddingBottom: Platform.select({ ios: 106, android: 92, default: 92 }),
     paddingTop: spacing.xs,
   },
   listContentEmpty: {
@@ -519,6 +850,10 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     backgroundColor: colors.light.surface,
     overflow: "hidden",
+  },
+  cardSelected: {
+    borderWidth: 2,
+    borderColor: colors.accent.primary,
   },
   cardPressable: {
     flex: 1,
@@ -537,6 +872,21 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.85)",
     alignItems: "center",
     justifyContent: "center",
+  },
+  cardSelectBadge: {
+    position: "absolute",
+    top: spacing.xs,
+    left: spacing.xs,
+    width: 26,
+    height: 26,
+    borderRadius: radius.full,
+    backgroundColor: "rgba(255,255,255,0.92)",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 3,
+  },
+  cardSelectBadgeSelected: {
+    backgroundColor: colors.accent.primary,
   },
   thumbnail: {
     width: "100%",
@@ -627,5 +977,44 @@ const styles = StyleSheet.create({
   fabPressed: {
     transform: [{ scale: 0.92 }],
     opacity: 0.9,
+  },
+  bulkDeleteButton: {
+    position: "absolute",
+    alignSelf: "center",
+    bottom: 20,
+    minHeight: 48,
+    minWidth: 210,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.full,
+    backgroundColor: colors.accent.error,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: spacing.xs,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 7,
+    elevation: 4,
+  },
+  bulkDeleteButtonDisabled: {
+    opacity: 0.5,
+  },
+  bulkDeleteButtonCancel: {
+    backgroundColor: "#111111",
+    borderWidth: 1,
+    borderColor: "#111111",
+  },
+  bulkDeleteButtonPressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.98 }],
+  },
+  bulkDeleteText: {
+    ...typography.button,
+    color: "#FFFFFF",
+    fontWeight: "700",
+  },
+  bulkDeleteTextCancel: {
+    color: "#FFFFFF",
   },
 });

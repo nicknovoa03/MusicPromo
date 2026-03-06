@@ -10,7 +10,7 @@ import {
   Pressable,
   Modal,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { Picker } from "@react-native-picker/picker";
 import { colors, spacing, radius, typography } from "@/constants/tokens";
 interface AudioTrimmerProps {
@@ -18,6 +18,7 @@ interface AudioTrimmerProps {
   startSec: number;
   endSec: number;
   onTrimChange: (start: number, end: number) => void;
+  centerTimeLabel?: string;
   isPlaying?: boolean;
   playbackProgressSec?: number;
   onTogglePlay?: () => void;
@@ -31,6 +32,8 @@ const WAVEFORM_BAR_COUNT = Math.round(
   TIMELINE_FRAME_COUNT * WAVEFORM_ZOOM_FACTOR,
 );
 const DURATION_WHEEL_HEIGHT = 190;
+const START_DRAG_SENSITIVITY = 0.62;
+const START_DRAG_DEADZONE_PX = 2;
 
 function formatTime(sec: number): string {
   const m = Math.floor(sec / 60);
@@ -51,10 +54,11 @@ export function AudioTrimmer({
   startSec,
   endSec,
   onTrimChange,
+  centerTimeLabel,
   isPlaying = false,
   playbackProgressSec,
   onTogglePlay,
-  minDuration = 15,
+  minDuration = 5,
   maxDuration = Number.POSITIVE_INFINITY,
 }: AudioTrimmerProps) {
   const safeDuration = Number.isFinite(durationSec) ? Math.max(durationSec, 1) : 1;
@@ -201,14 +205,17 @@ export function AudioTrimmer({
           gestureState: PanResponderGestureState,
         ) => {
           const {
-            safeDuration: latestSafeDuration,
             railWidth: latestRailWidth,
             currentDuration: latestCurrentDuration,
             maxStart: latestMaxStart,
           } = latestValuesRef.current;
           if (latestRailWidth <= 0) return;
+          if (Math.abs(gestureState.dx) < START_DRAG_DEADZONE_PX) return;
 
-          const deltaSec = (gestureState.dx / latestRailWidth) * latestSafeDuration;
+          const deltaSec =
+            (gestureState.dx / latestRailWidth) *
+            latestMaxStart *
+            START_DRAG_SENSITIVITY;
           const nextStart = clamp(railGestureStartRef.current + deltaSec, 0, latestMaxStart);
           applyStart(nextStart, latestCurrentDuration);
         },
@@ -282,9 +289,12 @@ export function AudioTrimmer({
           );
 
           if (latestWaveformScrollableWidth <= 0 || latestMaxStart <= 0) return;
+          if (Math.abs(gestureState.dx) < START_DRAG_DEADZONE_PX) return;
 
           const deltaStart =
-            -(gestureState.dx / latestWaveformScrollableWidth) * latestMaxStart;
+            (-(gestureState.dx / latestWaveformScrollableWidth) *
+              latestMaxStart *
+              START_DRAG_SENSITIVITY);
           const nextStart = clamp(
             selectionGestureStartRef.current + deltaStart,
             0,
@@ -459,9 +469,15 @@ export function AudioTrimmer({
       </View>
 
       <View style={styles.timeRow}>
-        <Text style={styles.timeText}>{formatTime(safeStart)}</Text>
-        <Text style={styles.durationText}>{formatTime(currentDuration)}</Text>
-        <Text style={styles.timeText}>{formatTime(safeEnd)}</Text>
+        <Text style={[styles.timeText, styles.timeTextStart]}>
+          {formatTime(safeStart)}
+        </Text>
+        <Text style={styles.centerTimeText}>
+          {centerTimeLabel ?? formatTime(currentDuration)}
+        </Text>
+        <Text style={[styles.timeText, styles.timeTextEnd]}>
+          {formatTime(safeEnd)}
+        </Text>
       </View>
 
       <View
@@ -670,19 +686,29 @@ const styles = StyleSheet.create({
   },
   timeRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
+    alignItems: "center",
     paddingHorizontal: spacing.xs,
+    gap: spacing.xs,
   },
   timeText: {
     ...typography.caption,
     color: colors.dark.textSecondary,
     fontVariant: ["tabular-nums"],
   },
-  durationText: {
+  timeTextStart: {
+    flex: 1,
+    textAlign: "left",
+  },
+  timeTextEnd: {
+    flex: 1,
+    textAlign: "right",
+  },
+  centerTimeText: {
     ...typography.caption,
-    color: "#7F82FF",
-    fontWeight: "700",
+    color: colors.dark.textSecondary,
+    fontWeight: "600",
     fontVariant: ["tabular-nums"],
+    textAlign: "center",
   },
   track: {
     height: 62,

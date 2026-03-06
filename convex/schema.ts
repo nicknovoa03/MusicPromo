@@ -1,12 +1,35 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
+const profileLinkPlatform = v.union(
+  v.literal("spotify"),
+  v.literal("soundcloud"),
+  v.literal("apple-music"),
+  v.literal("youtube"),
+  v.literal("instagram"),
+  v.literal("tiktok"),
+  v.literal("x"),
+  v.literal("website"),
+);
+
 export default defineSchema({
   users: defineTable({
     clerkId: v.string(),
     name: v.optional(v.string()),
+    artistName: v.optional(v.string()),
     email: v.optional(v.string()),
     avatarUrl: v.optional(v.string()),
+    avatarImageUrl: v.optional(v.string()),
+    heroImageUrl: v.optional(v.string()),
+    links: v.optional(
+      v.array(
+        v.object({
+          platform: profileLinkPlatform,
+          url: v.string(),
+          sortOrder: v.optional(v.number()),
+        }),
+      ),
+    ),
     isGuest: v.boolean(),
     onboardingCompletedAt: v.optional(v.number()),
     isDeleted: v.optional(v.boolean()),
@@ -28,6 +51,7 @@ export default defineSchema({
     userId: v.id("users"),
     title: v.optional(v.string()),
     templateId: v.optional(v.string()),
+    templateTweaks: v.optional(v.string()),
     aspectRatio: v.union(v.literal("9:16"), v.literal("1:1")),
     videoLength: v.optional(v.number()),
     photoUri: v.optional(v.string()),
