@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   Platform,
+  Vibration,
   Pressable,
   FlatList,
   ActivityIndicator,
@@ -12,10 +13,11 @@ import {
   Alert,
   Modal,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useConvex, useMutation, useQuery } from "convex/react";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import * as Haptics from "expo-haptics";
 import { usePostHog } from "posthog-react-native";
 import { api } from "../../convex/_generated/api";
 import type { Doc } from "../../convex/_generated/dataModel";
@@ -49,8 +51,38 @@ function formatDate(timestamp: number) {
   });
 }
 
+async function triggerSelectionHaptic(
+  type: "enter" | "toggle-on" | "toggle-off",
+) {
+  try {
+    if (Platform.OS === "android") {
+      const androidType =
+        type === "enter"
+          ? Haptics.AndroidHaptics.Long_Press
+          : type === "toggle-on"
+            ? Haptics.AndroidHaptics.Toggle_On
+            : Haptics.AndroidHaptics.Toggle_Off;
+      await Haptics.performAndroidHapticsAsync(androidType);
+      return;
+    }
+
+    const impactStyle =
+      type === "enter"
+        ? Haptics.ImpactFeedbackStyle.Heavy
+        : Haptics.ImpactFeedbackStyle.Rigid;
+    await Haptics.impactAsync(impactStyle);
+  } catch {
+    try {
+      Vibration.vibrate(12);
+    } catch {
+      // Ignore unsupported haptic failures.
+    }
+  }
+}
+
 export default function HomeScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const convex = useConvex();
   const posthog = usePostHog();
   const { isLocalGuest } = useLocalSession();
@@ -114,6 +146,8 @@ export default function HomeScreen() {
     (project: Project) => {
       const projectKey = getProjectId(project);
       if (isSelectionMode) {
+        const wasSelected = selectedProjectIds.includes(projectKey);
+        void triggerSelectionHaptic(wasSelected ? "toggle-off" : "toggle-on");
         setSelectedProjectIds((prev) =>
           prev.includes(projectKey)
             ? prev.filter((id) => id !== projectKey)
@@ -188,12 +222,14 @@ export default function HomeScreen() {
   }, [closeProjectActions]);
 
   const toggleProjectSelection = useCallback((projectKey: string) => {
+    const wasSelected = selectedProjectIds.includes(projectKey);
+    void triggerSelectionHaptic(wasSelected ? "toggle-off" : "toggle-on");
     setSelectedProjectIds((prev) =>
       prev.includes(projectKey)
         ? prev.filter((id) => id !== projectKey)
         : [...prev, projectKey],
     );
-  }, []);
+  }, [selectedProjectIds]);
 
   const openProjectActions = useCallback(
     (project: Project) => {
@@ -355,6 +391,7 @@ export default function HomeScreen() {
                 toggleProjectSelection(projectKey);
                 return;
               }
+              void triggerSelectionHaptic("enter");
               setIsSelectionMode(true);
               setSelectedProjectIds([projectKey]);
             }}
@@ -441,6 +478,7 @@ export default function HomeScreen() {
   const isDeletingSelectedProject =
     !!actionProject && deletingProjectId === getProjectId(actionProject);
   const selectedCount = selectedProjectIds.length;
+  const bulkDeleteBottom = Math.max(90, insets.bottom + 68);
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -602,6 +640,7 @@ export default function HomeScreen() {
         <Pressable
           style={({ pressed }) => [
             styles.bulkDeleteButton,
+            { bottom: bulkDeleteBottom },
             (!selectedCount || isBulkDeleting) && styles.bulkDeleteButtonDisabled,
             pressed && selectedCount > 0 && !isBulkDeleting && styles.bulkDeleteButtonPressed,
           ]}
