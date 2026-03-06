@@ -6,7 +6,7 @@
 - Doc owner: Nick
 - Stakeholders: Nick (sole developer / product owner)
 - Last updated (YYYY-MM-DD): 2026-03-06
-- Version: 1.4 (Template controls polish + parity diagnostics)
+- Version: 1.5 (Phase 5 iOS-native surface planning)
 - Links: GitHub repo at `/home/nick/MusicPromo`
 
 ## 1) Product Summary
@@ -583,7 +583,14 @@ Primary reference: Meta's Edits app. Secondary: Spotify (profile). Screenshots i
   - Verify crash-free smoke test on multiple real devices/OS versions and confirm export success rate targets
   - Submit production build via EAS/App Store Connect and resolve any review feedback loop
 
-### Phase 5: Template System + Export Standardization (Post-MVP)
+### Phase 5: iOS Native Surface + Liquid Glass Adoption (Post-MVP)
+- Introduce iOS-native component surfaces (context menus, grouped settings sections, native pickers, richer empty states) behind feature flags
+- Apply liquid-glass affordances selectively on iOS where they improve clarity and native feel without reducing legibility
+- Preserve deterministic fallback paths to existing React Native components for Android and unsupported iOS capability paths
+- Keep create/export/share reliability unchanged while upgrading presentation and interaction fidelity
+- Validate rollout with explicit fallback matrix and migration analytics
+
+### Phase 6: Template System + Export Standardization (Post-Phase 5)
 - Standardize template authoring around one canonical template contract
 - Eliminate preview/export drift for additional templates
 - Re-evaluate local Remotion viability with explicit pass/fail gates

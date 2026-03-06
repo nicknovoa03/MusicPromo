@@ -78,6 +78,7 @@
     { "name": "Onboarding", "v1": true, "phase": 2 },
     { "name": "Release Hardening & Regression", "v1": true, "phase": 3 },
     { "name": "Template Fidelity & Export Standardization", "v1": true, "phase": 4 },
+    { "name": "iOS Native Surface + Liquid Glass Adoption", "v1": true, "phase": 5 },
     { "name": "SoundCloud Integration", "v1": false, "phase": null },
     { "name": "Additional Video Templates", "v1": false, "phase": null },
     { "name": "AI-Generated Templates", "v1": false, "phase": null },
@@ -112,6 +113,7 @@
   "open_questions": [
     "Can a true native Remotion on-device renderer path be shipped in this Expo architecture without cloud rendering?",
     "When running the Phase 4 gates on target devices, does the remotion-local path meet speed, sync, stability, and parity requirements?",
+    "Which iOS native UI components should ship behind Phase 5 flags first to maximize UX impact while preserving Android fallback parity?",
     "What minimum template primitive set should be standardized to speed up new template authoring?",
     "Verify Clerk supports anonymous sessions in React Native SDK",
     "Verify soft-delete satisfies Apple's account deletion requirement",

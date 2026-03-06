@@ -6,7 +6,7 @@
 - Product name: MusicPromo
 - Owners: Nick
 - Date: 2026-02-20
-- Version: 1.0 (initial intake)
+- Version: 1.1 (phase mapping updated through Phase 5)
 - Links: PRD at `docs/requirements/PRODUCT_DESIGN_REQUIREMENTS.md`
 
 ## 1) Guideline (Shared AI-Human Understanding)
@@ -96,6 +96,7 @@
 - 2026-03-06: **Create picker unified into a single audio-first media selection screen** → Replaced split photo/audio browsing with stacked full-size selectors (audio on top, photo on bottom) to reduce context switching and keep both required inputs visible at once.
 - 2026-03-06: **Home project management now supports multi-select bulk delete** → Added explicit selection mode (header toggle + long-press entry) and a bottom-centered destructive CTA so users can clean up multiple drafts in one pass without card-by-card deletion.
 - 2026-03-06: **Editor actions were anchored directly on preview with modal sheet parity behavior** → Consolidated controls into preview overlays (`settings`, info toggle, `Edit Template`) and standardized template/media surfaces as partial-height sheets with outside-tap and swipe-down dismissal expectations.
+- 2026-03-06: **Roadmap sequencing updated to introduce an iOS-native UI adoption phase before broader post-MVP template expansion** → Phase 5 is now dedicated to iOS-native surface/liquid-glass adoption with explicit Android and unsupported-iOS fallbacks.
 
 ## 2) Guidance (Methodology for Evolving Prompts)
 
@@ -192,7 +193,7 @@ Project: MusicPromo
 Stack: React Native + Expo, Clerk, Convex, PostHog
 PRD: docs/requirements/PRODUCT_DESIGN_REQUIREMENTS.md
 Agent Design: docs/requirements/AGENT_DESIGN_REQUIREMENTS.md
-Current phase: [Phase 0/1/2/3/4]
+Current phase: [Phase 0/1/2/3/4/5]
 Focus: [epic name]
 ```
 
@@ -218,6 +219,10 @@ Phase 3 — Stabilization
 Phase 4 — MVP Finalization
   └── Epic: Template Fidelity & Export Standardization (Local-Only)
       Current status (2026-03-04): renderer abstraction + shared composition shipped for `spinning-cd`; Remotion path is feature-flagged with FFmpeg fallback pending gate results on real devices
+
+Phase 5 — iOS Native Surface Adoption
+  └── Epic: iOS Native Surface + Liquid Glass Adoption
+      Goal: iOS-native interaction polish (context menus, grouped settings/forms, selective glass surfaces) with strict fallback behavior for Android/unsupported capability paths
 ```
 
 Work through epics within a phase, then move to the next phase. Update "Current phase" and "Focus" as you go. Examples:
@@ -240,6 +245,11 @@ Focus: Push Notifications
 ```
 Current phase: Phase 4
 Focus: Template Fidelity & Export Standardization
+```
+
+```
+Current phase: Phase 5
+Focus: iOS Native Surface + Liquid Glass Adoption
 ```
 
 ## 3) Guardrails (AI-Assisted Reviews and Quality Gates)
