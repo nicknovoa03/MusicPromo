@@ -5,9 +5,9 @@ import {
   StyleSheet,
   Pressable,
   Alert,
-  Dimensions,
+  useWindowDimensions,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { usePostHog } from "posthog-react-native";
@@ -40,8 +40,6 @@ function isExpoGo(): boolean {
   return Constants.appOwnership === "expo";
 }
 
-const SCREEN_WIDTH = Dimensions.get("window").width;
-const SCREEN_HEIGHT = Dimensions.get("window").height;
 const STAGE_HORIZONTAL_PADDING = spacing.lg * 2;
 const DEFAULT_TRIM_DURATION = 5;
 const ENABLE_RENDER_MODE_BADGE = false;
@@ -97,6 +95,8 @@ function isUnauthenticatedConvexError(error: unknown) {
 
 export default function RenderingScreen() {
   const router = useRouter();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const posthog = usePostHog();
   const params = useLocalSearchParams<{
     projectId?: string;
@@ -143,8 +143,19 @@ export default function RenderingScreen() {
   );
   const trackTitle = displayMediaLabel(audioName, "Untitled track");
   const stageWidthRatio = aspectRatio === "9:16" ? 9 / 16 : 1;
-  const maxStageWidth = Math.min(SCREEN_WIDTH - STAGE_HORIZONTAL_PADDING, 440);
-  const maxStageHeight = SCREEN_HEIGHT * 0.72;
+  const maxStageWidth = Math.min(windowWidth - STAGE_HORIZONTAL_PADDING, 440);
+  const reservedVerticalSpace =
+    insets.top +
+    insets.bottom +
+    48 + // header row
+    32 + // "Exporting" label + top margin
+    88 + // large percentage text + margin
+    52 + // bottom message block
+    spacing.lg; // content bottom padding
+  const maxStageHeight = Math.max(
+    220,
+    Math.min(windowHeight * 0.64, windowHeight - reservedVerticalSpace),
+  );
   const stageWidth = Math.min(maxStageWidth, maxStageHeight * stageWidthRatio);
   const stageHeight = stageWidth / stageWidthRatio;
 
@@ -470,7 +481,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.xs,
   },
   headerButton: {
     width: 40,
@@ -488,14 +499,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "flex-start",
     paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xl,
+    paddingBottom: spacing.lg,
   },
   progressLabel: {
     ...typography.caption,
     color: colors.dark.textSecondary,
     textTransform: "uppercase",
     letterSpacing: 0.8,
-    marginTop: spacing.lg,
+    marginTop: spacing.sm,
     marginBottom: spacing.xs,
   },
   percentageText: {
@@ -503,12 +514,12 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: colors.dark.text,
     fontVariant: ["tabular-nums"],
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
   },
   stageWrap: {
     width: "100%",
     alignItems: "center",
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
   },
   stageFrame: {
     position: "relative",

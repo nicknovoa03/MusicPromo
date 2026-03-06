@@ -25,6 +25,7 @@ export type ProfileLink = {
 export type LocalArtistProfile = {
   artistName: string;
   avatarImageUrl: string | null;
+  heroImageUrl: string | null;
   links: ProfileLink[];
 };
 
@@ -41,6 +42,7 @@ export const DEFAULT_LOCAL_PROFILE_PREFERENCES: LocalProfilePreferences = {
 export const DEFAULT_LOCAL_ARTIST_PROFILE: LocalArtistProfile = {
   artistName: "",
   avatarImageUrl: null,
+  heroImageUrl: null,
   links: [],
 };
 
@@ -105,6 +107,10 @@ function normalizeArtistProfile(value: unknown): LocalArtistProfile {
     avatarImageUrl:
       typeof input.avatarImageUrl === "string" && input.avatarImageUrl.trim()
         ? input.avatarImageUrl.trim()
+        : null,
+    heroImageUrl:
+      typeof input.heroImageUrl === "string" && input.heroImageUrl.trim()
+        ? input.heroImageUrl.trim()
         : null,
     links: normalizeProfileLinks(input.links),
   };

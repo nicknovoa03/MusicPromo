@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   Platform,
-  Vibration,
   Pressable,
   FlatList,
   ActivityIndicator,
@@ -51,33 +50,87 @@ function formatDate(timestamp: number) {
   });
 }
 
+let hasWarnedHapticsUnavailable = false;
+
 async function triggerSelectionHaptic(
   type: "enter" | "toggle-on" | "toggle-off",
 ) {
-  try {
-    if (Platform.OS === "android") {
+  const hapticsCompat = Haptics as unknown as {
+    performAndroidHapticsAsync?: (
+      hapticType: Haptics.AndroidHaptics,
+    ) => Promise<void>;
+    impactAsync?: (
+      style?: Haptics.ImpactFeedbackStyle,
+    ) => Promise<void>;
+    selectionAsync?: () => Promise<void>;
+  };
+
+  const warnUnavailable = () => {
+    if (hasWarnedHapticsUnavailable) return;
+    hasWarnedHapticsUnavailable = true;
+    console.warn(
+      "Selection haptic unavailable in this dev client. Rebuild dev client to relink expo-haptics.",
+    );
+  };
+
+  const tryImpact = async (style: Haptics.ImpactFeedbackStyle) => {
+    if (typeof hapticsCompat.impactAsync !== "function") return false;
+    try {
+      await hapticsCompat.impactAsync(style);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const trySelection = async () => {
+    if (typeof hapticsCompat.selectionAsync !== "function") return false;
+    try {
+      await hapticsCompat.selectionAsync();
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  if (
+    Platform.OS === "android" &&
+    typeof hapticsCompat.performAndroidHapticsAsync === "function"
+  ) {
+    try {
       const androidType =
         type === "enter"
-          ? Haptics.AndroidHaptics.Long_Press
-          : type === "toggle-on"
-            ? Haptics.AndroidHaptics.Toggle_On
-            : Haptics.AndroidHaptics.Toggle_Off;
-      await Haptics.performAndroidHapticsAsync(androidType);
+          ? Haptics.AndroidHaptics.Context_Click
+          : Haptics.AndroidHaptics.Segment_Tick;
+      await hapticsCompat.performAndroidHapticsAsync(androidType);
+      return;
+    } catch (error) {
+      console.warn("Selection haptic failed:", error);
+      warnUnavailable();
       return;
     }
-
-    const impactStyle =
-      type === "enter"
-        ? Haptics.ImpactFeedbackStyle.Heavy
-        : Haptics.ImpactFeedbackStyle.Rigid;
-    await Haptics.impactAsync(impactStyle);
-  } catch {
-    try {
-      Vibration.vibrate(12);
-    } catch {
-      // Ignore unsupported haptic failures.
-    }
   }
+
+  if (Platform.OS === "ios") {
+    const selectionWorked = await trySelection();
+    if (selectionWorked) return;
+    warnUnavailable();
+    return;
+  }
+
+  const impactStyle =
+    type === "enter"
+      ? Haptics.ImpactFeedbackStyle.Heavy
+      : type === "toggle-on"
+        ? Haptics.ImpactFeedbackStyle.Medium
+        : Haptics.ImpactFeedbackStyle.Light;
+  const impactWorked = await tryImpact(impactStyle);
+  if (impactWorked) return;
+
+  const selectionWorked = await trySelection();
+  if (selectionWorked) return;
+
+  warnUnavailable();
 }
 
 export default function HomeScreen() {
@@ -145,6 +198,10 @@ export default function HomeScreen() {
   const openProject = useCallback(
     (project: Project) => {
       const projectKey = getProjectId(project);
+      if (longPressProjectIdRef.current === projectKey) {
+        longPressProjectIdRef.current = null;
+        return;
+      }
       if (isSelectionMode) {
         const wasSelected = selectedProjectIds.includes(projectKey);
         void triggerSelectionHaptic(wasSelected ? "toggle-off" : "toggle-on");
@@ -153,10 +210,6 @@ export default function HomeScreen() {
             ? prev.filter((id) => id !== projectKey)
             : [...prev, projectKey],
         );
-        return;
-      }
-      if (longPressProjectIdRef.current === projectKey) {
-        longPressProjectIdRef.current = null;
         return;
       }
       if (deletingProjectId === projectKey) return;
@@ -197,7 +250,7 @@ export default function HomeScreen() {
         },
       });
     },
-    [deletingProjectId, isSelectionMode, router, track],
+    [deletingProjectId, isSelectionMode, router, selectedProjectIds, track],
   );
 
   const closeProjectActions = useCallback(() => {
@@ -478,6 +531,7 @@ export default function HomeScreen() {
   const isDeletingSelectedProject =
     !!actionProject && deletingProjectId === getProjectId(actionProject);
   const selectedCount = selectedProjectIds.length;
+  const isCancelSelectionAction = selectedCount === 0;
   const bulkDeleteBottom = Math.max(90, insets.bottom + 68);
 
   return (
@@ -641,22 +695,34 @@ export default function HomeScreen() {
           style={({ pressed }) => [
             styles.bulkDeleteButton,
             { bottom: bulkDeleteBottom },
-            (!selectedCount || isBulkDeleting) && styles.bulkDeleteButtonDisabled,
-            pressed && selectedCount > 0 && !isBulkDeleting && styles.bulkDeleteButtonPressed,
+            isCancelSelectionAction && styles.bulkDeleteButtonCancel,
+            isBulkDeleting && styles.bulkDeleteButtonDisabled,
+            pressed && !isBulkDeleting && styles.bulkDeleteButtonPressed,
           ]}
-          onPress={handleBulkDelete}
-          disabled={!selectedCount || isBulkDeleting}
-          accessibilityLabel="Delete selected projects"
+          onPress={isCancelSelectionAction ? clearSelectionMode : handleBulkDelete}
+          disabled={isBulkDeleting}
+          accessibilityLabel={
+            isCancelSelectionAction ? "Cancel selection mode" : "Delete selected projects"
+          }
           accessibilityRole="button"
-          accessibilityState={{ disabled: !selectedCount || isBulkDeleting }}
+          accessibilityState={{ disabled: isBulkDeleting }}
         >
           {isBulkDeleting ? (
             <ActivityIndicator size="small" color="#FFFFFF" />
           ) : (
             <>
-              <Ionicons name="trash-outline" size={18} color="#FFFFFF" />
-              <Text style={styles.bulkDeleteText}>
-                Delete ({selectedCount})
+              <Ionicons
+                name={isCancelSelectionAction ? "close" : "trash-outline"}
+                size={18}
+                color="#FFFFFF"
+              />
+              <Text
+                style={[
+                  styles.bulkDeleteText,
+                  isCancelSelectionAction && styles.bulkDeleteTextCancel,
+                ]}
+              >
+                {isCancelSelectionAction ? "Cancel" : `Delete (${selectedCount})`}
               </Text>
             </>
           )}
@@ -905,6 +971,11 @@ const styles = StyleSheet.create({
   bulkDeleteButtonDisabled: {
     opacity: 0.5,
   },
+  bulkDeleteButtonCancel: {
+    backgroundColor: "#111111",
+    borderWidth: 1,
+    borderColor: "#111111",
+  },
   bulkDeleteButtonPressed: {
     opacity: 0.9,
     transform: [{ scale: 0.98 }],
@@ -913,5 +984,8 @@ const styles = StyleSheet.create({
     ...typography.button,
     color: "#FFFFFF",
     fontWeight: "700",
+  },
+  bulkDeleteTextCancel: {
+    color: "#FFFFFF",
   },
 });

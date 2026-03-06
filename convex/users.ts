@@ -97,6 +97,7 @@ export const updateProfile = mutation({
     avatarUrl: v.optional(v.string()),
     artistName: v.optional(v.union(v.string(), v.null())),
     avatarImageUrl: v.optional(v.union(v.string(), v.null())),
+    heroImageUrl: v.optional(v.union(v.string(), v.null())),
     links: v.optional(
       v.array(
         v.object({
@@ -136,6 +137,10 @@ export const updateProfile = mutation({
       const normalizedAvatarImageUrl = normalizeOptionalText(args.avatarImageUrl ?? "");
       updates.avatarImageUrl = normalizedAvatarImageUrl;
       updates.avatarUrl = normalizedAvatarImageUrl;
+    }
+    if (args.heroImageUrl !== undefined) {
+      const normalizedHeroImageUrl = normalizeOptionalText(args.heroImageUrl ?? "");
+      updates.heroImageUrl = normalizedHeroImageUrl;
     }
     if (args.links !== undefined) {
       updates.links = args.links

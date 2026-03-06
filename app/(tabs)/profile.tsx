@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -10,8 +10,18 @@ import {
   ScrollView,
   TextInput,
   Image,
+  useWindowDimensions,
+  Modal,
+  Animated,
+  Easing,
+  PanResponder,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaProvider,
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
+import { StatusBar } from "expo-status-bar";
 import { useRouter } from "expo-router";
 import { useAuth, useUser } from "@clerk/clerk-expo";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
@@ -109,6 +119,8 @@ function normalizeProfileUrl(value: string): string | null {
 }
 
 export default function ProfileScreen() {
+  const { height: windowHeight, width: windowWidth } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const { signOut, getToken, userId, isSignedIn } = useAuth();
   const { user: clerkUser } = useUser();
@@ -124,6 +136,7 @@ export default function ProfileScreen() {
   const [isBootstrappingUser, setIsBootstrappingUser] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isPickingAvatar, setIsPickingAvatar] = useState(false);
+  const [isPickingHero, setIsPickingHero] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
@@ -135,11 +148,14 @@ export default function ProfileScreen() {
     useState(false);
 
   const [artistNameDraft, setArtistNameDraft] = useState("");
+  const [heroImageUrlDraft, setHeroImageUrlDraft] = useState<string | null>(null);
   const [avatarImageUrlDraft, setAvatarImageUrlDraft] = useState<string | null>(
     null,
   );
   const [linksDraft, setLinksDraft] = useState<DraftProfileLink[]>([]);
-  const [isEditingArtistName, setIsEditingArtistName] = useState(false);
+  const [isProfileSettingsOpen, setIsProfileSettingsOpen] = useState(false);
+  const [isClosingProfileSettings, setIsClosingProfileSettings] = useState(false);
+  const profileSettingsTranslateX = useRef(new Animated.Value(windowWidth)).current;
 
   useEffect(() => {
     let isActive = true;
@@ -174,22 +190,23 @@ export default function ProfileScreen() {
     ? "Guest"
     : convexUser?.name ?? clerkUser?.fullName ?? "Guest";
 
-  const displayEmail = usesLocalProfile
-    ? "Local-only session"
-    : convexUser?.email ?? clerkUser?.primaryEmailAddress?.emailAddress ?? "No email";
-
   const sourceArtistName = usesLocalProfile
     ? localArtistProfile.artistName
-    : convexUser?.artistName ?? "";
+    : convexUser?.artistName ?? convexUser?.name ?? localArtistProfile.artistName ?? "";
 
   const sourceAvatarImageUrl = usesLocalProfile
     ? localArtistProfile.avatarImageUrl
-    : convexUser?.avatarImageUrl ?? null;
+    : convexUser?.avatarImageUrl ?? convexUser?.avatarUrl ?? localArtistProfile.avatarImageUrl ?? null;
+  const sourceHeroImageUrl = usesLocalProfile
+    ? localArtistProfile.heroImageUrl
+    : convexUser?.heroImageUrl ?? localArtistProfile.heroImageUrl ?? null;
 
   const sourceLinks = useMemo(
     () =>
       normalizeDraftLinks(
-        usesLocalProfile ? localArtistProfile.links : (convexUser?.links ?? []),
+        usesLocalProfile
+          ? localArtistProfile.links
+          : (convexUser?.links ?? localArtistProfile.links ?? []),
       ),
     [usesLocalProfile, localArtistProfile.links, convexUser?.links],
   );
@@ -197,10 +214,10 @@ export default function ProfileScreen() {
   useEffect(() => {
     if (isProfileLoading) return;
     setArtistNameDraft(sourceArtistName);
+    setHeroImageUrlDraft(sourceHeroImageUrl);
     setAvatarImageUrlDraft(sourceAvatarImageUrl);
     setLinksDraft(sourceLinks);
-    setIsEditingArtistName(false);
-  }, [isProfileLoading, sourceArtistName, sourceAvatarImageUrl, sourceLinks]);
+  }, [isProfileLoading, sourceArtistName, sourceHeroImageUrl, sourceAvatarImageUrl, sourceLinks]);
 
   const track = useCallback(
     (event: EventName, props?: Record<string, string>) => {
@@ -305,6 +322,124 @@ export default function ProfileScreen() {
     );
   }, []);
 
+  type SaveProfileOptions = {
+    includeLinks?: boolean;
+    overrideArtistName?: string;
+    overrideHeroImageUrl?: string | null;
+    overrideAvatarImageUrl?: string | null;
+  };
+
+  const saveProfile = useCallback(
+    async (options: SaveProfileOptions = {}) => {
+      if (isSavingProfile || isSigningOut || isDeleting) return;
+      const includeLinks = options.includeLinks ?? true;
+
+      setErrorText(null);
+      setIsSavingProfile(true);
+
+      try {
+        const artistName = (options.overrideArtistName ?? artistNameDraft).trim();
+        const nextHeroImageUrl = options.overrideHeroImageUrl ?? heroImageUrlDraft;
+        const nextAvatarImageUrl = options.overrideAvatarImageUrl ?? avatarImageUrlDraft;
+        const heroImageUrl = nextHeroImageUrl?.trim() ? nextHeroImageUrl.trim() : null;
+        const avatarImageUrl = nextAvatarImageUrl?.trim()
+          ? nextAvatarImageUrl.trim()
+          : null;
+
+        const normalizedLinks: ProfileLink[] = [];
+        const invalidLinkLabels: string[] = [];
+        if (includeLinks) {
+          for (const link of linksDraft) {
+            const trimmedUrl = link.url.trim();
+            if (!trimmedUrl) continue;
+
+            const normalizedUrl = normalizeProfileUrl(trimmedUrl);
+            if (!normalizedUrl) {
+              invalidLinkLabels.push(PLATFORM_LABELS[link.platform]);
+              continue;
+            }
+
+            normalizedLinks.push({
+              platform: link.platform,
+              url: normalizedUrl,
+              sortOrder: normalizedLinks.length,
+            });
+          }
+        }
+
+        const cached = await setLocalArtistProfile({
+          artistName,
+          heroImageUrl,
+          avatarImageUrl,
+          ...(includeLinks ? { links: normalizedLinks } : {}),
+        });
+        setLocalArtistProfileState(cached);
+
+        if (usesLocalProfile) {
+          // Local-only sessions persist solely to device storage.
+        } else {
+          await ensureUserRecord(convexUser);
+          await updateProfile({
+            artistName: artistName || null,
+            heroImageUrl,
+            avatarImageUrl,
+            ...(includeLinks ? { links: normalizedLinks } : {}),
+          });
+        }
+
+        if (includeLinks && invalidLinkLabels.length > 0) {
+          setErrorText(
+            `Saved profile, but skipped invalid link${
+              invalidLinkLabels.length > 1 ? "s" : ""
+            }: ${invalidLinkLabels.join(", ")}.`,
+          );
+        }
+      } catch (error) {
+        const saveError = isMissingConvexTemplateError(error)
+          ? "Clerk JWT template 'convex' is missing. Configure it in Clerk, then sign out/in."
+        : isUnauthenticatedError(error)
+            ? "Session isn't ready yet. Please wait a moment and try again."
+            : "Couldn't update profile. Please try again.";
+        setErrorText(saveError);
+        console.warn("Failed to save profile:", error);
+      } finally {
+        setIsSavingProfile(false);
+      }
+    },
+    [
+      artistNameDraft,
+      heroImageUrlDraft,
+      avatarImageUrlDraft,
+      convexUser,
+      ensureUserRecord,
+      isDeleting,
+      isMissingConvexTemplateError,
+      isSavingProfile,
+      isSigningOut,
+      isUnauthenticatedError,
+      linksDraft,
+      updateProfile,
+      usesLocalProfile,
+    ],
+  );
+
+  const pickAndPersistImage = useCallback(async (fileNameFallback: string) => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      quality: 1,
+      allowsEditing: false,
+      preferredAssetRepresentationMode:
+        ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
+    });
+    if (result.canceled || !result.assets[0]) return null;
+
+    const picked = result.assets[0];
+    return await persistPickedMediaFile({
+      sourceUri: picked.uri,
+      fileNameHint: picked.fileName ?? picked.uri.split("/").pop() ?? fileNameFallback,
+    });
+  }, []);
+
   const handlePickAvatar = useCallback(async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
@@ -317,22 +452,10 @@ export default function ProfileScreen() {
 
     setIsPickingAvatar(true);
     try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ["images"],
-        quality: 1,
-        allowsEditing: false,
-        preferredAssetRepresentationMode:
-          ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
-      });
-      if (result.canceled || !result.assets[0]) return;
-
-      const picked = result.assets[0];
-      const persistedUri = await persistPickedMediaFile({
-        sourceUri: picked.uri,
-        fileNameHint:
-          picked.fileName ?? picked.uri.split("/").pop() ?? "artist-avatar.jpg",
-      });
+      const persistedUri = await pickAndPersistImage("artist-avatar.jpg");
+      if (!persistedUri) return;
       setAvatarImageUrlDraft(persistedUri);
+      void saveProfile({ includeLinks: false, overrideAvatarImageUrl: persistedUri });
     } catch {
       Alert.alert(
         "Profile image not saved",
@@ -341,80 +464,33 @@ export default function ProfileScreen() {
     } finally {
       setIsPickingAvatar(false);
     }
-  }, []);
+  }, [pickAndPersistImage, saveProfile]);
 
-  const saveProfile = useCallback(async () => {
-    if (isSavingProfile || isSigningOut || isDeleting) return;
-
-    setErrorText(null);
-    setIsSavingProfile(true);
-
-    try {
-      const artistName = artistNameDraft.trim();
-      const avatarImageUrl = avatarImageUrlDraft?.trim()
-        ? avatarImageUrlDraft.trim()
-        : null;
-
-      const normalizedLinks: ProfileLink[] = [];
-      for (const link of linksDraft) {
-        const trimmedUrl = link.url.trim();
-        if (!trimmedUrl) continue;
-
-        const normalizedUrl = normalizeProfileUrl(trimmedUrl);
-        if (!normalizedUrl) {
-          setErrorText(
-            `Invalid URL for ${PLATFORM_LABELS[link.platform]}. Check the link and try again.`,
-          );
-          return;
-        }
-
-        normalizedLinks.push({
-          platform: link.platform,
-          url: normalizedUrl,
-          sortOrder: normalizedLinks.length,
-        });
-      }
-
-      if (usesLocalProfile) {
-        const saved = await setLocalArtistProfile({
-          artistName,
-          avatarImageUrl,
-          links: normalizedLinks,
-        });
-        setLocalArtistProfileState(saved);
-      } else {
-        await ensureUserRecord(convexUser);
-        await updateProfile({
-          artistName: artistName || null,
-          avatarImageUrl,
-          links: normalizedLinks,
-        });
-      }
-    } catch (error) {
-      const saveError = isMissingConvexTemplateError(error)
-        ? "Clerk JWT template 'convex' is missing. Configure it in Clerk, then sign out/in."
-        : isUnauthenticatedError(error)
-          ? "Session isn't ready yet. Please wait a moment and try again."
-          : "Couldn't update profile. Please try again.";
-      setErrorText(saveError);
-      console.warn("Failed to save profile:", error);
-    } finally {
-      setIsSavingProfile(false);
+  const handlePickHero = useCallback(async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert(
+        "Permission needed",
+        "Allow photo access to use a banner image.",
+      );
+      return;
     }
-  }, [
-    artistNameDraft,
-    avatarImageUrlDraft,
-    convexUser,
-    ensureUserRecord,
-    isDeleting,
-    isMissingConvexTemplateError,
-    isSavingProfile,
-    isSigningOut,
-    isUnauthenticatedError,
-    linksDraft,
-    updateProfile,
-    usesLocalProfile,
-  ]);
+
+    setIsPickingHero(true);
+    try {
+      const persistedUri = await pickAndPersistImage("artist-hero.jpg");
+      if (!persistedUri) return;
+      setHeroImageUrlDraft(persistedUri);
+      void saveProfile({ includeLinks: false, overrideHeroImageUrl: persistedUri });
+    } catch {
+      Alert.alert(
+        "Banner image not saved",
+        "Could not load that image. Please try another one.",
+      );
+    } finally {
+      setIsPickingHero(false);
+    }
+  }, [pickAndPersistImage, saveProfile]);
 
   const runSignOut = useCallback(async () => {
     setIsSigningOut(true);
@@ -523,304 +599,465 @@ export default function ProfileScreen() {
     const used = new Set(linksDraft.map((link) => link.platform));
     return PROFILE_LINK_PLATFORMS.filter((platform) => !used.has(platform));
   }, [linksDraft]);
-  const connectedPlatformsCount = useMemo(
-    () => linksDraft.filter((link) => link.url.trim().length > 0).length,
-    [linksDraft],
+  const heroHeight = Math.max(380, Math.min(Math.round(windowHeight * 0.5), 560));
+  const heroBannerHeight = Math.max(
+    240,
+    Math.min(Math.round(windowWidth * 0.72), Math.round(heroHeight * 0.76)),
   );
-  const artistNameStatus = artistNameDraft.trim().length > 0 ? "Set" : "Empty";
-
+  const heroArtistName = artistNameDraft.trim() || "Tap to add artist name";
   const actionsDisabled = isSigningOut || isDeleting;
   const profileInputsDisabled =
-    isProfileLoading || isSavingProfile || isSigningOut || isDeleting || isPickingAvatar;
+    isProfileLoading ||
+    isSavingProfile ||
+    isSigningOut ||
+    isDeleting ||
+    isPickingAvatar ||
+    isPickingHero;
+  const profileSettingsDisabled = profileInputsDisabled || isSavingProfile;
+  const modalTopInset = Platform.OS === "ios" ? (insets.top > 0 ? insets.top : 44) : 0;
+
+  const handleOpenProfileSettings = useCallback(() => {
+    if (isProfileSettingsOpen || isClosingProfileSettings) return;
+    profileSettingsTranslateX.setValue(windowWidth);
+    setIsProfileSettingsOpen(true);
+    requestAnimationFrame(() => {
+      Animated.timing(profileSettingsTranslateX, {
+        toValue: 0,
+        duration: 280,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
+    });
+  }, [
+    isProfileSettingsOpen,
+    isClosingProfileSettings,
+    profileSettingsTranslateX,
+    windowWidth,
+  ]);
+
+  const closeProfileSettings = useCallback(() => {
+    if (!isProfileSettingsOpen || isClosingProfileSettings) return;
+    setIsClosingProfileSettings(true);
+    Animated.timing(profileSettingsTranslateX, {
+      toValue: windowWidth,
+      duration: 230,
+      easing: Easing.in(Easing.cubic),
+      useNativeDriver: true,
+    }).start(() => {
+      setIsClosingProfileSettings(false);
+      setIsProfileSettingsOpen(false);
+      void saveProfile({ includeLinks: false });
+    });
+  }, [
+    isProfileSettingsOpen,
+    isClosingProfileSettings,
+    profileSettingsTranslateX,
+    saveProfile,
+    windowWidth,
+  ]);
+
+  const handleCloseProfileSettings = useCallback(() => {
+    closeProfileSettings();
+  }, [closeProfileSettings]);
+
+  const profileSettingsPanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => false,
+        onMoveShouldSetPanResponder: (_, gestureState) => {
+          if (!isProfileSettingsOpen || isClosingProfileSettings) return false;
+          const horizontalDistance = Math.abs(gestureState.dx);
+          const verticalDistance = Math.abs(gestureState.dy);
+          return (
+            gestureState.dx > 6 &&
+            horizontalDistance > 10 &&
+            horizontalDistance > verticalDistance * 0.8
+          );
+        },
+        onMoveShouldSetPanResponderCapture: (_, gestureState) => {
+          if (!isProfileSettingsOpen || isClosingProfileSettings) return false;
+          const horizontalDistance = Math.abs(gestureState.dx);
+          const verticalDistance = Math.abs(gestureState.dy);
+          return (
+            gestureState.dx > 6 &&
+            horizontalDistance > 10 &&
+            horizontalDistance > verticalDistance * 0.8
+          );
+        },
+        onPanResponderTerminationRequest: () => false,
+        onShouldBlockNativeResponder: () => true,
+        onPanResponderStart: () => {
+          if (!isProfileSettingsOpen || isClosingProfileSettings) return;
+          profileSettingsTranslateX.stopAnimation();
+        },
+        onPanResponderGrant: () => {
+          profileSettingsTranslateX.stopAnimation();
+        },
+        onPanResponderMove: (_, gestureState) => {
+          const nextTranslate = Math.min(windowWidth, Math.max(0, gestureState.dx));
+          profileSettingsTranslateX.setValue(nextTranslate);
+        },
+        onPanResponderRelease: (_, gestureState) => {
+          if (!isProfileSettingsOpen || isClosingProfileSettings) return;
+          const closeDistance = Math.max(96, windowWidth * 0.24);
+          if (gestureState.dx > closeDistance || gestureState.vx > 0.65) {
+            closeProfileSettings();
+            return;
+          }
+          Animated.timing(profileSettingsTranslateX, {
+            toValue: 0,
+            duration: 180,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          }).start();
+        },
+        onPanResponderTerminate: () => {
+          if (!isProfileSettingsOpen || isClosingProfileSettings) return;
+          Animated.timing(profileSettingsTranslateX, {
+            toValue: 0,
+            duration: 180,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          }).start();
+        },
+      }),
+    [
+      closeProfileSettings,
+      isClosingProfileSettings,
+      isProfileSettingsOpen,
+      profileSettingsTranslateX,
+      windowWidth,
+    ],
+  );
+
+  useEffect(() => {
+    if (!isProfileSettingsOpen) {
+      profileSettingsTranslateX.setValue(windowWidth);
+    }
+  }, [isProfileSettingsOpen, profileSettingsTranslateX, windowWidth]);
 
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
-      <View style={styles.backgroundOrbPrimary} />
-      <View style={styles.backgroundOrbSecondary} />
-      <ScrollView
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-      >
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Profile</Text>
-          <Text style={styles.headerSubtitle}>Artist identity and distribution links</Text>
-        </View>
-
-        <View style={styles.profileCard}>
-          <View style={styles.profileIdentityRow}>
-            <View style={styles.profileIdentityColumn}>
-              <Pressable
-                onPress={() => {
-                  void handlePickAvatar();
-                }}
-                disabled={profileInputsDisabled}
-                style={({ pressed }) => [
-                  styles.avatarTapTarget,
-                  pressed && !profileInputsDisabled && styles.optionChipPressed,
+    <SafeAreaView style={styles.container} edges={["left", "right"]}>
+      <StatusBar style="light" />
+      {isProfileSettingsOpen ? (
+        <Modal
+          visible
+          animationType="none"
+          transparent
+          presentationStyle="overFullScreen"
+          onRequestClose={handleCloseProfileSettings}
+        >
+          <SafeAreaProvider>
+            <View style={styles.profileSettingsModalRoot}>
+              <Animated.View
+                style={[
+                  styles.profileSettingsAnimatedLayer,
+                  { transform: [{ translateX: profileSettingsTranslateX }] },
                 ]}
-                accessibilityLabel="Edit profile picture"
-                accessibilityRole="button"
               >
-                <View style={styles.avatarFrame}>
-                  <View style={styles.avatar}>
-                    {avatarImageUrlDraft ? (
-                      <Image source={{ uri: avatarImageUrlDraft }} style={styles.avatarImage} />
-                    ) : (
-                      <Ionicons name="person" size={36} color={colors.light.textSecondary} />
-                    )}
-                  </View>
+                <SafeAreaView
+                  style={[styles.profileSettingsScreen, { paddingTop: modalTopInset }]}
+                  edges={[]}
+                >
+                  <StatusBar style="dark" />
+                <View
+                  style={styles.profileSettingsHeader}
+                  {...profileSettingsPanResponder.panHandlers}
+                >
+                  <Pressable
+                    onPress={handleCloseProfileSettings}
+                    style={({ pressed }) => [
+                      styles.profileSettingsBackButton,
+                      pressed && styles.profileSettingsBackButtonPressed,
+                    ]}
+                    accessibilityLabel="Close edit profile"
+                    accessibilityRole="button"
+                  >
+                    <Ionicons name="chevron-back" size={24} color="#121826" />
+                  </Pressable>
+                  <Text style={styles.profileSettingsHeaderTitle}>Edit profile</Text>
                 </View>
-                <View style={styles.avatarHintBadge}>
-                  {isPickingAvatar ? (
-                    <ActivityIndicator size="small" color={colors.light.textSecondary} />
+                <ScrollView
+                  contentContainerStyle={styles.profileSettingsContent}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  <View style={styles.profileSettingsAvatarSection}>
+                    <View style={styles.profileSettingsMediaRow}>
+                      <View style={styles.profileSettingsMediaColumn}>
+                        <Pressable
+                          onPress={() => {
+                            void handlePickAvatar();
+                          }}
+                          disabled={profileSettingsDisabled}
+                          style={({ pressed }) => [
+                            styles.profileSettingsMediaCircle,
+                            profileSettingsDisabled && styles.heroActionDisabled,
+                            pressed && !profileSettingsDisabled && styles.optionChipPressed,
+                          ]}
+                          accessibilityLabel="Edit profile picture"
+                          accessibilityRole="button"
+                        >
+                          {avatarImageUrlDraft ? (
+                            <Image
+                              source={{ uri: avatarImageUrlDraft }}
+                              style={styles.profileSettingsMediaImage}
+                            />
+                          ) : (
+                            <Ionicons name="person" size={44} color="#8792AA" />
+                          )}
+                        </Pressable>
+                        <Text style={styles.profileSettingsMediaLabel}>Avatar</Text>
+                        <Pressable
+                          onPress={() => {
+                            void handlePickAvatar();
+                          }}
+                          disabled={profileSettingsDisabled}
+                          style={({ pressed }) => [
+                            styles.profileSettingsMediaCtaButton,
+                            pressed && !profileSettingsDisabled && styles.optionChipPressed,
+                          ]}
+                          accessibilityLabel="Edit avatar"
+                          accessibilityRole="button"
+                        >
+                          {isPickingAvatar ? (
+                            <ActivityIndicator size="small" color="#4A5BEA" />
+                          ) : (
+                            <Text style={styles.profileSettingsMediaCtaText}>Edit avatar</Text>
+                          )}
+                        </Pressable>
+                      </View>
+
+                      <View style={styles.profileSettingsMediaColumn}>
+                        <Pressable
+                          onPress={() => {
+                            void handlePickHero();
+                          }}
+                          disabled={profileSettingsDisabled}
+                          style={({ pressed }) => [
+                            styles.profileSettingsMediaCircle,
+                            profileSettingsDisabled && styles.heroActionDisabled,
+                            pressed && !profileSettingsDisabled && styles.optionChipPressed,
+                          ]}
+                          accessibilityLabel="Edit banner picture"
+                          accessibilityRole="button"
+                        >
+                          {heroImageUrlDraft ? (
+                            <Image
+                              source={{ uri: heroImageUrlDraft }}
+                              style={styles.profileSettingsMediaImage}
+                            />
+                          ) : (
+                            <Ionicons name="image-outline" size={40} color="#8792AA" />
+                          )}
+                        </Pressable>
+                        <Text style={styles.profileSettingsMediaLabel}>Banner</Text>
+                        <Pressable
+                          onPress={() => {
+                            void handlePickHero();
+                          }}
+                          disabled={profileSettingsDisabled}
+                          style={({ pressed }) => [
+                            styles.profileSettingsMediaCtaButton,
+                            pressed && !profileSettingsDisabled && styles.optionChipPressed,
+                          ]}
+                          accessibilityLabel="Edit banner"
+                          accessibilityRole="button"
+                        >
+                          {isPickingHero ? (
+                            <ActivityIndicator size="small" color="#4A5BEA" />
+                          ) : (
+                            <Text style={styles.profileSettingsMediaCtaText}>Edit banner</Text>
+                          )}
+                        </Pressable>
+                      </View>
+                    </View>
+                  </View>
+
+                  <View style={styles.profileSettingsCard}>
+                    <View style={styles.profileSettingsRow}>
+                      <Text style={styles.profileSettingsRowLabel}>Name</Text>
+                      <TextInput
+                        value={artistNameDraft}
+                        onChangeText={setArtistNameDraft}
+                        placeholder="Add name"
+                        placeholderTextColor="#A7AFC0"
+                        editable={!profileSettingsDisabled}
+                        onSubmitEditing={() => {
+                          void saveProfile({ includeLinks: false });
+                        }}
+                        onBlur={() => {
+                          void saveProfile({ includeLinks: false });
+                        }}
+                        style={styles.profileSettingsNameInput}
+                        autoCapitalize="words"
+                        autoCorrect={false}
+                        returnKeyType="done"
+                      />
+                    </View>
+                  </View>
+                </ScrollView>
+              </SafeAreaView>
+            </Animated.View>
+            </View>
+          </SafeAreaProvider>
+        </Modal>
+      ) : null}
+        <ScrollView
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+        >
+        <View style={[styles.heroShell, { minHeight: heroHeight }]}>
+          <View style={[styles.heroBanner, { height: heroBannerHeight }]}>
+            {heroImageUrlDraft ? (
+              <Image
+                source={{ uri: heroImageUrlDraft }}
+                style={styles.heroBannerImage}
+                resizeMode="cover"
+              />
+            ) : (
+              <View style={styles.heroBannerFallback} />
+            )}
+          </View>
+
+          <View style={styles.heroIdentityBlock}>
+            <Pressable
+              onPress={() => {
+                void handlePickAvatar();
+              }}
+              disabled={profileInputsDisabled}
+              style={({ pressed }) => [
+                styles.heroAvatarPressable,
+                profileInputsDisabled && styles.heroActionDisabled,
+                pressed && !profileInputsDisabled && styles.optionChipPressed,
+              ]}
+              accessibilityLabel="Edit profile picture"
+              accessibilityRole="button"
+            >
+              <View style={styles.heroAvatarFrame}>
+                <View style={styles.heroAvatar}>
+                  {avatarImageUrlDraft ? (
+                    <Image source={{ uri: avatarImageUrlDraft }} style={styles.heroAvatarImage} />
                   ) : (
-                    <>
-                      <Ionicons name="camera-outline" size={12} color={colors.light.text} />
-                      <Text style={styles.avatarHintText}>Edit</Text>
-                    </>
+                    <Ionicons name="person" size={52} color="#9EABC8" />
                   )}
                 </View>
-              </Pressable>
-              {avatarImageUrlDraft ? (
-                <Pressable
-                  onPress={() => setAvatarImageUrlDraft(null)}
-                  disabled={profileInputsDisabled}
-                  style={({ pressed }) => [
-                    styles.removeAvatarButton,
-                    profileInputsDisabled && styles.optionChipDisabled,
-                    pressed && !profileInputsDisabled && styles.optionChipPressed,
-                  ]}
-                  accessibilityLabel="Remove profile picture"
-                  accessibilityRole="button"
-                >
-                  <Text style={styles.removeAvatarButtonText}>Remove</Text>
-                </Pressable>
-              ) : null}
-            </View>
-
-            <View style={styles.profileIdentityTextBlock}>
-              <Pressable
-                onPress={() => setIsEditingArtistName(true)}
-                disabled={profileInputsDisabled}
-                style={({ pressed }) => [
-                  styles.artistNameEditor,
-                  pressed && !profileInputsDisabled && styles.optionChipPressed,
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel="Edit artist name"
-              >
-                <Text style={styles.artistNameLabel}>Artist Name</Text>
-                {isEditingArtistName ? (
-                  <TextInput
-                    value={artistNameDraft}
-                    onChangeText={setArtistNameDraft}
-                    placeholder="Artist name"
-                    placeholderTextColor="#8D8AA4"
-                    editable={!profileInputsDisabled}
-                    style={styles.artistNameInput}
-                    autoCapitalize="words"
-                    autoCorrect={false}
-                    autoFocus
-                    returnKeyType="done"
-                    onSubmitEditing={() => setIsEditingArtistName(false)}
-                    onBlur={() => setIsEditingArtistName(false)}
-                  />
-                ) : (
-                  <View style={styles.artistNameDisplayRow}>
-                    <Text
-                      style={[
-                        styles.artistNameText,
-                        !artistNameDraft.trim() && styles.artistNamePlaceholder,
-                      ]}
-                    >
-                      {artistNameDraft.trim() || "Tap to add artist name"}
-                    </Text>
-                    <Ionicons name="pencil" size={14} color="#7C78A0" />
-                  </View>
-                )}
-              </Pressable>
-
-              <Text style={styles.name}>{displayName}</Text>
-              <Text style={styles.email}>{displayEmail}</Text>
-            </View>
-          </View>
-          <View style={styles.profileMetaRow}>
-            <View style={styles.metaPill}>
-              <Text style={styles.metaLabel}>Artist</Text>
-              <Text style={styles.metaValue}>{artistNameStatus}</Text>
-            </View>
-            <View style={styles.metaPill}>
-              <Text style={styles.metaLabel}>Links</Text>
-              <Text style={styles.metaValue}>{connectedPlatformsCount}</Text>
-            </View>
-          </View>
-          {isGuest && (
-            <View style={styles.guestBadge}>
-              <Text style={styles.guestBadgeText}>Guest Session</Text>
-            </View>
-          )}
-          {isProfileLoading ? (
-            <View style={styles.profileLoadingRow}>
-              <ActivityIndicator color={colors.accent.primary} />
-              <Text style={styles.loadingText}>Loading profile...</Text>
-            </View>
-          ) : (
-            <View style={styles.profileEditor}>
-              <View style={styles.profileEditorHeader}>
-                <Text style={styles.profileEditorTitle}>Connected Platforms</Text>
-                <Text style={styles.profileEditorSubtitle}>
-                  Add links where fans can discover your music.
-                </Text>
-              </View>
-              <View style={styles.linksPanel}>
-
-                <View style={styles.platformChipWrap}>
-                  {availablePlatforms.map((platform) => (
-                    <Pressable
-                      key={`add-${platform}`}
-                      onPress={() => handleAddLink(platform)}
-                      disabled={profileInputsDisabled}
-                      style={({ pressed }) => [
-                        styles.addPlatformChip,
-                        pressed && !profileInputsDisabled && styles.optionChipPressed,
-                      ]}
-                      accessibilityLabel={`Add ${PLATFORM_LABELS[platform]} link`}
-                      accessibilityRole="button"
-                    >
-                      <Ionicons name="add" size={13} color={colors.light.textSecondary} />
-                      <Text style={styles.addPlatformChipText}>{PLATFORM_LABELS[platform]}</Text>
-                    </Pressable>
-                  ))}
+                <View style={styles.heroAvatarPlaceholder}>
+                  <Ionicons name="camera-outline" size={14} color="#F4F7FF" />
                 </View>
-
-                {linksDraft.length === 0 ? (
-                  <Text style={styles.emptyLinksText}>
-                    Add platforms above to include profile links.
-                  </Text>
-                ) : null}
-
-                {linksDraft.map((link) => (
-                  <View key={link.platform} style={styles.linkRow}>
-                    <View style={styles.linkHeader}>
-                      <Text style={styles.linkPlatform}>{PLATFORM_LABELS[link.platform]}</Text>
-                      <Pressable
-                        onPress={() => handleRemoveLink(link.platform)}
-                        disabled={profileInputsDisabled}
-                        style={({ pressed }) => [
-                          styles.linkRemoveButton,
-                          pressed && !profileInputsDisabled && styles.optionChipPressed,
-                        ]}
-                        accessibilityLabel={`Remove ${PLATFORM_LABELS[link.platform]} link`}
-                        accessibilityRole="button"
-                      >
-                        <Ionicons name="close" size={16} color={colors.light.textSecondary} />
-                      </Pressable>
-                    </View>
-                    <TextInput
-                      value={link.url}
-                      onChangeText={(text) => handleUpdateLinkUrl(link.platform, text)}
-                      placeholder="https://"
-                      placeholderTextColor="#7F7F86"
-                      editable={!profileInputsDisabled}
-                      style={styles.linkInput}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      keyboardType="url"
-                    />
-                  </View>
-                ))}
               </View>
+            </Pressable>
 
+            <View style={styles.heroEditProfileActionRow}>
               <Pressable
                 onPress={() => {
-                  void saveProfile();
+                  handleOpenProfileSettings();
                 }}
                 disabled={profileInputsDisabled}
                 style={({ pressed }) => [
-                  styles.saveButton,
-                  profileInputsDisabled && styles.saveButtonDisabled,
+                  styles.heroEditProfileButton,
+                  profileInputsDisabled && styles.heroActionDisabled,
                   pressed && !profileInputsDisabled && styles.optionChipPressed,
                 ]}
-                accessibilityLabel="Save profile"
+                accessibilityLabel="Edit profile"
                 accessibilityRole="button"
               >
-                {isSavingProfile ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
+                {isPickingAvatar ? (
+                  <ActivityIndicator size="small" color="#11152A" />
                 ) : (
-                  <Text style={styles.saveButtonText}>Save Profile</Text>
+                  <>
+                    <Ionicons name="pencil-outline" size={15} color="#11152A" />
+                    <Text style={styles.heroEditProfileButtonText} numberOfLines={1}>
+                      Edit Profile
+                    </Text>
+                  </>
                 )}
               </Pressable>
             </View>
-          )}
+
+            <View style={styles.heroIdentityTextWrap}>
+              <Text
+                style={[
+                  styles.heroArtistName,
+                  !artistNameDraft.trim() && styles.heroArtistNamePlaceholder,
+                ]}
+              >
+                {heroArtistName}
+              </Text>
+            </View>
+          </View>
         </View>
 
-        {errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Account</Text>
-          <Pressable
-            style={({ pressed }) => [
-              styles.actionRow,
-              pressed && !actionsDisabled && styles.actionRowPressed,
-            ]}
-            onPress={handleSignOut}
-            disabled={actionsDisabled}
-            accessibilityLabel="Sign out"
-            accessibilityRole="button"
-          >
-            <View style={styles.actionRowLeft}>
-              <Ionicons name="log-out-outline" size={20} color={colors.light.text} />
-              <Text style={styles.actionText}>
-                {isLocalGuest ? "Exit Guest Mode" : "Sign Out"}
-              </Text>
+        <View style={styles.mainContent}>
+          {errorText ? (
+            <View style={styles.errorPanel}>
+              <Ionicons name="alert-circle-outline" size={16} color={colors.accent.error} />
+              <Text style={styles.errorPanelText}>{errorText}</Text>
             </View>
-            {isSigningOut ? (
-              <ActivityIndicator size="small" color={colors.light.textSecondary} />
-            ) : (
-              <Ionicons
-                name="chevron-forward"
-                size={16}
-                color={colors.light.textSecondary}
-              />
-            )}
-          </Pressable>
-
-          {!isLocalGuest ? (
-            <>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.actionRow,
-                  pressed && !actionsDisabled && styles.deleteRowPressed,
-                ]}
-                onPress={handleDeleteAccount}
-                disabled={actionsDisabled}
-                accessibilityLabel="Delete account"
-                accessibilityRole="button"
-              >
-                <View style={styles.actionRowLeft}>
-                  <Ionicons
-                    name="trash-outline"
-                    size={20}
-                    color={colors.accent.error}
-                  />
-                  <Text style={styles.deleteText}>Delete Account</Text>
-                </View>
-                {isDeleting ? (
-                  <ActivityIndicator size="small" color={colors.accent.error} />
-                ) : (
-                  <Ionicons
-                    name="chevron-forward"
-                    size={16}
-                    color={colors.light.textSecondary}
-                  />
-                )}
-              </Pressable>
-
-              <Text style={styles.warningText}>
-                Deleting deactivates your account for v1 while keeping records recoverable.
-              </Text>
-            </>
           ) : null}
+
+          {isProfileLoading ? (
+            <View style={styles.loadingCard}>
+              <ActivityIndicator color="#F1F4FF" />
+              <Text style={styles.loadingText}>Loading profile...</Text>
+            </View>
+          ) : null}
+
+          <View style={styles.accountSection}>
+            <Text style={styles.sectionEyebrow}>Account Actions</Text>
+            <Text style={styles.sectionTitle}>Security & Session</Text>
+
+            <Pressable
+              style={({ pressed }) => [
+                styles.actionRow,
+                pressed && !actionsDisabled && styles.actionRowPressed,
+              ]}
+              onPress={handleSignOut}
+              disabled={actionsDisabled}
+              accessibilityLabel="Sign out"
+              accessibilityRole="button"
+            >
+              <View style={styles.actionRowLeft}>
+                <Ionicons name="log-out-outline" size={20} color="#E8ECF8" />
+                <Text style={styles.actionText}>
+                  {isLocalGuest ? "Exit Guest Mode" : "Sign Out"}
+                </Text>
+              </View>
+              {isSigningOut ? (
+                <ActivityIndicator size="small" color="#AEB7D1" />
+              ) : (
+                <Ionicons name="chevron-forward" size={16} color="#AEB7D1" />
+              )}
+            </Pressable>
+
+            {!isLocalGuest ? (
+              <>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.actionRow,
+                    pressed && !actionsDisabled && styles.deleteRowPressed,
+                  ]}
+                  onPress={handleDeleteAccount}
+                  disabled={actionsDisabled}
+                  accessibilityLabel="Delete account"
+                  accessibilityRole="button"
+                >
+                  <View style={styles.actionRowLeft}>
+                    <Ionicons name="trash-outline" size={20} color={colors.accent.error} />
+                    <Text style={styles.deleteText}>Delete Account</Text>
+                  </View>
+                  {isDeleting ? (
+                    <ActivityIndicator size="small" color={colors.accent.error} />
+                  ) : (
+                    <Ionicons name="chevron-forward" size={16} color="#AEB7D1" />
+                  )}
+                </Pressable>
+
+                <Text style={styles.warningText}>
+                  Deleting deactivates your account for v1 while keeping records recoverable.
+                </Text>
+              </>
+            ) : null}
+          </View>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -830,271 +1067,305 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.light.background,
-    position: "relative",
+    backgroundColor: "#03050A",
   },
   content: {
-    paddingTop: spacing.sm,
+    paddingTop: 0,
     paddingBottom: Platform.select({ ios: 112, android: 96, default: 96 }),
   },
-  backgroundOrbPrimary: {
+  profileSettingsModalRoot: {
+    flex: 1,
+    backgroundColor: "transparent",
+  },
+  profileSettingsScreen: {
+    flex: 1,
+    backgroundColor: "#F4F5F7",
+  },
+  profileSettingsAnimatedLayer: {
+    flex: 1,
+    backgroundColor: "#F4F5F7",
+  },
+  profileSettingsHeader: {
+    minHeight: 58,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E6E8EE",
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: spacing.sm,
+    justifyContent: "flex-start",
+  },
+  profileSettingsBackButton: {
+    width: 38,
+    height: 38,
+    borderRadius: radius.full,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  profileSettingsBackButtonPressed: {
+    backgroundColor: "#E8EBF2",
+  },
+  profileSettingsHeaderTitle: {
+    ...typography.h2,
+    color: "#232938",
+    textAlign: "center",
     position: "absolute",
-    width: 260,
-    height: 260,
-    borderRadius: 130,
-    backgroundColor: "rgba(88, 86, 214, 0.08)",
-    top: -90,
-    right: -80,
+    left: 56,
+    right: 56,
   },
-  backgroundOrbSecondary: {
-    position: "absolute",
-    width: 220,
-    height: 220,
-    borderRadius: 110,
-    backgroundColor: "rgba(245, 133, 41, 0.07)",
-    top: 110,
-    left: -110,
+  profileSettingsContent: {
+    paddingBottom: 36,
   },
-  header: {
+  profileSettingsAvatarSection: {
+    borderBottomWidth: 1,
+    borderBottomColor: "#E6E8EE",
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.md,
     paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.sm,
+    alignItems: "center",
   },
-  headerTitle: {
-    ...typography.h1,
-    color: colors.light.text,
-  },
-  headerSubtitle: {
-    ...typography.caption,
-    color: "#6E6A8C",
-    marginTop: spacing.xs,
-    letterSpacing: 0.5,
-  },
-  profileCard: {
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.sm,
-    paddingVertical: spacing.xl,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.lg,
-    backgroundColor: "#FFFFFF",
-    alignItems: "stretch",
-    borderWidth: 1,
-    borderColor: "#E3E2F0",
-  },
-  profileIdentityRow: {
+  profileSettingsMediaRow: {
     width: "100%",
     flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "flex-start",
     gap: spacing.md,
   },
-  profileIdentityColumn: {
-    width: 104,
+  profileSettingsMediaColumn: {
+    flex: 1,
     alignItems: "center",
+    gap: spacing.xs,
   },
-  avatarTapTarget: {
-    alignItems: "center",
-  },
-  profileLoadingRow: {
-    width: "100%",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm,
-    marginTop: spacing.lg,
-    paddingTop: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: "#ECEBF5",
-  },
-  profileEditor: {
-    width: "100%",
-    marginTop: spacing.lg,
-    paddingTop: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: "#ECEBF5",
-  },
-  profileEditorHeader: {
-    marginBottom: spacing.sm,
-  },
-  profileEditorTitle: {
-    ...typography.caption,
-    color: "#7B769D",
-    textTransform: "uppercase",
-    letterSpacing: 1,
-  },
-  profileEditorSubtitle: {
-    ...typography.caption,
-    color: "#8E8BA7",
-    marginTop: spacing.xs,
-  },
-  linksPanel: {
-    width: "100%",
-    backgroundColor: "#F7F7FB",
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: "#E2E1ED",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-  },
-  avatarFrame: {
+  profileSettingsMediaCircle: {
     width: 96,
     height: 96,
     borderRadius: radius.full,
-    padding: 3,
-    backgroundColor: "#6C66E8",
-  },
-  avatar: {
-    width: "100%",
-    height: "100%",
-    borderRadius: radius.full,
-    backgroundColor: "#F2F1FB",
+    backgroundColor: "#DDE2EC",
+    borderWidth: 1,
+    borderColor: "#D4DAE8",
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
   },
-  avatarImage: {
+  profileSettingsMediaImage: {
     width: "100%",
     height: "100%",
   },
-  avatarHintBadge: {
-    marginTop: spacing.xs,
-    minHeight: 24,
-    borderRadius: radius.full,
-    borderWidth: 1,
-    borderColor: "#D5D3E7",
-    backgroundColor: "#F7F6FF",
-    paddingHorizontal: spacing.sm,
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-    gap: 4,
-  },
-  avatarHintText: {
+  profileSettingsMediaLabel: {
     ...typography.caption,
-    color: colors.light.text,
-    fontWeight: "600",
-  },
-  removeAvatarButton: {
+    color: "#4A5266",
+    fontWeight: "700",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
     marginTop: spacing.xs,
+  },
+  profileSettingsMediaCtaButton: {
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
-    borderRadius: radius.full,
-    borderWidth: 1,
-    borderColor: "#F1C8CF",
-    backgroundColor: "#FFF6F7",
-  },
-  removeAvatarButtonText: {
-    ...typography.caption,
-    color: colors.accent.error,
-    fontWeight: "600",
-  },
-  profileIdentityTextBlock: {
-    flex: 1,
-    gap: spacing.xs,
-    paddingTop: spacing.xs,
-  },
-  artistNameEditor: {
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: "#D8D5EB",
-    backgroundColor: "#F7F6FF",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    minHeight: 62,
+    minHeight: 28,
+    alignItems: "center",
     justifyContent: "center",
   },
-  artistNameLabel: {
-    ...typography.caption,
-    color: "#7C78A0",
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-    marginBottom: spacing.xs,
+  profileSettingsMediaCtaText: {
+    ...typography.body,
+    color: "#4A5BEA",
+    fontWeight: "600",
+    textAlign: "center",
   },
-  artistNameInput: {
-    ...typography.h2,
-    color: colors.light.text,
-    paddingVertical: 0,
+  profileSettingsCard: {
+    backgroundColor: "#F4F5F7",
   },
-  artistNameDisplayRow: {
+  profileSettingsRow: {
+    minHeight: 56,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E6E8EE",
+    paddingHorizontal: spacing.lg,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: spacing.sm,
+    gap: spacing.md,
   },
-  artistNameText: {
-    ...typography.h2,
-    color: colors.light.text,
-    flex: 1,
-  },
-  artistNamePlaceholder: {
-    color: "#8E8BA7",
-    fontSize: 20,
-  },
-  name: {
+  profileSettingsRowLabel: {
     ...typography.body,
-    color: colors.light.text,
-    fontWeight: "600",
+    color: "#303645",
+    flexShrink: 0,
   },
-  email: {
-    ...typography.caption,
-    color: colors.light.textSecondary,
-    marginTop: 2,
+  profileSettingsNameInput: {
+    ...typography.body,
+    color: "#1F2431",
+    textAlign: "right",
+    flex: 1,
+    minHeight: 36,
+    paddingVertical: 0,
   },
-  profileMetaRow: {
-    marginTop: spacing.lg,
-    flexDirection: "row",
-    gap: spacing.sm,
-    justifyContent: "flex-start",
+  heroShell: {
+    width: "100%",
+    backgroundColor: "#03050A",
   },
-  metaPill: {
+  heroBanner: {
+    width: "100%",
+    overflow: "hidden",
+  },
+  heroBannerImage: {
+    ...StyleSheet.absoluteFillObject,
+    width: "100%",
+    height: "100%",
+  },
+  heroBannerFallback: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "#0F172D",
+  },
+  heroEditProfileActionRow: {
+    marginLeft: 156,
+    marginRight: spacing.xs,
+    marginTop: -56,
+    marginBottom: spacing.sm,
+    alignItems: "stretch",
+    transform: [{ translateY: -8 }],
+  },
+  heroEditProfileButton: {
+    minHeight: 38,
     borderRadius: radius.full,
-    borderWidth: 1,
-    borderColor: "#DEDDF0",
-    backgroundColor: "#F6F5FF",
     paddingHorizontal: spacing.md,
-    minHeight: 30,
-    alignItems: "center",
+    backgroundColor: "#EFF3FF",
     flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     gap: spacing.xs,
   },
-  metaLabel: {
+  heroEditProfileButtonText: {
     ...typography.caption,
-    color: "#7C78A0",
-  },
-  metaValue: {
-    ...typography.caption,
-    color: colors.light.text,
+    color: "#11152A",
     fontWeight: "700",
   },
-  guestBadge: {
-    marginTop: spacing.sm,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.full,
-    backgroundColor: "#FFF3E9",
-    borderWidth: 1,
-    borderColor: "#F3CCAD",
+  heroActionDisabled: {
+    opacity: 0.5,
   },
-  guestBadgeText: {
-    ...typography.caption,
-    color: "#9B4E1A",
-    fontWeight: "600",
-  },
-  section: {
-    marginTop: spacing.lg,
+  heroIdentityBlock: {
+    position: "relative",
+    backgroundColor: "#03050A",
     paddingHorizontal: spacing.lg,
+    paddingTop: 90,
+    paddingBottom: spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(184, 200, 236, 0.15)",
   },
-  sectionTitle: {
+  heroAvatarPressable: {
+    position: "absolute",
+    left: spacing.lg,
+    top: -74,
+    zIndex: 3,
+    alignItems: "center",
+  },
+  heroAvatarFrame: {
+    width: 140,
+    height: 140,
+    borderRadius: 72,
+    padding: 4,
+    backgroundColor: "rgba(222, 233, 255, 0.8)",
+    shadowColor: "#000000",
+    shadowOpacity: 0.42,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 14 },
+    elevation: 12,
+    position: "relative",
+  },
+  heroAvatar: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 68,
+    backgroundColor: "#16203A",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  heroAvatarImage: {
+    width: "100%",
+    height: "100%",
+  },
+  heroAvatarPlaceholder: {
+    position: "absolute",
+    left: 6,
+    bottom: 6,
+    width: 34,
+    height: 34,
+    borderRadius: radius.full,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(227, 236, 255, 0.42)",
+    backgroundColor: "rgba(18, 26, 44, 0.82)",
+  },
+  heroIdentityTextWrap: {
+    gap: spacing.xs,
+  },
+  heroArtistName: {
+    ...typography.h1,
+    color: "#F8FAFF",
+    fontSize: 42,
+    lineHeight: 46,
+    letterSpacing: 0.3,
+    maxWidth: "88%",
+  },
+  heroArtistNamePlaceholder: {
+    color: "#D6DEEF",
+  },
+  mainContent: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+  },
+  errorPanel: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: "rgba(255, 82, 94, 0.4)",
+    backgroundColor: "rgba(57, 18, 24, 0.72)",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  errorPanelText: {
     ...typography.caption,
-    color: colors.light.textSecondary,
-    textTransform: "uppercase",
-    letterSpacing: 1,
-    marginBottom: spacing.sm,
+    color: "#FFB8BE",
+    flex: 1,
+  },
+  loadingCard: {
+    minHeight: 120,
+    borderRadius: radius.lg,
+    backgroundColor: "#121A2E",
+    borderWidth: 1,
+    borderColor: "rgba(187, 203, 236, 0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
   },
   loadingText: {
     ...typography.body,
-    color: colors.light.textSecondary,
+    color: "#D7DFF4",
   },
-  optionChipDisabled: {
-    opacity: 0.5,
+  sectionCard: {
+    borderRadius: radius.lg,
+    backgroundColor: "#11192C",
+    borderWidth: 1,
+    borderColor: "rgba(187, 203, 236, 0.15)",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    marginBottom: spacing.md,
+  },
+  sectionEyebrow: {
+    ...typography.caption,
+    color: "#8D9BBD",
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    marginBottom: spacing.xs,
+  },
+  sectionTitle: {
+    ...typography.h2,
+    color: "#F4F7FF",
+    marginBottom: spacing.md,
   },
   optionChipPressed: {
     opacity: 0.85,
@@ -1103,13 +1374,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: spacing.xs,
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
   },
   addPlatformChip: {
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: "#D3D2E3",
-    backgroundColor: "#FFFFFF",
+    borderColor: "rgba(205, 218, 249, 0.3)",
+    backgroundColor: "#1A2946",
     paddingHorizontal: spacing.md,
     minHeight: 34,
     alignItems: "center",
@@ -1119,19 +1390,19 @@ const styles = StyleSheet.create({
   },
   addPlatformChipText: {
     ...typography.caption,
-    color: colors.light.textSecondary,
+    color: "#DBE4FC",
     fontWeight: "600",
   },
   emptyLinksText: {
     ...typography.caption,
-    color: "#8E8BA7",
+    color: "#94A2C4",
     marginBottom: spacing.sm,
   },
   linkRow: {
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: "#D3D2E3",
-    backgroundColor: "#FFFFFF",
+    borderColor: "rgba(205, 218, 249, 0.2)",
+    backgroundColor: "#0F172A",
     padding: spacing.sm,
     marginTop: spacing.xs,
     gap: spacing.xs,
@@ -1143,20 +1414,20 @@ const styles = StyleSheet.create({
   },
   linkPlatform: {
     ...typography.caption,
-    color: "#5C5A76",
+    color: "#DCE4FA",
     fontWeight: "600",
   },
   linkInput: {
     ...typography.body,
-    color: colors.light.text,
+    color: "#F3F6FF",
     flex: 1,
     minHeight: 36,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
     borderRadius: radius.sm,
     borderWidth: 1,
-    borderColor: "#D3D2E3",
-    backgroundColor: "#FAFAFF",
+    borderColor: "rgba(205, 218, 249, 0.2)",
+    backgroundColor: "#13203B",
   },
   linkRemoveButton: {
     width: 30,
@@ -1167,28 +1438,33 @@ const styles = StyleSheet.create({
   },
   saveButton: {
     width: "100%",
-    minHeight: 48,
+    minHeight: 52,
     borderRadius: radius.full,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.accent.primary,
-    marginTop: spacing.sm,
+    backgroundColor: "#F1F4FE",
+    marginTop: spacing.xs,
     borderWidth: 1,
-    borderColor: "#4D4BC9",
+    borderColor: "#D7DEEE",
+    marginBottom: spacing.lg,
+    flexDirection: "row",
+    gap: spacing.xs,
   },
   saveButtonDisabled: {
-    opacity: 0.6,
+    opacity: 0.5,
   },
   saveButtonText: {
-    ...typography.body,
-    color: "#FFFFFF",
+    ...typography.button,
+    color: "#101426",
     fontWeight: "700",
   },
-  errorText: {
-    ...typography.caption,
-    color: colors.accent.error,
-    marginTop: spacing.sm,
-    marginHorizontal: spacing.lg,
+  accountSection: {
+    borderRadius: radius.lg,
+    backgroundColor: "#11192C",
+    borderWidth: 1,
+    borderColor: "rgba(187, 203, 236, 0.15)",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
   },
   actionRow: {
     minHeight: 56,
@@ -1197,16 +1473,16 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#0D162A",
     borderWidth: 1,
-    borderColor: colors.light.border,
+    borderColor: "rgba(205, 218, 249, 0.2)",
     marginBottom: spacing.sm,
   },
   actionRowPressed: {
     opacity: 0.86,
   },
   deleteRowPressed: {
-    backgroundColor: "#FFF2F3",
+    backgroundColor: "#2B161D",
   },
   actionRowLeft: {
     flexDirection: "row",
@@ -1215,7 +1491,7 @@ const styles = StyleSheet.create({
   },
   actionText: {
     ...typography.body,
-    color: colors.light.text,
+    color: "#E8ECF8",
     fontWeight: "600",
   },
   deleteText: {
@@ -1225,7 +1501,7 @@ const styles = StyleSheet.create({
   },
   warningText: {
     ...typography.caption,
-    color: "#7F7F86",
+    color: "#8F9DBE",
     lineHeight: 18,
     marginTop: spacing.xs,
   },
