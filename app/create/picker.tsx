@@ -13,6 +13,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import { StatusBar } from "expo-status-bar";
+import { useIsFocused } from "@react-navigation/native";
 import { useConvexAuth, useQuery } from "convex/react";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
@@ -60,6 +62,7 @@ interface PickerScreenProps {
 
 export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps) {
   const { width: windowWidth } = useWindowDimensions();
+  const isFocused = useIsFocused();
   const router = useRouter();
   const params = useLocalSearchParams<{
     projectId?: string;
@@ -291,7 +294,7 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
         trimStart: nextTrimStart,
         trimEnd: nextTrimEnd,
         templateTweaks: serializedTemplateTweaks,
-        showTemplateInfo: showTemplateInfoParam === "0" ? "0" : "1",
+        showTemplateInfo: showTemplateInfoParam === "1" ? "1" : "0",
       };
 
       if (projectId) nextParams.projectId = projectId;
@@ -362,14 +365,14 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
           trimStart: trimStart ?? "0",
           trimEnd: trimEnd ?? String(DEFAULT_NEW_PROJECT_TRIM_END),
           templateTweaks: serializedTemplateTweaks,
-          showTemplateInfo: showTemplateInfoParam === "0" ? "0" : "1",
+          showTemplateInfo: showTemplateInfoParam === "1" ? "1" : "0",
         },
       });
       return;
     }
 
     resetPickerState();
-    router.replace("/(tabs)" as const);
+    router.replace("/" as const);
   }, [
     returnToEditor,
     resetPickerState,
@@ -418,6 +421,7 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
+      {isFocused ? <StatusBar style="dark" /> : null}
       <View style={styles.header}>
         <Pressable
           onPress={handleCancel}

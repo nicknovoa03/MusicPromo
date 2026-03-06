@@ -84,7 +84,7 @@ function parseAspectRatioParam(
 function parseShowTemplateInfoParam(
   value: string | string[] | undefined,
 ): boolean {
-  return firstParam(value) !== "0";
+  return firstParam(value) === "1";
 }
 
 function asProjectId(value?: string) {
@@ -1231,7 +1231,7 @@ export default function EditorScreen() {
           await createDraftProject();
         }
       } finally {
-        router.replace("/(tabs)" as const);
+        router.replace("/" as const);
       }
     })();
   }, [
@@ -1473,14 +1473,16 @@ export default function EditorScreen() {
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       <View style={styles.header}>
-        <Pressable
-          onPress={handleCloseEditor}
-          style={styles.headerButton}
-          accessibilityLabel="Go back"
-          accessibilityRole="button"
-        >
-          <Ionicons name="close" size={24} color={colors.dark.text} />
-        </Pressable>
+        <View style={[styles.headerSide, styles.headerSideLeft]}>
+          <Pressable
+            onPress={handleCloseEditor}
+            style={styles.headerButton}
+            accessibilityLabel="Go back"
+            accessibilityRole="button"
+          >
+            <Ionicons name="close" size={24} color={colors.dark.text} />
+          </Pressable>
+        </View>
 
         <Pressable
           onPress={handleOpenProjectNameModal}
@@ -1498,24 +1500,26 @@ export default function EditorScreen() {
           />
         </Pressable>
 
-        <Pressable
-          onPress={handleExport}
-          style={({ pressed }) => [
-            styles.exportButton,
-            !canExport && styles.exportButtonDisabled,
-            pressed && canExport && styles.exportButtonPressed,
-          ]}
-          disabled={!canExport}
-          accessibilityLabel="Export video"
-          accessibilityRole="button"
-          accessibilityState={{ disabled: !canExport }}
-        >
-          {isCheckingFiles ? (
-            <ActivityIndicator size="small" color="#FFFFFF" />
-          ) : (
-            <Text style={styles.exportText}>Export</Text>
-          )}
-        </Pressable>
+        <View style={[styles.headerSide, styles.headerSideRight]}>
+          <Pressable
+            onPress={handleExport}
+            style={({ pressed }) => [
+              styles.exportButton,
+              !canExport && styles.exportButtonDisabled,
+              pressed && canExport && styles.exportButtonPressed,
+            ]}
+            disabled={!canExport}
+            accessibilityLabel="Export video"
+            accessibilityRole="button"
+            accessibilityState={{ disabled: !canExport }}
+          >
+            {isCheckingFiles ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Text style={styles.exportText}>Export</Text>
+            )}
+          </Pressable>
+        </View>
       </View>
 
       <Modal
@@ -1747,9 +1751,19 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
+  },
+  headerSide: {
+    width: 96,
+    minHeight: 40,
+    justifyContent: "center",
+  },
+  headerSideLeft: {
+    alignItems: "flex-start",
+  },
+  headerSideRight: {
+    alignItems: "flex-end",
   },
   headerButton: {
     width: 40,
@@ -1764,6 +1778,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: colors.dark.text,
     maxWidth: "88%",
+    textAlign: "center",
   },
   headerTitleButton: {
     flex: 1,
@@ -1771,8 +1786,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    textAlign: "center",
-    marginHorizontal: spacing.sm,
+    marginHorizontal: spacing.xs,
   },
   exportButton: {
     minWidth: 84,

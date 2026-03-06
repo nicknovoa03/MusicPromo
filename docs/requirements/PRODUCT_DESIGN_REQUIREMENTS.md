@@ -88,19 +88,19 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 
 1. **Sign In** — Clean login with Apple + Google sign-in, "Continue as Guest" option. Light background.
 2. **Onboarding** — 1-2 walkthrough screens for first-time users. Design TBD.
-3. **Home / Projects** — White background. "Projects" header, multi-select toggle, profile icon top-right. 2-column grid of project thumbnails with title + metadata. Black "+" FAB bottom-right in browse mode. In multi-select mode, cards show check markers and a bottom-centered Delete CTA for bulk delete.
+3. **Home / Projects** — White background. "Projects" header, multi-select toggle, profile icon top-right. 2-column grid of project thumbnails with title + metadata. Black "+" FAB bottom-right in browse mode. In multi-select mode, cards show check markers and a bottom-centered action that shows `Delete (N)` when projects are selected and `Cancel` when selection mode is empty, with haptic feedback on selection interactions.
 4. **Create — Media Picker** — Light background. Single-screen selector with stacked full-width square cards: audio on top, photo on bottom. Cancel top-left, Add top-right. Audio artwork quick-fill for photo when available.
 5. **Create — Editor/Trimmer** — Dark background. Large preview with overlay controls (settings, template-info toggle, `Edit Template`), bottom-right aspect-ratio toggle, centered "Trim Audio" section, and top-right "Export" button.
-6. **Post-Export — Rendering** — Dark background. X top-left. Percentage text. Video preview with gradient border. "Please don't close" messaging.
+6. **Post-Export — Rendering** — Dark background. X top-left. Percentage text. Video preview with gradient border. "Please don't close" messaging. Stage layout responsively scales from window dimensions + safe-area insets.
 7. **Post-Export — Share** — Dark background. X top-left. "Ready to share" heading. Video preview. "Share to Instagram" gradient button. "Share to TikTok" button. "Saved to camera roll" confirmation.
-8. **Profile / Settings** — Spotify-inspired. Profile: large avatar, name, "Edit profile" button. Settings: list rows with chevrons. Sign out + delete account at bottom.
+8. **Profile / Settings** — Hero-first dark profile surface with cinematic banner, oversized overlapping avatar, and large artist name treatment. `Edit Profile` opens a light slide-in editing surface for avatar, banner, and name updates. Sign out + delete account remain grouped at bottom.
 
 ## 5) Core Entities (Conceptual Data Model)
 
 ### User Profile
 - Owner: Self
 - Visibility: Private
-- Key fields: `clerkId`, `name`, `email`, `avatarUrl`, `subscriptionTier`, `preferences` (defaultAspectRatio, defaultVideoLength), `createdAt`
+- Key fields: `clerkId`, `name`, `email`, `avatarUrl`, `artistName`, `avatarImageUrl`, `heroImageUrl`, `links`, `subscriptionTier`, `preferences` (defaultAspectRatio, defaultVideoLength), `createdAt`
 - Relationships: Has many Projects, has many Push Tokens
 - Typical queries: Get profile by clerkId
 - Permissions: User reads/updates own profile only
@@ -259,21 +259,22 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 
 ### Epic: Profile & Settings
 
-- **User problem:** User wants to manage their account and preferences.
-- **Primary user story:** As a creator, I can view my profile, set default preferences, and manage my account.
-- **Scope (v1):** Profile display (name, avatar), default aspect ratio, default video length, sign out, account deletion
-- **Non-goals:** Profile editing beyond basics, subscription management, notification preferences
-- **Key screens/components:** Profile/Settings screen
-- **Backend/data needs:** User Profile read/update in Convex
+- **User problem:** User wants to manage their account and artist identity.
+- **Primary user story:** As a creator, I can present a strong artist profile (name/avatar/banner), preserve profile metadata safely, and control account safety actions.
+- **Scope (v1):** Hero-first profile display, edit profile modal (name/avatar/banner), profile metadata persistence, sign out, account deletion
+- **Non-goals:** Subscription management, notification preferences, advanced social/community profile features
+- **Key screens/components:** Hero profile screen + slide-in edit-profile surface
+- **Backend/data needs:** User Profile read/update in Convex + local guest profile cache parity (including `heroImageUrl`)
 - **Acceptance criteria:**
-  - User can view their name, email, avatar
-  - User can set default aspect ratio (9:16 or 1:1)
-  - User can set default video length
+  - User can view and update artist name, avatar image, and hero/banner image
+  - User profile media/name edits persist for both signed-in and guest/local sessions
+  - Profile save validation skips invalid links with recoverable feedback (valid fields still persist)
   - User can sign out
   - User can delete their account (soft-delete in Convex)
 - **States:**
   - Loading: Spinner while fetching profile
   - Error: "Couldn't load profile" + retry
+  - Partial-save warning: Profile save can succeed while invalid links are reported and skipped
 
 ### Epic: Onboarding
 
@@ -307,8 +308,9 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 - **Header:** "Projects" title left, multi-select toggle + profile avatar right
 - **Main sections:** 2-column grid of project cards (thumbnail, title, date), per-card actions menu in browse mode, selection check indicators in multi-select mode
 - **Primary CTA:** Browse mode: black "+" FAB button (bottom-right) → create flow
-- **Secondary actions:** Multi-select mode: bottom-centered Delete CTA for bulk delete
-- **List behavior:** Vertical scroll, pull to refresh
+- **Secondary actions:** Multi-select mode: bottom-centered action becomes `Delete (N)` when selected, `Cancel` when zero items are selected
+- **List behavior:** Vertical scroll, pull to refresh, safe-area aware bottom action placement
+- **Interaction details:** Long-press enters selection mode with haptic feedback; selection toggles emit lightweight haptic ticks
 - **Empty state:** Illustration + "Create your first project" + "Keep track of your drafts and finished videos all in one place."
 - **Loading:** Skeleton grid
 - **Error:** "Couldn't load projects" + retry
@@ -322,7 +324,7 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 - **Header:** Cancel (left), "Select Media" title (center), Add (right, enabled only when both photo+audio selected)
 - **Main sections:** Two stacked full-width square selector cards (Select Audio first, Select Photo second), selected-state cards with inline "Change" actions, optional album-artwork quick-fill card for photo
 - **Primary CTA:** "Add" button (top-right)
-- **List behavior:** Static stacked layout that expands to available vertical space
+- **List behavior:** Static stacked layout that expands to available vertical space; tab-embedded mode applies bottom overlay compensation so controls remain visible above dock overlays
 - **Empty/loading/error:** Permission prompt for photos, document picker for audio, inline loading states per selector card
 - **Theme:** Light
 - **Analytics:** `create_started`, `photo_selected`, `audio_selected`
@@ -350,6 +352,7 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 - **Primary intent:** Show rendering progress
 - **Header:** X button (left, to cancel)
 - **Main sections:** Large percentage text, video preview with gradient border, optional template-info parity badge, "Please don't close" message
+- **Layout behavior:** Responsive stage sizing uses live window dimensions plus safe-area budget to prevent clipping across device sizes
 - **Primary CTA:** None (wait state)
 - **Theme:** Dark/black
 - **Reference:** `post-export/Edits iOS Exporting a video 1.png`
@@ -367,13 +370,17 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 
 ### Profile / Settings
 - **Route:** `/profile`
-- **Primary intent:** View/edit profile, manage account and preferences
-- **Header:** Back arrow (left), "Settings" title (center)
-- **Main sections:** Profile card (avatar, name, "Edit profile" button), settings list (rows with chevrons: Account, default aspect ratio, default video length), sign out button, delete account
+- **Primary intent:** Present a brand-first artist profile while keeping account actions safe and accessible
+- **Header:** Hero-first layout on base screen (no classic settings header). Edit flow uses a dedicated "Edit profile" slide-in header with back/close action.
+- **Main sections:** 
+  - Hero shell: top banner image/fallback, oversized overlapping avatar, large artist name
+  - Hero quick action: `Edit Profile` CTA that opens slide-in editing surface
+  - Edit profile surface: avatar + banner pickers, name input with save-on-blur/submit, swipe-to-close gesture
+  - Account actions: sign out and delete account grouped at bottom
 - **Primary CTA:** "Edit profile"
-- **Theme:** Dark (Spotify-inspired)
+- **Theme:** Dark cinematic hero (base screen) + light utility surface (edit profile modal)
 - **Analytics:** None specific
-- **Reference:** `profile-settings/Spotify iOS View profile 0.png`, `Spotify iOS View profile 1.png`
+- **Reference:** `Profile screens/Profile screens 0.png`, `Profile screens/Profile screens 1.png`, `Profile screens/Profile screens 2.png`, `Profile screens/profile-settings.png`, `Profile screens/apple-contact-card.jpeg`
 
 ### Onboarding
 - **Route:** `/onboarding`
@@ -414,7 +421,7 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 
 ## 9) Visual Design Requirements (Mini Design System)
 
-Primary reference: Meta's Edits app. Secondary: Spotify (profile). Screenshots in `docs/design-inspiration/`.
+Primary reference: Meta's Edits app. Secondary: Spotify (legacy profile patterns) + Apple contact-card/profile hero studies. Screenshots in `docs/design-inspiration/`.
 
 - **Brand adjectives:** Clean, modern, creative, easy, professional
 - **Color tokens:**
@@ -559,7 +566,7 @@ Primary reference: Meta's Edits app. Secondary: Spotify (profile). Screenshots i
 - Freeze MVP scope to a curated two-template set and ship reliability over breadth
 - Keep local-only export architecture with FFmpeg as the active renderer
 - Defer broad template-library authoring/parity work until after MVP release
-- Phase 4 implementation status (2026-03-05):
+- Phase 4 implementation status (2026-03-06):
   - Editor template selector is a dedicated centered rail (horizontal pills with snap-to-center behavior + active template label)
   - Template resolution supports `simple-spin` and `graphic-pop` across picker, editor, and export routes
   - Disc visual treatment was updated to read as a CD (preview + export alignment pass, including edge-rim detail)
@@ -568,10 +575,19 @@ Primary reference: Meta's Edits app. Secondary: Spotify (profile). Screenshots i
   - Template-info diagnostics (`TemplateInfoBadge`) were added to editor, rendering, and share previews with route-param handoff for parity verification
   - Rotation start control was normalized to 4 presets (0°/90°/180°/270°) with clearer direction labeling (CW/CCW)
   - Create picker now uses a single-screen audio-first + photo-second selection layout with full-height stacked cards and cancel-state reset to avoid stale draft carryover
+  - Create picker tab-embedded mode now applies dock overlay compensation consistently across platforms
   - Home projects now supports multi-select mode with bottom-centered bulk delete for faster cleanup
+  - Home selection interactions now include platform-aware haptics (enter selection + toggle on/off) with graceful fallback behavior
+  - Home bulk action is inset-aware and now supports an explicit empty-state `Cancel` action when selection mode has zero items
+  - Home project list bottom padding was adjusted per platform to prevent tab/FAB overlap
+  - Profile was redesigned to a hero-first dark surface with cinematic banner treatment, oversized avatar overlap, and large artist-name emphasis
+  - Edit profile now uses a dedicated slide-in modal surface with swipe-to-close and direct controls for avatar, banner, and name
+  - User profile persistence now includes `heroImageUrl` across Convex schema/mutations and local guest profile storage
+  - Profile media/name changes now support partial-save flows (targeted saves without requiring links payload updates)
   - Export duration now respects user trim selection when fast mode is disabled
   - Preview/export parity uses shared vinyl geometry specs (center + edge) to prevent drift from duplicated constants
   - Export color range mapping was corrected to match preview vibrance more closely on device
+  - Rendering layout now computes stage size from live window dimensions and safe-area budgets for better cross-device fit
   - Local FFmpeg export remains the active path; `remotion-local` remains experimental behind feature flag / fallback behavior
   - User-tested export path is working end-to-end for the current MVP slice
 - Next step in this phase: App Store production launch checklist

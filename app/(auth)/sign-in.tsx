@@ -14,7 +14,9 @@ import {
   useSignUp,
 } from "@clerk/clerk-expo";
 import { usePostHog } from "posthog-react-native";
+import * as AuthSession from "expo-auth-session";
 import * as WebBrowser from "expo-web-browser";
+import Constants from "expo-constants";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
 import { useLocalSession } from "@/providers/localSession";
@@ -30,14 +32,27 @@ export default function SignInScreen() {
   const [loading, setLoading] = useState<"apple" | "google" | "guest" | null>(
     null
   );
+  const ssoRedirectUrl = AuthSession.makeRedirectUri({
+    path: "sso-callback",
+    scheme: "musicpromo",
+  });
+  const isExpoGo = Constants.executionEnvironment === "storeClient";
 
   const handleSSO = useCallback(
     async (strategy: "oauth_apple" | "oauth_google") => {
       const provider = strategy === "oauth_apple" ? "apple" : "google";
       setLoading(provider);
+      if (isExpoGo) {
+        Alert.alert(
+          "Dev build required for OAuth",
+          "Apple/Google sign-in needs a development build or production build (not Expo Go). Use `npm run start:dev-client:tunnel`."
+        );
+        setLoading(null);
+        return;
+      }
       try {
         const { createdSessionId, setActive: ssoSetActive } =
-          await startSSOFlow({ strategy });
+          await startSSOFlow({ strategy, redirectUrl: ssoRedirectUrl });
 
         if (createdSessionId && ssoSetActive) {
           try {
@@ -55,16 +70,34 @@ export default function SignInScreen() {
             "Sign-in error",
             "Session was created but could not be activated. Please try again."
           );
+        } else {
+          Alert.alert(
+            "Sign-in incomplete",
+            "Sign-in did not complete. Please try again."
+          );
         }
       } catch (err: unknown) {
         const message =
           err instanceof Error ? err.message : "Sign-in failed. Try again.";
+
+        if (message.includes("Missing external verification redirect URL")) {
+          Alert.alert(
+            "Sign-in configuration needed",
+            [
+              "Clerk did not return an SSO redirect URL for this auth attempt.",
+              `Add this redirect URL in Clerk and try again:\n${ssoRedirectUrl}`,
+              "If you are using Expo Go, use a development build for more reliable OAuth deep links.",
+            ].join("\n\n")
+          );
+          return;
+        }
+
         Alert.alert("Sign-in error", message);
       } finally {
         setLoading(null);
       }
     },
-    [startSSOFlow, posthog, clearLocalSession]
+    [startSSOFlow, posthog, clearLocalSession, ssoRedirectUrl, isExpoGo]
   );
 
   const handleGuest = useCallback(async () => {

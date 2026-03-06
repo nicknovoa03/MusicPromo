@@ -122,7 +122,7 @@ export default function RenderingScreen() {
   const projectTitle = firstParam(params.title)?.trim() || "New Project";
   const audioName = firstParam(params.audioName) || "";
   const aspectRatio = firstParam(params.aspectRatio) === "1:1" ? "1:1" : "9:16";
-  const showTemplateInfo = firstParam(params.showTemplateInfo) !== "0";
+  const showTemplateInfo = firstParam(params.showTemplateInfo) === "1";
   const templateId = resolveTemplateId(firstParam(params.templateId));
   const parsedTemplateTweaks = parseTemplateTweaksParam(
     firstParam(params.templateTweaks),
@@ -207,7 +207,7 @@ export default function RenderingScreen() {
         : Math.min(trimEnd, trimStart + FAST_EXPORT_DURATION_SECONDS);
     const aspectRatio =
       firstParam(params.aspectRatio) === "1:1" ? "1:1" : "9:16";
-    const showTemplateInfo = firstParam(params.showTemplateInfo) !== "0";
+    const showTemplateInfo = firstParam(params.showTemplateInfo) === "1";
     const templateId = resolveTemplateId(firstParam(params.templateId));
     const parsedTemplateTweaks = parseTemplateTweaksParam(
       firstParam(params.templateTweaks),

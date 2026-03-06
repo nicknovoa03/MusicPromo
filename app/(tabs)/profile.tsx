@@ -22,6 +22,7 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
+import { useIsFocused } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import { useAuth, useUser } from "@clerk/clerk-expo";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
@@ -120,6 +121,7 @@ function normalizeProfileUrl(value: string): string | null {
 
 export default function ProfileScreen() {
   const { height: windowHeight, width: windowWidth } = useWindowDimensions();
+  const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { signOut, getToken, userId, isSignedIn } = useAuth();
@@ -615,6 +617,7 @@ export default function ProfileScreen() {
     isPickingHero;
   const profileSettingsDisabled = profileInputsDisabled || isSavingProfile;
   const modalTopInset = Platform.OS === "ios" ? (insets.top > 0 ? insets.top : 44) : 0;
+  const heroTopInsetOffset = Platform.OS === "ios" ? -insets.top : 0;
 
   const handleOpenProfileSettings = useCallback(() => {
     if (isProfileSettingsOpen || isClosingProfileSettings) return;
@@ -738,7 +741,7 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={["left", "right"]}>
-      <StatusBar style="light" />
+      {isFocused && !isProfileSettingsOpen ? <StatusBar style="light" /> : null}
       {isProfileSettingsOpen ? (
         <Modal
           visible
@@ -903,10 +906,18 @@ export default function ProfileScreen() {
         </Modal>
       ) : null}
         <ScrollView
+          contentInsetAdjustmentBehavior="never"
+          automaticallyAdjustContentInsets={false}
+          automaticallyAdjustsScrollIndicatorInsets={false}
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
         >
-        <View style={[styles.heroShell, { minHeight: heroHeight }]}>
+        <View
+          style={[
+            styles.heroShell,
+            { minHeight: heroHeight, marginTop: heroTopInsetOffset },
+          ]}
+        >
           <View style={[styles.heroBanner, { height: heroBannerHeight }]}>
             {heroImageUrlDraft ? (
               <Image

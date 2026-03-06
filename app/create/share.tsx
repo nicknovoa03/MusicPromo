@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   Pressable,
-  Image,
   Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -15,10 +14,12 @@ import * as Sharing from "expo-sharing";
 import * as MediaLibrary from "expo-media-library";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
 import { TemplateInfoBadge } from "@/components/create/TemplateInfoBadge";
+import { VinylPreview } from "@/components/create/VinylPreview";
 import type { EventName } from "@/lib/analytics";
 import { decodeUriParam } from "@/lib/uri";
 import { normalizeMediaUri } from "@/lib/mediaUri";
 import {
+  getTemplateDefinition,
   normalizeTemplateTweaks,
   parseTemplateTweaksParam,
   resolveTemplateId,
@@ -47,8 +48,9 @@ export default function ShareScreen() {
     firstParam(params.templateTweaks),
   );
   const templateTweaks = parsedTemplateTweaks ?? normalizeTemplateTweaks();
+  const previewTone = getTemplateDefinition(templateId).parity.vinylTone;
   const aspectRatio = firstParam(params.aspectRatio) === "1:1" ? "1:1" : "9:16";
-  const showTemplateInfo = firstParam(params.showTemplateInfo) !== "0";
+  const showTemplateInfo = firstParam(params.showTemplateInfo) === "1";
 
   const [savedToRoll, setSavedToRoll] = useState(false);
   const [saveError, setSaveError] = useState<"permission" | "failed" | null>(
@@ -176,11 +178,15 @@ export default function ShareScreen() {
         {/* Video preview */}
         <View style={styles.previewContainer}>
           {posterUri ? (
-            <Image
-              source={{ uri: posterUri }}
-              style={styles.previewImage}
-              resizeMode="cover"
-              accessibilityLabel="Exported video cover image"
+            <VinylPreview
+              imageUri={posterUri}
+              size={184}
+              spinning={false}
+              tone={previewTone}
+              spinSpeed={templateTweaks.spinSpeed}
+              discOpacity={Math.min(Math.max(1 - templateTweaks.recordTransparency, 0.35), 1)}
+              rotationStartDeg={templateTweaks.rotationStartDeg}
+              rotationDirection={templateTweaks.rotationDirection}
             />
           ) : (
             <Ionicons
@@ -295,16 +301,12 @@ const styles = StyleSheet.create({
     width: 200,
     height: 200,
     borderRadius: radius.lg,
-    backgroundColor: colors.dark.surface,
+    backgroundColor: "transparent",
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
     marginBottom: spacing.xl,
     position: "relative",
-  },
-  previewImage: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: radius.lg,
   },
   shareTemplateInfoBadge: {
     position: "absolute",

@@ -6,7 +6,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { Tabs, useRouter, useSegments } from "expo-router";
+import { Redirect, Tabs, usePathname, useRouter } from "expo-router";
 import { Icon, Label, NativeTabs } from "expo-router/unstable-native-tabs";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
@@ -42,7 +42,7 @@ function LiquidGlassTabBarBackground() {
 
 export default function TabsLayout() {
   const router = useRouter();
-  const segments = useSegments();
+  const pathname = usePathname();
   const { isAuthenticated } = useConvexAuth();
   const getOrCreateUser = useMutation(api.users.getOrCreate);
   const upsertPushToken = useMutation(api.pushTokens.upsertForCurrentUser);
@@ -52,9 +52,8 @@ export default function TabsLayout() {
   const { isLocalGuest } = useLocalSession();
   const { user } = useUser();
   const didBootstrapPush = useRef(false);
-  const didRouteToOnboarding = useRef(false);
   const hasWarnedMissingConvexToken = useRef(false);
-  const previousNativeTabRoute = useRef<string | null>(null);
+  const previousPathnameRef = useRef<string | null>(null);
   const [localOnboardingReady, setLocalOnboardingReady] = useState(false);
   const [localOnboardingCompleted, setLocalOnboardingCompleted] = useState(false);
 
@@ -70,7 +69,7 @@ export default function TabsLayout() {
   useEffect(() => {
     if (hasSession) return;
     didBootstrapPush.current = false;
-    didRouteToOnboarding.current = false;
+    hasWarnedMissingConvexToken.current = false;
   }, [hasSession]);
 
   useEffect(() => {
@@ -102,20 +101,15 @@ export default function TabsLayout() {
   );
 
   useEffect(() => {
-    if (!hasSession || !hasOnboardingStatus) return;
-
-    if (!isOnboardingCompleted) {
-      if (didRouteToOnboarding.current) return;
-      didRouteToOnboarding.current = true;
-      router.replace("/onboarding");
+    if (
+      !isAuthenticated ||
+      currentUser === undefined ||
+      !isSignedIn ||
+      !userId ||
+      didBootstrapPush.current
+    ) {
       return;
     }
-
-    didRouteToOnboarding.current = false;
-  }, [hasOnboardingStatus, hasSession, isOnboardingCompleted, router]);
-
-  useEffect(() => {
-    if (!isAuthenticated || didBootstrapPush.current) return;
     didBootstrapPush.current = true;
 
     (async () => {
@@ -146,6 +140,13 @@ export default function TabsLayout() {
         await getOrCreateUser();
       } catch (error) {
         const message = error instanceof Error ? error.message : "";
+        if (message.includes("Unauthenticated")) {
+          shouldContinue = false;
+          // Allow a later retry once Convex auth catches up with the Clerk session.
+          didBootstrapPush.current = false;
+          console.warn("Convex auth not ready yet. Will retry bootstrap shortly.");
+          return;
+        }
         if (message.includes("Account deleted")) {
           shouldContinue = false;
           try {
@@ -164,6 +165,9 @@ export default function TabsLayout() {
     })();
   }, [
     isAuthenticated,
+    currentUser,
+    isSignedIn,
+    userId,
     getOrCreateUser,
     upsertPushToken,
     router,
@@ -180,7 +184,7 @@ export default function TabsLayout() {
           response.notification.request.content.data
         ),
       });
-      router.replace("/(tabs)");
+      router.replace("/");
     };
 
     handleInitialNotificationTap(handleTapped).catch((error) => {
@@ -214,31 +218,32 @@ export default function TabsLayout() {
 
   useEffect(() => {
     if (Platform.OS !== "ios") return;
-    const inTabsGroup = segments[0] === "(tabs)";
-    const activeRoute = inTabsGroup ? (segments[1] ?? null) : null;
-    if (activeRoute === "create" && previousNativeTabRoute.current !== "create") {
+    const previousPathname = previousPathnameRef.current;
+    const enteredCreate = pathname === "/create" && previousPathname !== "/create";
+
+    if (enteredCreate) {
       track("create_started");
     }
-    previousNativeTabRoute.current = activeRoute;
-  }, [segments, track]);
 
-  if (isAuthenticated && (!hasOnboardingStatus || !isOnboardingCompleted)) {
+    previousPathnameRef.current = pathname;
+  }, [pathname, track]);
+
+  if (!hasSession) {
+    return null;
+  }
+  if (!hasOnboardingStatus) {
     return (
       <View style={styles.gateContainer}>
         <ActivityIndicator size="large" color={colors.accent.primary} />
-        <Text style={styles.gateText}>Loading your workspace...</Text>
+        <Text style={styles.gateText}>
+          {isLocalGuest ? "Preparing guest workspace..." : "Loading your workspace..."}
+        </Text>
       </View>
     );
   }
-  if (isLocalGuest && (!hasOnboardingStatus || !isOnboardingCompleted)) {
-    return (
-      <View style={styles.gateContainer}>
-        <ActivityIndicator size="large" color={colors.accent.primary} />
-        <Text style={styles.gateText}>Preparing guest workspace...</Text>
-      </View>
-    );
+  if (!isOnboardingCompleted) {
+    return <Redirect href="/onboarding" />;
   }
-
   if (Platform.OS === "ios") {
     return (
       <NativeTabs

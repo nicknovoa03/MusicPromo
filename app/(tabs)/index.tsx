@@ -23,6 +23,7 @@ import type { Doc } from "../../convex/_generated/dataModel";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
 import type { EventName } from "@/lib/analytics";
 import { normalizeMediaUri } from "@/lib/mediaUri";
+import { getLocalArtistProfile } from "@/lib/localProfile";
 import { encodeUriParam } from "@/lib/uri";
 import { useLocalSession } from "@/providers/localSession";
 import {
@@ -48,6 +49,12 @@ function formatDate(timestamp: number) {
     day: "numeric",
     year: "numeric",
   });
+}
+
+function normalizeAvatarUri(value: string | null | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 let hasWarnedHapticsUnavailable = false;
@@ -139,9 +146,11 @@ export default function HomeScreen() {
   const convex = useConvex();
   const posthog = usePostHog();
   const { isLocalGuest } = useLocalSession();
+  const convexUser = useQuery(api.users.current);
   const projectsQuery = useQuery(api.projects.listByUser);
   const deleteProject = useMutation(api.projects.remove);
   const [localProjects, setLocalProjects] = useState<LocalProject[] | null>(null);
+  const [localAvatarUrl, setLocalAvatarUrl] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [actionProject, setActionProject] = useState<Project | null>(null);
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
@@ -166,14 +175,19 @@ export default function HomeScreen() {
     useCallback(() => {
       if (!isLocalGuest) {
         setLocalProjects(null);
+        setLocalAvatarUrl(null);
         return;
       }
 
       let isActive = true;
       void (async () => {
-        const projects = await listLocalProjects();
+        const [projects, localProfile] = await Promise.all([
+          listLocalProjects(),
+          getLocalArtistProfile(),
+        ]);
         if (!isActive) return;
         setLocalProjects(projects);
+        setLocalAvatarUrl(localProfile.avatarImageUrl ?? null);
       })();
 
       return () => {
@@ -194,6 +208,11 @@ export default function HomeScreen() {
       setRefreshing(false);
     }
   }, [convex, isLocalGuest, refreshLocalProjects]);
+
+  const profileAvatarUri = useMemo(() => {
+    if (isLocalGuest) return normalizeAvatarUri(localAvatarUrl);
+    return normalizeAvatarUri(convexUser?.avatarImageUrl ?? convexUser?.avatarUrl);
+  }, [convexUser?.avatarImageUrl, convexUser?.avatarUrl, isLocalGuest, localAvatarUrl]);
 
   const openProject = useCallback(
     (project: Project) => {
@@ -557,15 +576,19 @@ export default function HomeScreen() {
           </Pressable>
           <Pressable
             style={styles.avatarButton}
-            onPress={() => router.push("/(tabs)/profile")}
+            onPress={() => router.push("/profile")}
             accessibilityLabel="Open profile"
             accessibilityRole="button"
           >
-            <Ionicons
-              name="person-circle-outline"
-              size={32}
-              color={colors.light.text}
-            />
+            {profileAvatarUri ? (
+              <Image source={{ uri: profileAvatarUri }} style={styles.avatarImage} />
+            ) : (
+              <Ionicons
+                name="person-circle-outline"
+                size={32}
+                color={colors.light.text}
+              />
+            )}
           </Pressable>
         </View>
       </View>
@@ -774,8 +797,14 @@ const styles = StyleSheet.create({
   avatarButton: {
     width: 40,
     height: 40,
+    borderRadius: radius.full,
+    overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
+  },
+  avatarImage: {
+    width: "100%",
+    height: "100%",
   },
   emptyState: {
     flex: 1,

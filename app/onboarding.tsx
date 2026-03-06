@@ -115,7 +115,7 @@ export default function OnboardingScreen() {
     }
 
     hasRedirectedRef.current = true;
-    router.replace("/(tabs)");
+    router.replace("/");
   }, [hasCompletionState, isOnboardingCompleted, router]);
 
   const persistCompletionToServer = useCallback(async () => {
@@ -147,7 +147,7 @@ export default function OnboardingScreen() {
       posthog?.capture("onboarding_completed" satisfies EventName, { method });
 
       await persistCompletionToServer();
-      router.replace("/(tabs)");
+      router.replace("/");
       if (isMountedRef.current) {
         setIsCompleting(false);
       }

@@ -64,6 +64,7 @@ const CUSTOM_LIGHTNESS_MAX = 94;
 const DEFAULT_CUSTOM_HUE = 252;
 const DEFAULT_CUSTOM_LIGHTNESS = 34;
 const CUSTOM_TONE_OPTIONS = [14, 32, 50, 68, 86];
+const CUSTOM_TONE_LABELS = ["Deep", "Dark", "Base", "Soft", "Glow"] as const;
 const STAGE_HORIZONTAL_PADDING = spacing.sm * 2;
 const DEFAULT_BACKGROUND_OPTIONS: BackgroundOption[] = [
   { id: "default", label: "Default", color: null, swatch: "#080A12" },
@@ -387,18 +388,40 @@ function PaletteStrip({
   onSelect,
 }: PaletteStripProps) {
   const normalizedHue = ((hue % 360) + 360) % 360;
+  const selectedGrayscaleSwatchId = useMemo(() => {
+    if (saturation > 8) return null;
+    const grayscaleSection = PALETTE_SECTIONS.find((section) => section.id === "gray");
+    if (!grayscaleSection) return null;
+
+    const closest = grayscaleSection.swatches.reduce(
+      (best, swatch) => {
+        const swatchLightness = clamp(
+          swatch.l,
+          CUSTOM_LIGHTNESS_MIN,
+          CUSTOM_LIGHTNESS_MAX,
+        );
+        const distance = Math.abs(lightness - swatchLightness);
+        if (!best || distance < best.distance) {
+          return { id: swatch.id, distance };
+        }
+        return best;
+      },
+      null as { id: string; distance: number } | null,
+    );
+    return closest?.id ?? null;
+  }, [lightness, saturation]);
 
   const isSelected = useCallback(
     (swatch: PaletteSwatch) => {
       if (swatch.s <= 2) {
-        return saturation <= 8 && Math.abs(lightness - swatch.l) <= 4;
+        return saturation <= 8 && swatch.id === selectedGrayscaleSwatchId;
       }
       return (
         hueDistance(normalizedHue, swatch.h) <= 10 &&
         Math.abs(saturation - swatch.s) <= 16
       );
     },
-    [lightness, normalizedHue, saturation],
+    [normalizedHue, saturation, selectedGrayscaleSwatchId],
   );
 
   return (
@@ -467,7 +490,7 @@ export function TemplateCustomizeModal({
   templateId,
   photoUri,
   value,
-  showTemplateInfo = true,
+  showTemplateInfo = false,
   onClose,
   onApply,
 }: TemplateCustomizeModalProps) {
@@ -546,6 +569,7 @@ export function TemplateCustomizeModal({
     ROTATION_DIRECTION_OPTIONS.find(
       (option) => option.value === draft.rotationDirection,
     )?.label ?? "CW";
+  const showToneOptions = customSaturation > 2;
 
   const updateSpinSpeed = useCallback((spinSpeed: number) => {
     if (spinSpeed === draft.spinSpeed) return;
@@ -882,22 +906,16 @@ export function TemplateCustomizeModal({
               <View style={styles.customColorCard}>
                 <View style={styles.customColorHeader}>
                   <Text style={styles.customColorTitle}>Custom Color</Text>
-                  <View style={styles.customColorInfo}>
-                    <View
-                      style={[
-                        styles.customColorSwatch,
-                        { backgroundColor: customColor },
-                      ]}
-                    />
-                    <Text style={styles.customColorHex}>{customColor.toUpperCase()}</Text>
-                  </View>
+                  <View
+                    style={[
+                      styles.customColorSwatch,
+                      { backgroundColor: customColor },
+                    ]}
+                  />
                 </View>
 
                 <View style={styles.customHueHeader}>
                   <Text style={styles.customHueLabel}>Palette</Text>
-                  <Text style={styles.customHueValue}>
-                    Sat {Math.round(customSaturation)}%
-                  </Text>
                 </View>
                 <PaletteStrip
                   hue={customHue}
@@ -907,35 +925,45 @@ export function TemplateCustomizeModal({
                   onSelect={handleCustomPaletteSelect}
                 />
 
-                <ScrollView
-                  horizontal
-                  nestedScrollEnabled
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.customToneRow}
-                >
-                  {CUSTOM_TONE_OPTIONS.map((tone) => {
-                    const selected = tone === customLightness;
-                    return (
-                      <Pressable
-                        key={`tone-${tone}`}
-                        onPress={() => handleCustomToneSelect(tone)}
-                        style={[styles.customTonePill, selected && styles.customTonePillSelected]}
-                        accessibilityLabel={`Color tone ${tone}`}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected }}
-                      >
-                        <Text
-                          style={[
-                            styles.customToneText,
-                            selected && styles.customToneTextSelected,
-                          ]}
-                        >
-                          Tone {tone}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </ScrollView>
+                {showToneOptions ? (
+                  <>
+                    <View style={styles.customHueHeader}>
+                      <Text style={styles.customHueLabel}>Tone</Text>
+                    </View>
+                    <ScrollView
+                      horizontal
+                      nestedScrollEnabled
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.customToneRow}
+                    >
+                      {CUSTOM_TONE_OPTIONS.map((tone, toneIndex) => {
+                        const selected = tone === customLightness;
+                        const toneColor = hslToHex(customHue, customSaturation, tone);
+                        const toneLabel = CUSTOM_TONE_LABELS[toneIndex] ?? "Tone";
+                        return (
+                          <Pressable
+                            key={`tone-${tone}`}
+                            onPress={() => handleCustomToneSelect(tone)}
+                            style={[
+                              styles.customToneSwatchWrap,
+                              selected && styles.customToneSwatchWrapSelected,
+                            ]}
+                            accessibilityLabel={`Color tone ${toneLabel}`}
+                            accessibilityRole="button"
+                            accessibilityState={{ selected }}
+                          >
+                            <View
+                              style={[
+                                styles.customToneSwatch,
+                                { backgroundColor: toneColor },
+                              ]}
+                            />
+                          </Pressable>
+                        );
+                      })}
+                    </ScrollView>
+                  </>
+                ) : null}
               </View>
             ) : null}
           </View>
@@ -1317,11 +1345,6 @@ const styles = StyleSheet.create({
     color: colors.dark.text,
     fontWeight: "700",
   },
-  customColorInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-  },
   customColorSwatch: {
     width: 16,
     height: 16,
@@ -1329,16 +1352,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.28)",
   },
-  customColorHex: {
-    ...typography.caption,
-    color: colors.dark.textSecondary,
-    fontWeight: "700",
-    letterSpacing: 0.2,
-  },
   customHueHeader: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "flex-start",
     gap: spacing.sm,
   },
   customHueLabel: {
@@ -1347,11 +1364,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     textTransform: "uppercase",
     letterSpacing: 0.35,
-  },
-  customHueValue: {
-    ...typography.caption,
-    color: colors.dark.text,
-    fontWeight: "700",
   },
   paletteStripScroll: {
     marginHorizontal: -spacing.xs,
@@ -1414,31 +1426,28 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     paddingRight: spacing.sm,
   },
-  customToneRowDisabled: {
-    opacity: 0.5,
-  },
-  customTonePill: {
-    minHeight: 30,
+  customToneSwatchWrap: {
+    width: 34,
+    height: 34,
     borderRadius: radius.full,
-    paddingHorizontal: spacing.sm,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
-    backgroundColor: "rgba(255,255,255,0.03)",
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.16)",
     alignItems: "center",
     justifyContent: "center",
   },
-  customTonePillSelected: {
+  customToneSwatchWrapSelected: {
     borderColor: colors.accent.primary,
-    backgroundColor: colors.accent.primary,
+    shadowColor: colors.accent.primary,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
   },
-  customToneText: {
-    ...typography.caption,
-    color: colors.dark.textSecondary,
-    fontWeight: "700",
-    fontSize: 11,
-  },
-  customToneTextSelected: {
-    color: colors.dark.text,
+  customToneSwatch: {
+    width: 24,
+    height: 24,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.36)",
   },
   footer: {
     paddingHorizontal: spacing.lg,
