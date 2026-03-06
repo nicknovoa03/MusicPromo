@@ -6,7 +6,7 @@
 |---|---|---|---|---|
 | **User Profile** | Convex | Self | Private | Extends Clerk data — name, preferences, subscription tier, profile info. Exact fields TBD. |
 | **Project** | Convex (metadata) + Device (files) | User | Private | Saveable — user can return, re-export, tweak. Stores references to local files + settings used. |
-| **Template / Style** | Convex (or config) | System | Public | v1 ships with "Spinning CD" only. Data model supports multiple for future expansion (AI-generated, etc.). |
+| **Template / Style** | Convex (or config) | System | Public | v1 uses a curated set (`simple-spin`, `graphic-pop`) while keeping the model extensible for future expansion (AI-generated, etc.). |
 | **Settings / Preferences** | On User Profile | User | Private | Default aspect ratio, default video length. CD spin speed hardcoded v1 (variable later). |
 | **Push Token** | Convex | User | Private | Expo push token per device, linked to user. For push notifications via expo-notifications. |
 | **Notification** | Convex | System/Admin | Per-user | Tracks sent notifications. Supports automated (event/time-based) and manual (admin-triggered). |
@@ -26,7 +26,7 @@
 
 ### Template
 - Key fields: `id`, `name`, `description`, `previewImageUrl`, `type` (e.g., "spinning-cd"), `config` (speed, animation params)
-- v1: single entry — "Spinning CD"
+- v1: curated entries — `simple-spin`, `graphic-pop`
 - Future: AI-generated templates (Sora, Nano Banana, etc.)
 - Permissions: read-only for users, admin-managed
 
@@ -90,6 +90,6 @@ User signs in (Clerk)
 | A10 | Project metadata in Convex + files on-device only | If user switches phones, project history shows but files are gone. Acceptable for POC. |
 | A11 | Share uses native OS share intents (not platform API integration) | Standard mobile behavior — Instagram/TikTok take over with their own UI. |
 | A12 | User Profile exact fields beyond basics are TBD | Need to finalize before implementation, but won't block architecture. |
-| A13 | One template for v1, data model supports multiple | No extra v1 work, just future-proofing. |
+| A13 | Small curated template set for v1, data model supports many more | Keeps v1 scope tight while preserving expansion path. |
 | A14 | Expo Push Notifications sufficient for all notification needs | May need Convex scheduled functions for time-based automated notifications. |
 | A15 | No admin panel for v1 — manual notifications sent via Convex dashboard or script | If needed frequently, an admin UI becomes a priority. |

@@ -59,6 +59,9 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [actionProject, setActionProject] = useState<Project | null>(null);
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const longPressProjectIdRef = useRef<string | null>(null);
 
   const track = useCallback(
@@ -109,6 +112,14 @@ export default function HomeScreen() {
   const openProject = useCallback(
     (project: Project) => {
       const projectKey = getProjectId(project);
+      if (isSelectionMode) {
+        setSelectedProjectIds((prev) =>
+          prev.includes(projectKey)
+            ? prev.filter((id) => id !== projectKey)
+            : [...prev, projectKey],
+        );
+        return;
+      }
       if (longPressProjectIdRef.current === projectKey) {
         longPressProjectIdRef.current = null;
         return;
@@ -151,19 +162,45 @@ export default function HomeScreen() {
         },
       });
     },
-    [deletingProjectId, router, track],
+    [deletingProjectId, isSelectionMode, router, track],
   );
 
   const closeProjectActions = useCallback(() => {
     setActionProject(null);
   }, []);
 
+  const clearSelectionMode = useCallback(() => {
+    setIsSelectionMode(false);
+    setSelectedProjectIds([]);
+  }, []);
+
+  const toggleSelectionMode = useCallback(() => {
+    setIsSelectionMode((prev) => {
+      const next = !prev;
+      if (!next) {
+        setSelectedProjectIds([]);
+      } else {
+        closeProjectActions();
+      }
+      return next;
+    });
+  }, [closeProjectActions]);
+
+  const toggleProjectSelection = useCallback((projectKey: string) => {
+    setSelectedProjectIds((prev) =>
+      prev.includes(projectKey)
+        ? prev.filter((id) => id !== projectKey)
+        : [...prev, projectKey],
+    );
+  }, []);
+
   const openProjectActions = useCallback(
     (project: Project) => {
+      if (isSelectionMode) return;
       setActionProject(project);
       track("project_actions_opened", { projectId: getProjectId(project) });
     },
-    [track],
+    [isSelectionMode, track],
   );
 
   const runDeleteProject = useCallback(
@@ -230,15 +267,81 @@ export default function HomeScreen() {
   }, [isLocalGuest, localProjects, projectsQuery]);
   const isLoading = isLocalGuest ? localProjects === null : projectsQuery === undefined;
   const hasProjects = stableProjects.length > 0;
+  const selectedProjects = useMemo(
+    () =>
+      stableProjects.filter((project) =>
+        selectedProjectIds.includes(getProjectId(project)),
+      ),
+    [selectedProjectIds, stableProjects],
+  );
+
+  const runDeleteProjects = useCallback(
+    async (projects: Project[]) => {
+      if (!projects.length) return;
+      setIsBulkDeleting(true);
+      let failedCount = 0;
+      try {
+        for (const project of projects) {
+          try {
+            if (isLocalProject(project)) {
+              await removeLocalProject(project.id);
+            } else {
+              await deleteProject({ projectId: project._id });
+            }
+            track("project_deleted", { projectId: getProjectId(project) });
+          } catch {
+            failedCount += 1;
+          }
+        }
+
+        if (isLocalGuest) {
+          await refreshLocalProjects();
+        }
+
+        if (failedCount > 0) {
+          Alert.alert(
+            "Some projects could not be deleted",
+            `${failedCount} project${failedCount === 1 ? "" : "s"} failed to delete.`,
+          );
+        }
+      } finally {
+        setIsBulkDeleting(false);
+        clearSelectionMode();
+      }
+    },
+    [clearSelectionMode, deleteProject, isLocalGuest, refreshLocalProjects, track],
+  );
+
+  const handleBulkDelete = useCallback(() => {
+    if (!selectedProjects.length || isBulkDeleting) return;
+    track("project_delete_started", {
+      projectId: `bulk_${selectedProjects.length}`,
+    });
+    Alert.alert(
+      "Delete selected projects?",
+      `This will delete ${selectedProjects.length} project${selectedProjects.length === 1 ? "" : "s"}.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            void runDeleteProjects(selectedProjects);
+          },
+        },
+      ],
+    );
+  }, [isBulkDeleting, runDeleteProjects, selectedProjects, track]);
 
   const renderProjectCard = useCallback(
     ({ item }: { item: Project }) => {
       const projectKey = getProjectId(item);
       const previewUri = normalizeMediaUri(item.photoUri ?? item.exportedVideoUri);
       const isDeleting = deletingProjectId === projectKey;
+      const isSelected = selectedProjectIds.includes(projectKey);
 
       return (
-        <View style={styles.card}>
+        <View style={[styles.card, isSelectionMode && isSelected && styles.cardSelected]}>
           <Pressable
             style={({ pressed }) => [
               styles.cardPressable,
@@ -247,14 +350,37 @@ export default function HomeScreen() {
             onPress={() => openProject(item)}
             onLongPress={() => {
               longPressProjectIdRef.current = projectKey;
-              openProjectActions(item);
+              if (isSelectionMode) {
+                toggleProjectSelection(projectKey);
+                return;
+              }
+              setIsSelectionMode(true);
+              setSelectedProjectIds([projectKey]);
             }}
             delayLongPress={220}
             disabled={isDeleting}
-            accessibilityLabel={`Open ${item.title ?? "Untitled Project"}`}
+            accessibilityLabel={
+              isSelectionMode
+                ? `${isSelected ? "Deselect" : "Select"} ${item.title ?? "Untitled Project"}`
+                : `Open ${item.title ?? "Untitled Project"}`
+            }
             accessibilityRole="button"
             accessibilityState={{ disabled: isDeleting }}
           >
+            {isSelectionMode ? (
+              <View
+                style={[
+                  styles.cardSelectBadge,
+                  isSelected && styles.cardSelectBadgeSelected,
+                ]}
+              >
+                <Ionicons
+                  name={isSelected ? "checkmark" : "ellipse-outline"}
+                  size={14}
+                  color={isSelected ? colors.light.background : colors.light.textSecondary}
+                />
+              </View>
+            ) : null}
             <View style={styles.thumbnail}>
               {previewUri ? (
                 <Image
@@ -278,49 +404,77 @@ export default function HomeScreen() {
             </View>
           </Pressable>
 
-          <Pressable
-            style={styles.cardMenuButton}
-            onPress={() => openProjectActions(item)}
-            disabled={isDeleting}
-            accessibilityLabel={`Project actions for ${item.title ?? "Untitled Project"}`}
-            accessibilityRole="button"
-            accessibilityState={{ disabled: isDeleting }}
-          >
-            {isDeleting ? (
-              <ActivityIndicator size="small" color={colors.light.textSecondary} />
-            ) : (
-              <Ionicons
-                name="ellipsis-horizontal"
-                size={16}
-                color={colors.light.text}
-              />
-            )}
-          </Pressable>
+          {!isSelectionMode ? (
+            <Pressable
+              style={styles.cardMenuButton}
+              onPress={() => openProjectActions(item)}
+              disabled={isDeleting}
+              accessibilityLabel={`Project actions for ${item.title ?? "Untitled Project"}`}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: isDeleting }}
+            >
+              {isDeleting ? (
+                <ActivityIndicator size="small" color={colors.light.textSecondary} />
+              ) : (
+                <Ionicons
+                  name="ellipsis-horizontal"
+                  size={16}
+                  color={colors.light.text}
+                />
+              )}
+            </Pressable>
+          ) : null}
         </View>
       );
     },
-    [deletingProjectId, openProject, openProjectActions],
+    [
+      deletingProjectId,
+      isSelectionMode,
+      openProject,
+      openProjectActions,
+      selectedProjectIds,
+      toggleProjectSelection,
+    ],
   );
 
   const isDeletingSelectedProject =
     !!actionProject && deletingProjectId === getProjectId(actionProject);
+  const selectedCount = selectedProjectIds.length;
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Projects</Text>
-        <Pressable
-          style={styles.avatarButton}
-          onPress={() => router.push("/(tabs)/profile")}
-          accessibilityLabel="Open profile"
-          accessibilityRole="button"
-        >
-          <Ionicons
-            name="person-circle-outline"
-            size={32}
-            color={colors.light.text}
-          />
-        </Pressable>
+        <Text style={styles.headerTitle}>
+          {isSelectionMode ? `${selectedCount} Selected` : "Projects"}
+        </Text>
+        <View style={styles.headerActions}>
+          <Pressable
+            style={styles.selectModeButton}
+            onPress={isSelectionMode ? clearSelectionMode : toggleSelectionMode}
+            accessibilityLabel={
+              isSelectionMode ? "Exit multi-select mode" : "Enter multi-select mode"
+            }
+            accessibilityRole="button"
+          >
+            <Ionicons
+              name={isSelectionMode ? "close-outline" : "checkbox-outline"}
+              size={20}
+              color={colors.light.text}
+            />
+          </Pressable>
+          <Pressable
+            style={styles.avatarButton}
+            onPress={() => router.push("/(tabs)/profile")}
+            accessibilityLabel="Open profile"
+            accessibilityRole="button"
+          >
+            <Ionicons
+              name="person-circle-outline"
+              size={32}
+              color={colors.light.text}
+            />
+          </Pressable>
+        </View>
       </View>
 
       {/* TODO: Add cursor pagination if project history grows beyond v1 size. */}
@@ -443,14 +597,40 @@ export default function HomeScreen() {
         </View>
       </Modal>
 
-      <Pressable
-        style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
-        onPress={() => router.push("/create/picker" as const)}
-        accessibilityLabel="Create new project"
-        accessibilityRole="button"
-      >
-        <Ionicons name="add" size={28} color={colors.accent.fabIcon} />
-      </Pressable>
+      {isSelectionMode ? (
+        <Pressable
+          style={({ pressed }) => [
+            styles.bulkDeleteButton,
+            (!selectedCount || isBulkDeleting) && styles.bulkDeleteButtonDisabled,
+            pressed && selectedCount > 0 && !isBulkDeleting && styles.bulkDeleteButtonPressed,
+          ]}
+          onPress={handleBulkDelete}
+          disabled={!selectedCount || isBulkDeleting}
+          accessibilityLabel="Delete selected projects"
+          accessibilityRole="button"
+          accessibilityState={{ disabled: !selectedCount || isBulkDeleting }}
+        >
+          {isBulkDeleting ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+            <>
+              <Ionicons name="trash-outline" size={18} color="#FFFFFF" />
+              <Text style={styles.bulkDeleteText}>
+                Delete ({selectedCount})
+              </Text>
+            </>
+          )}
+        </Pressable>
+      ) : (
+        <Pressable
+          style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
+          onPress={() => router.push("/create/picker" as const)}
+          accessibilityLabel="Create new project"
+          accessibilityRole="button"
+        >
+          <Ionicons name="add" size={28} color={colors.accent.fabIcon} />
+        </Pressable>
+      )}
     </SafeAreaView>
   );
 }
@@ -470,6 +650,19 @@ const styles = StyleSheet.create({
   headerTitle: {
     ...typography.h1,
     color: colors.light.text,
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  selectModeButton: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.full,
+    backgroundColor: colors.light.surface,
+    alignItems: "center",
+    justifyContent: "center",
   },
   avatarButton: {
     width: 40,
@@ -522,6 +715,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.light.surface,
     overflow: "hidden",
   },
+  cardSelected: {
+    borderWidth: 2,
+    borderColor: colors.accent.primary,
+  },
   cardPressable: {
     flex: 1,
   },
@@ -539,6 +736,21 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.85)",
     alignItems: "center",
     justifyContent: "center",
+  },
+  cardSelectBadge: {
+    position: "absolute",
+    top: spacing.xs,
+    left: spacing.xs,
+    width: 26,
+    height: 26,
+    borderRadius: radius.full,
+    backgroundColor: "rgba(255,255,255,0.92)",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 3,
+  },
+  cardSelectBadgeSelected: {
+    backgroundColor: colors.accent.primary,
   },
   thumbnail: {
     width: "100%",
@@ -629,5 +841,36 @@ const styles = StyleSheet.create({
   fabPressed: {
     transform: [{ scale: 0.92 }],
     opacity: 0.9,
+  },
+  bulkDeleteButton: {
+    position: "absolute",
+    alignSelf: "center",
+    bottom: 20,
+    minHeight: 48,
+    minWidth: 210,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.full,
+    backgroundColor: colors.accent.error,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: spacing.xs,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 7,
+    elevation: 4,
+  },
+  bulkDeleteButtonDisabled: {
+    opacity: 0.5,
+  },
+  bulkDeleteButtonPressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.98 }],
+  },
+  bulkDeleteText: {
+    ...typography.button,
+    color: "#FFFFFF",
+    fontWeight: "700",
   },
 });

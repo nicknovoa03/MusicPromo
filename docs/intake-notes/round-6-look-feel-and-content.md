@@ -77,9 +77,9 @@ Primary design reference: **Meta's Edits app** (Instagram companion for video ed
 - **Buttons:** Rounded rectangles. Primary = filled (blue/purple or gradient). Secondary = outlined or gray fill.
 - **Cards:** Rounded corners, thumbnail + text below (project cards in grid)
 - **Tab bar:** Bottom-fixed, icon + label, 3 tabs
-- **Pickers:** Full-screen modal/sheet with grid, tabs at top, action buttons in header
-- **Timeline:** Horizontal strip at bottom of editor, frame thumbnails, draggable playhead
-- **Modals/sheets:** Bottom sheet for permissions, full-screen for picker
+- **Create picker:** Single-screen stacked media selectors (audio first, photo second) with action buttons in header
+- **Timeline:** Audio waveform trimmer at bottom of editor with draggable trim handles
+- **Modals/sheets:** Partial-height bottom sheets for edit/template controls
 - **Toasts:** Subtle confirmation text (e.g., "This video was saved to your camera roll")
 
 ## Performance Expectations

@@ -5,8 +5,8 @@
 - Product name: MusicPromo
 - Doc owner: Nick
 - Stakeholders: Nick (sole developer / product owner)
-- Last updated (YYYY-MM-DD): 2026-03-05
-- Version: 1.3 (Template parity hardening + export fidelity fixes)
+- Last updated (YYYY-MM-DD): 2026-03-06
+- Version: 1.4 (Template controls polish + parity diagnostics)
 - Links: GitHub repo at `/home/nick/MusicPromo`
 
 ## 1) Product Summary
@@ -88,9 +88,9 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 
 1. **Sign In** — Clean login with Apple + Google sign-in, "Continue as Guest" option. Light background.
 2. **Onboarding** — 1-2 walkthrough screens for first-time users. Design TBD.
-3. **Home / Projects** — White background. "Projects" header, profile icon top-right. 2-column grid of project thumbnails with title + metadata. Black "+" FAB bottom-right. Empty state: illustration + "Create your first project."
-4. **Create — Media Picker** — Light background. Tabbed interface (Photo / Audio tabs, same layout for both). Cancel top-left, Add top-right. Search bar. Grid of device items.
-5. **Create — Editor/Trimmer** — Dark background. Video preview centered (top half). Dedicated centered template rail (horizontal pill scroller with snap-to-center + active label), timeline strip at bottom with frame thumbnails and scrubber. Play/pause, timestamp, undo/redo. Aspect ratio toggle. Trim handles. "Export" button top-right.
+3. **Home / Projects** — White background. "Projects" header, multi-select toggle, profile icon top-right. 2-column grid of project thumbnails with title + metadata. Black "+" FAB bottom-right in browse mode. In multi-select mode, cards show check markers and a bottom-centered Delete CTA for bulk delete.
+4. **Create — Media Picker** — Light background. Single-screen selector with stacked full-width square cards: audio on top, photo on bottom. Cancel top-left, Add top-right. Audio artwork quick-fill for photo when available.
+5. **Create — Editor/Trimmer** — Dark background. Large preview with overlay controls (settings, template-info toggle, `Edit Template`), bottom-right aspect-ratio toggle, centered "Trim Audio" section, and top-right "Export" button.
 6. **Post-Export — Rendering** — Dark background. X top-left. Percentage text. Video preview with gradient border. "Please don't close" messaging.
 7. **Post-Export — Share** — Dark background. X top-left. "Ready to share" heading. Video preview. "Share to Instagram" gradient button. "Share to TikTok" button. "Saved to camera roll" confirmation.
 8. **Profile / Settings** — Spotify-inspired. Profile: large avatar, name, "Edit profile" button. Settings: list rows with chevrons. Sign out + delete account at bottom.
@@ -173,7 +173,7 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
   - I can trim my audio to select which section plays
 - **Scope (v1):** Curated template switching (`simple-spin` + `graphic-pop`), on-device FFmpeg rendering, MP4 export
 - **Non-goals:** AI generation, cloud rendering, open template marketplace
-- **Key screens/components:** Create screen (photo picker, audio picker, centered template rail, audio trimmer, aspect ratio selector, preview player, export button)
+- **Key screens/components:** Create flow (single-screen media picker with audio/photo selectors, editor preview/player, audio trimmer, aspect ratio selector, template controls, export button)
 - **Backend/data needs:** Project metadata saved to Convex after export
 - **Permissions/abuse risks:** Minimal — user's own content
 - **Analytics/events:** `create_started`, `photo_selected`, `audio_selected`, `preview_viewed`, `editor_controls_opened`, `template_selected_from_edit_media`, `media_swap_started_from_edit_media`, `template_tweak_changed`, `video_exported`
@@ -182,10 +182,11 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
   - User can select an audio file (MP3, WAV, M4A) from device
   - User can trim audio to select playback section
   - User can choose aspect ratio (9:16 or 1:1)
-  - User can open dedicated `Edit Media` and `Template` control surfaces from the editor
-  - User can switch templates from the dedicated `Edit Media` template rail (tap + swipe with clear active state)
-  - User can change spin speed, record opacity, stage background color/photo, background blur, and rotation start/direction from dedicated `Template` controls
+  - User can open dedicated `Edit Template` and `Template Settings` control surfaces from the editor
+  - User can switch templates from the dedicated `Edit Template` template rail (tap + swipe with clear active state)
+  - User can change spin speed, record transparency, stage background color/photo, background blur, and rotation start/direction from dedicated `Template Settings` controls
   - Template tweaks apply to preview immediately while editing and remain in effect through export
+  - User can toggle template-info diagnostics in editor and keep that visibility preference through rendering/share screens for parity checks
   - Export duration respects the selected trim range (no unintended 3s clamp when fast mode is off)
   - Exported output matches preview styling for CD center geometry, disc edge detail, and background blur intent
   - User sees a preview of the CD-style spinning disc video with their photo and audio
@@ -226,7 +227,7 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 - **Non-goals:** Cloud file backup, project duplication/remix
 - **Key screens/components:** Projects screen (list/grid of past projects), project detail view
 - **Backend/data needs:** Convex query for user's projects sorted by recent
-- **Analytics/events:** `project_reopened`
+- **Analytics/events:** `project_reopened`, `project_actions_opened`, `project_delete_started`, `project_deleted`
 - **Acceptance criteria:**
   - User sees a list of past projects with metadata (date, aspect ratio, template)
   - User can tap a project to re-open it
@@ -303,25 +304,26 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 ### Home / Projects
 - **Route:** `/` (Home tab)
 - **Primary intent:** Browse past projects, create new ones
-- **Header:** "Projects" title left, filter icon + profile avatar right
-- **Main sections:** 2-column grid of project cards (thumbnail, title, date/size)
-- **Primary CTA:** Black "+" FAB button (bottom-right) → create flow
+- **Header:** "Projects" title left, multi-select toggle + profile avatar right
+- **Main sections:** 2-column grid of project cards (thumbnail, title, date), per-card actions menu in browse mode, selection check indicators in multi-select mode
+- **Primary CTA:** Browse mode: black "+" FAB button (bottom-right) → create flow
+- **Secondary actions:** Multi-select mode: bottom-centered Delete CTA for bulk delete
 - **List behavior:** Vertical scroll, pull to refresh
 - **Empty state:** Illustration + "Create your first project" + "Keep track of your drafts and finished videos all in one place."
 - **Loading:** Skeleton grid
 - **Error:** "Couldn't load projects" + retry
 - **Theme:** Light/white
-- **Analytics:** `project_reopened` (on tap)
+- **Analytics:** `project_reopened` (on tap), `project_actions_opened`, `project_delete_started`, `project_deleted`
 - **Reference:** `projects-history/Edits iOS Projects 0.png`, `Edits iOS Projects 1.png`
 
 ### Create — Media Picker
 - **Route:** `/create/picker`
 - **Primary intent:** Select photo and audio from device
-- **Header:** Cancel (left), "Photos" / "Audio" tabs (center), Add (right, enabled when items selected)
-- **Main sections:** Search bar, 3-column media grid from device
+- **Header:** Cancel (left), "Select Media" title (center), Add (right, enabled only when both photo+audio selected)
+- **Main sections:** Two stacked full-width square selector cards (Select Audio first, Select Photo second), selected-state cards with inline "Change" actions, optional album-artwork quick-fill card for photo
 - **Primary CTA:** "Add" button (top-right)
-- **List behavior:** Vertical scroll grid, progressive loading
-- **Empty/loading/error:** Permission request sheet (Edits-style), empty grid if no items
+- **List behavior:** Static stacked layout that expands to available vertical space
+- **Empty/loading/error:** Permission prompt for photos, document picker for audio, inline loading states per selector card
 - **Theme:** Light
 - **Analytics:** `create_started`, `photo_selected`, `audio_selected`
 - **Reference:** `create-flow/Edits iOS Creating a project 1.png` (permissions), `Edits iOS Creating a project 2.png` (grid)
@@ -330,11 +332,13 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 - **Route:** `/create/editor`
 - **Primary intent:** Preview, trim, and configure the promo video
 - **Header:** X/back (left), project name (center), "Export" button (right)
-- **Main sections:** Video preview (top, centered), compact editor action row (`Edit Media`, `Template`) above trimmer, audio trim/waveform section (bottom), dedicated full-screen control surfaces for media/layout vs template polish
+- **Main sections:** Video preview (top, centered), in-preview control row (settings icon, template-info toggle, `Edit Template` button), bottom-right aspect-ratio toggle, centered audio trim/waveform section, dedicated modal surfaces for media/layout vs template polish
 - **Primary CTA:** "Export" button (top-right)
 - **Secondary actions:** 
-  - `Edit Media` surface: aspect ratio pills (9:16 / 1:1), template selector rail (swipe + snap + tap), change photo, change audio
-  - `Template` surface: spin speed, record opacity, stage background color/photo, background blur, rotation start angle/direction with live preview updates
+  - `Edit Template` surface: aspect ratio pills (9:16 / 1:1), template selector rail (swipe + snap + tap), change audio, change photo
+  - `Template Settings` surface: spin speed, record transparency, stage background color/photo, background blur (only when custom photo selected), rotation start angle/direction with live preview updates
+  - Rotation start presets use 4 cardinal positions (0°, 90°, 180°, 270°) with direction control (CW / CCW)
+  - Optional template-info badge overlay can be toggled in-editor for parity diagnostics
   - Play/pause preview, trim handles, media swap without destructive resets
 - **Empty/loading/error:** Preview loading skeleton, "Rendering failed" + retry
 - **Theme:** Dark/black
@@ -345,7 +349,7 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 - **Route:** `/create/exporting`
 - **Primary intent:** Show rendering progress
 - **Header:** X button (left, to cancel)
-- **Main sections:** Large percentage text, video preview with gradient border, "Please don't close" message
+- **Main sections:** Large percentage text, video preview with gradient border, optional template-info parity badge, "Please don't close" message
 - **Primary CTA:** None (wait state)
 - **Theme:** Dark/black
 - **Reference:** `post-export/Edits iOS Exporting a video 1.png`
@@ -354,7 +358,7 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 - **Route:** `/create/share`
 - **Primary intent:** Save and share the finished video
 - **Header:** X button (left)
-- **Main sections:** "Ready to share" heading + subtitle, video preview, share buttons, confirmation text
+- **Main sections:** "Ready to share" heading + subtitle, video preview, optional template-info parity badge, share buttons, confirmation text
 - **Primary CTA:** "Share to Instagram" (gradient button)
 - **Secondary actions:** "Share to TikTok" (outlined button), "Done" / X to return home
 - **Theme:** Dark/black
@@ -560,6 +564,11 @@ Primary reference: Meta's Edits app. Secondary: Spotify (profile). Screenshots i
   - Template resolution supports `simple-spin` and `graphic-pop` across picker, editor, and export routes
   - Disc visual treatment was updated to read as a CD (preview + export alignment pass, including edge-rim detail)
   - Template control surface now supports stage background image + blur and rotation start/direction
+  - Template tweak model uses `recordTransparency` as canonical control naming (legacy `recordOpacity` input remains compatibility-normalized)
+  - Template-info diagnostics (`TemplateInfoBadge`) were added to editor, rendering, and share previews with route-param handoff for parity verification
+  - Rotation start control was normalized to 4 presets (0°/90°/180°/270°) with clearer direction labeling (CW/CCW)
+  - Create picker now uses a single-screen audio-first + photo-second selection layout with full-height stacked cards and cancel-state reset to avoid stale draft carryover
+  - Home projects now supports multi-select mode with bottom-centered bulk delete for faster cleanup
   - Export duration now respects user trim selection when fast mode is disabled
   - Preview/export parity uses shared vinyl geometry specs (center + edge) to prevent drift from duplicated constants
   - Export color range mapping was corrected to match preview vibrance more closely on device

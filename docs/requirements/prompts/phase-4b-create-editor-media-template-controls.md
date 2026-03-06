@@ -1,4 +1,4 @@
-# Phase 4b: Create Editor — Edit Media + Template Controls
+# Phase 4b: Create Editor — Edit Template + Template Settings Controls
 
 ```text
 Project: MusicPromo
@@ -11,7 +11,7 @@ Design References:
 - stitch_exports/14408626753917029956/143fb3722b524a95b015b41f72947e4e/screen.png
 - stitch_exports/14408626753917029956/5360119ee2e74f54aff80035fe7180a6/screen.png
 Current phase: Phase 4
-Focus: Create Promo Video — Editor Media Controls + Template Polish Controls
+Focus: Create Promo Video — Editor Media/Layout Controls + Template Polish Controls
 
 ## Prerequisites
 
@@ -35,14 +35,14 @@ Upgrade the editor control UX so users can quickly switch media/layout and then 
 ## UX Principle
 
 - Fast primary path: swap media/template/aspect ratio in 1-2 taps.
-- Advanced path: dedicated controls for visual polish (spin/opacity/background).
+- Advanced path: dedicated controls for visual polish (spin/transparency/background).
 - Keep preview interaction feel premium and intentional, not cramped.
 
 ## Scope
 
 In scope:
-- Add a dedicated `Edit Media` surface
-- Add a dedicated `Template Controls` surface
+- Add a dedicated `Edit Template` surface
+- Add a dedicated `Template Settings` surface
 - Keep controls visually consistent with editor pill language
 - Keep preview updates live while tweaking
 - Preserve all editing state when moving between controls and picker
@@ -61,16 +61,16 @@ Files:
 
 Requirements:
 - Replace crowded inline controls with two clear entry points:
-  - `Edit Media`
-  - `Template`
-- `Edit Media` contains:
+  - `Edit Template`
+  - `Template Settings`
+- `Edit Template` contains:
   - Aspect ratio pills (`9:16`, `1:1`)
   - Template selector rail
-  - Change photo
   - Change audio
-- `Template` contains:
+  - Change photo
+- `Template Settings` contains:
   - Spin speed control
-  - Record opacity control
+  - Record transparency control
   - Stage/background tint control
 - Apply/close behavior must be explicit and predictable.
 
@@ -129,17 +129,17 @@ Files:
 - related control components
 
 Track at minimum:
-- `editor_controls_opened` (with `surface: edit_media | template`)
+- `editor_controls_opened` (with `surface: edit_template | template_settings`)
 - `template_tweak_changed` (with `control: spin_speed | record_transparency | stage_background`)
 - `template_selected_from_edit_media`
 - `media_swap_started_from_edit_media`
 
 QA script:
-1. Open editor and switch between `Edit Media` and `Template` controls.
+1. Open editor and switch between `Edit Template` and `Template Settings` controls.
 2. Tap-select and swipe-select templates repeatedly; verify stable highlight and haptics.
 3. Swap photo only; verify audio + trim + tweaks remain.
 4. Swap audio only; verify photo + aspect + template + tweaks remain.
-5. Change spin speed/opacity/background and confirm live preview updates.
+5. Change spin speed/transparency/background and confirm live preview updates.
 6. Export and verify selected template + current tweak values are reflected in output path behavior.
 7. Run `npm run lint` and targeted device smoke test on iOS simulator.
 
@@ -152,10 +152,10 @@ After implementation, update:
 
 ## Acceptance Criteria (Must Pass)
 
-- User can open dedicated `Edit Media` and `Template` control surfaces from editor.
+- User can open dedicated `Edit Template` and `Template Settings` control surfaces from editor.
 - Template/aspect/media controls are no longer crowded in one inline row.
 - Template selection is reliable via both tap and swipe, with clear selected state.
-- Template polish controls (spin/opacity/background) apply to live preview immediately.
+- Template polish controls (spin/transparency/background) apply to live preview immediately.
 - No regression in non-destructive media swap behavior.
 - Layout retains or improves usable vertical space for preview/timeline controls.
 - Lint/typecheck passes and no new navigation dead ends are introduced.

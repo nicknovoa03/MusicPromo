@@ -103,6 +103,9 @@
     "share_tapped_instagram",
     "share_tapped_tiktok",
     "project_reopened",
+    "project_actions_opened",
+    "project_delete_started",
+    "project_deleted",
     "notification_received",
     "notification_tapped"
   ],

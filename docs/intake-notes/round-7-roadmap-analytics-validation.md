@@ -13,6 +13,10 @@
 - `photo_selected` — picks a photo
 - `audio_selected` — picks audio
 - `preview_viewed` — previews the video
+- `editor_controls_opened` — opens edit/template control surfaces
+- `template_selected_from_edit_media` — changes template from edit surface
+- `media_swap_started_from_edit_media` — swaps audio or photo from edit surface
+- `template_tweak_changed` — changes template control values
 - `video_exported` — render completes (**north star event**)
 
 ### Distribution
@@ -22,6 +26,9 @@
 
 ### Retention
 - `project_reopened` — opens a past project
+- `project_actions_opened` — opens per-project actions
+- `project_delete_started` — starts project delete confirm flow
+- `project_deleted` — project delete succeeds
 
 ### Notifications
 - `notification_received` — push delivered
@@ -37,8 +44,8 @@
 - PostHog integration
 
 ### Phase 1: MVP Core
-- Create flow: photo picker, audio picker, audio trim
-- Spinning CD video template (on-device rendering)
+- Create flow: single-screen media picker (audio + photo), audio trim
+- Curated CD-style template set (`simple-spin`, `graphic-pop`) with on-device rendering
 - Aspect ratio selection (9:16 or 1:1)
 - Preview and export
 - Save to camera roll
@@ -87,7 +94,7 @@
 ### Round 1
 - A1: v1 is a mobile app (not web-only)
 - A2: Primary output is a short video (15-60s)
-- A3: v1 has one video style (Spinning CD)
+- A3: v1 has a small curated CD-style template set
 - A4: Label/agency persona deferred
 
 ### Round 2
@@ -101,7 +108,7 @@
 - A10: Files on-device only, metadata in Convex (phone switch = files gone)
 - A11: Native share intents for Instagram/TikTok
 - A12: User Profile exact fields TBD
-- A13: One template v1, data model supports multiple
+- A13: Small curated template set in v1, data model supports multiple
 - A14: Expo Push Notifications sufficient
 - A15: No admin panel for v1
 

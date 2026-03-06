@@ -5,11 +5,11 @@
 ```
 Open app → Sign in (Clerk) OR "Continue as Guest"
   → Tap "Create"
-  → Pick photo from device (camera roll)
   → Pick audio from device (MP3, WAV, M4A)
+  → Pick photo from device (camera roll)
   → Choose aspect ratio (9:16 or 1:1)
   → Trim audio (user selects which section of the audio to use)
-  → Preview the video (spinning CD with photo + audio playing)
+  → Preview the video (selected template with photo + audio playing)
   → User can swap photo or audio without losing the other selections
   → Tap "Export"
   → Video renders on-device (continues even if app is backgrounded)
@@ -46,7 +46,7 @@ Open app → Sign in (Clerk) OR "Continue as Guest"
 
 | Scenario | Behavior |
 |---|---|
-| User picks photo but cancels audio selection | Stay on create screen, keep photo, can't proceed without audio |
+| User picks one input but cancels the other | Stay on create screen, keep selected media, can't proceed without both photo + audio |
 | Audio file too long | User picks which section to use (trim UI) |
 | Unsupported audio format | File picker filtered to only show compatible formats (MP3, WAV, M4A) |
 | Video rendering fails | Fail gracefully — error message + retry button |
