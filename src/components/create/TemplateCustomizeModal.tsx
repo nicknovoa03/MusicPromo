@@ -50,7 +50,7 @@ function isPresetBackgroundColor(
 const SPIN_SPEED_OPTIONS = [0.6, 0.8, 1, 1.25, 1.5];
 const RECORD_TRANSPARENCY_OPTIONS = [0, 0.15, 0.3, 0.45, 0.6];
 const BACKGROUND_BLUR_OPTIONS = [0, 2, 4, 8, 12, 18];
-const ROTATION_START_OPTIONS = [0, 90, 180, 270];
+const ROTATION_START_OPTIONS = [0, 90, 180, -90];
 const ROTATION_DIRECTION_OPTIONS: Array<{
   label: string;
   value: "cw" | "ccw";
@@ -87,7 +87,8 @@ function formatBlur(value: number): string {
 
 function formatRotationStart(value: number): string {
   if (value === 0) return "0deg";
-  return `${value > 0 ? "+" : ""}${value}deg`;
+  const displayValue = value === -90 ? 270 : value;
+  return `${displayValue > 0 ? "+" : ""}${displayValue}deg`;
 }
 
 function clamp(value: number, min: number, max: number): number {
