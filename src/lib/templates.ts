@@ -23,7 +23,7 @@ export interface TemplateStageProps {
 
 export interface TemplateTweaks {
   spinSpeed: number;
-  recordOpacity: number;
+  recordTransparency: number;
   backgroundBlur: number;
   rotationStartDeg: number;
   rotationDirection: "cw" | "ccw";
@@ -33,7 +33,7 @@ export interface TemplateTweaks {
 
 export const DEFAULT_TEMPLATE_TWEAKS: TemplateTweaks = {
   spinSpeed: 1,
-  recordOpacity: 1,
+  recordTransparency: 0,
   backgroundBlur: 0,
   rotationStartDeg: 0,
   rotationDirection: "cw",
@@ -42,9 +42,10 @@ export const DEFAULT_TEMPLATE_TWEAKS: TemplateTweaks = {
 };
 
 export interface TemplateTweaksRoutePayload {
-  v: 1 | 2 | 3;
+  v: 1 | 2 | 3 | 4;
   spinSpeed: number;
-  recordOpacity: number;
+  recordTransparency?: number;
+  recordOpacity?: number;
   backgroundBlur?: number;
   rotationStartDeg?: number;
   rotationDirection?: "cw" | "ccw";
@@ -54,8 +55,8 @@ export interface TemplateTweaksRoutePayload {
 
 const MIN_SPIN_SPEED = 0.25;
 const MAX_SPIN_SPEED = 4;
-const MIN_RECORD_OPACITY = 0.35;
-const MAX_RECORD_OPACITY = 1;
+const MIN_RECORD_TRANSPARENCY = 0;
+const MAX_RECORD_TRANSPARENCY = 0.65;
 const MIN_BACKGROUND_BLUR = 0;
 const MAX_BACKGROUND_BLUR = 24;
 const MIN_ROTATION_START_DEG = -180;
@@ -86,19 +87,28 @@ function sanitizeRotationDirection(
   return value === "ccw" ? "ccw" : "cw";
 }
 
+function opacityToTransparency(opacity: number): number {
+  return clampNumber(1 - opacity, MIN_RECORD_TRANSPARENCY, MAX_RECORD_TRANSPARENCY);
+}
+
 export function normalizeTemplateTweaks(
-  input?: Partial<TemplateTweaks> | null,
+  input?: (Partial<TemplateTweaks> & { recordOpacity?: number }) | null,
 ): TemplateTweaks {
+  const recordTransparencyInput = Number.isFinite(input?.recordTransparency)
+    ? input?.recordTransparency
+    : Number.isFinite(input?.recordOpacity)
+      ? opacityToTransparency(input?.recordOpacity ?? 1)
+      : DEFAULT_TEMPLATE_TWEAKS.recordTransparency;
   return {
     spinSpeed: clampNumber(
       input?.spinSpeed ?? DEFAULT_TEMPLATE_TWEAKS.spinSpeed,
       MIN_SPIN_SPEED,
       MAX_SPIN_SPEED,
     ),
-    recordOpacity: clampNumber(
-      input?.recordOpacity ?? DEFAULT_TEMPLATE_TWEAKS.recordOpacity,
-      MIN_RECORD_OPACITY,
-      MAX_RECORD_OPACITY,
+    recordTransparency: clampNumber(
+      recordTransparencyInput ?? DEFAULT_TEMPLATE_TWEAKS.recordTransparency,
+      MIN_RECORD_TRANSPARENCY,
+      MAX_RECORD_TRANSPARENCY,
     ),
     backgroundBlur: clampNumber(
       input?.backgroundBlur ?? DEFAULT_TEMPLATE_TWEAKS.backgroundBlur,
@@ -121,9 +131,9 @@ export function normalizeTemplateTweaks(
 export function serializeTemplateTweaksParam(value: TemplateTweaks): string {
   const normalized = normalizeTemplateTweaks(value);
   const payload: TemplateTweaksRoutePayload = {
-    v: 3,
+    v: 4,
     spinSpeed: normalized.spinSpeed,
-    recordOpacity: normalized.recordOpacity,
+    recordTransparency: normalized.recordTransparency,
     backgroundBlur: normalized.backgroundBlur,
     rotationStartDeg: normalized.rotationStartDeg,
     rotationDirection: normalized.rotationDirection,
@@ -140,11 +150,12 @@ export function parseTemplateTweaksParam(
   try {
     const decoded = decodeURIComponent(rawParam);
     const parsed = JSON.parse(decoded) as Partial<TemplateTweaksRoutePayload>;
-    if (!parsed || (parsed.v !== 1 && parsed.v !== 2 && parsed.v !== 3)) {
+    if (!parsed || (parsed.v !== 1 && parsed.v !== 2 && parsed.v !== 3 && parsed.v !== 4)) {
       return null;
     }
     return normalizeTemplateTweaks({
       spinSpeed: parsed.spinSpeed,
+      recordTransparency: parsed.recordTransparency,
       recordOpacity: parsed.recordOpacity,
       backgroundBlur: parsed.backgroundBlur,
       rotationStartDeg: parsed.rotationStartDeg,
@@ -204,7 +215,7 @@ export function getTemplateDefinition(templateId?: string | null): TemplateDefin
 
 export function listTemplateDefinitions(): TemplateDefinition[] {
   return [
-    TEMPLATE_DEFINITIONS["simple-spin"],
     TEMPLATE_DEFINITIONS["graphic-pop"],
+    TEMPLATE_DEFINITIONS["simple-spin"],
   ];
 }

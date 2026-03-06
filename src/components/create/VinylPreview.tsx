@@ -137,11 +137,7 @@ export function VinylPreview({
           width: size,
           height: size,
           borderRadius: size / 2,
-          backgroundColor: isGraphicTone
-            ? "#1d222c"
-            : isCdStyleTone
-              ? "#bfc8d6"
-              : "#121212",
+          backgroundColor: "transparent",
         },
       ]}
     >

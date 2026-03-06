@@ -5,7 +5,6 @@ import {
   PanResponder,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -69,7 +68,7 @@ export function EditMediaModal({
     setDraftAspectRatio(aspectRatio);
     setDraftTemplateId(templateId);
     sheetTranslateY.setValue(0);
-  }, [aspectRatio, sheetTranslateY, templateId, visible]);
+  }, [aspectRatio, templateId, visible, sheetTranslateY]);
 
   const selectedTemplate = useMemo(
     () =>
@@ -99,17 +98,16 @@ export function EditMediaModal({
   const sheetPanResponder = useMemo(
     () =>
       PanResponder.create({
-        onMoveShouldSetPanResponder: (_, gestureState) =>
-          Math.abs(gestureState.dy) > 6 &&
+        onMoveShouldSetPanResponderCapture: (_, gestureState) =>
+          gestureState.dy > 3 &&
           Math.abs(gestureState.dy) > Math.abs(gestureState.dx),
         onPanResponderMove: (_, gestureState) => {
           if (gestureState.dy <= 0) return;
           sheetTranslateY.setValue(gestureState.dy);
         },
         onPanResponderRelease: (_, gestureState) => {
-          const shouldDismiss = gestureState.dy > 96 || gestureState.vy > 1.15;
+          const shouldDismiss = gestureState.dy > 72 || gestureState.vy > 0.9;
           if (shouldDismiss) {
-            sheetTranslateY.setValue(0);
             onClose();
             return;
           }
@@ -128,6 +126,7 @@ export function EditMediaModal({
             speed: 20,
           }).start();
         },
+        onPanResponderTerminationRequest: () => false,
       }),
     [onClose, sheetTranslateY],
   );
@@ -135,15 +134,15 @@ export function EditMediaModal({
   return (
     <Modal
       visible={visible}
+      animationType="slide"
       transparent
-      animationType="fade"
       onRequestClose={onClose}
     >
       <View style={styles.root}>
         <Pressable
           style={styles.backdrop}
           onPress={onClose}
-          accessibilityLabel="Close edit media"
+          accessibilityLabel="Close edit template"
           accessibilityRole="button"
         />
 
@@ -154,28 +153,17 @@ export function EditMediaModal({
               transform: [{ translateY: sheetTranslateY }],
             },
           ]}
+          {...sheetPanResponder.panHandlers}
         >
-          <View style={styles.dragHandleWrap} {...sheetPanResponder.panHandlers}>
+          <View style={styles.dragHandleWrap}>
             <View style={styles.dragHandle} />
           </View>
 
           <View style={styles.header}>
-          <Text style={styles.headerTitle}>Edit Media</Text>
-          <Pressable
-            onPress={onClose}
-            style={styles.headerClose}
-            accessibilityLabel="Close edit media"
-            accessibilityRole="button"
-          >
-            <Ionicons name="close" size={18} color={colors.dark.text} />
-          </Pressable>
+            <Text style={styles.headerTitle}>Edit Template</Text>
           </View>
 
-          <ScrollView
-            contentContainerStyle={styles.content}
-            showsVerticalScrollIndicator={false}
-            scrollEnabled={false}
-          >
+          <View style={styles.content}>
             <View style={styles.section}>
             <Text style={styles.sectionLabel}>Aspect Ratio</Text>
             <View style={styles.aspectRow}>
@@ -226,23 +214,6 @@ export function EditMediaModal({
             <View style={styles.section}>
             <Text style={styles.sectionLabel}>Audio & Video</Text>
             <Pressable
-              onPress={onSwapPhoto}
-              style={styles.actionRow}
-              accessibilityLabel="Change photo"
-              accessibilityRole="button"
-            >
-              <View style={styles.actionLeft}>
-                <Ionicons name="camera-outline" size={18} color={colors.accent.primary} />
-                <View style={styles.actionTextWrap}>
-                  <Text style={styles.actionTitle}>Change Photo</Text>
-                  <Text style={styles.actionMeta} numberOfLines={1}>
-                    {photoLabel || "Current image"}
-                  </Text>
-                </View>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={colors.dark.textSecondary} />
-            </Pressable>
-            <Pressable
               onPress={onSwapAudio}
               style={styles.actionRow}
               accessibilityLabel="Change audio"
@@ -263,8 +234,25 @@ export function EditMediaModal({
               </View>
               <Ionicons name="chevron-forward" size={18} color={colors.dark.textSecondary} />
             </Pressable>
+            <Pressable
+              onPress={onSwapPhoto}
+              style={styles.actionRow}
+              accessibilityLabel="Change photo"
+              accessibilityRole="button"
+            >
+              <View style={styles.actionLeft}>
+                <Ionicons name="camera-outline" size={18} color={colors.accent.primary} />
+                <View style={styles.actionTextWrap}>
+                  <Text style={styles.actionTitle}>Change Photo</Text>
+                  <Text style={styles.actionMeta} numberOfLines={1}>
+                    {photoLabel || "Current image"}
+                  </Text>
+                </View>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.dark.textSecondary} />
+            </Pressable>
             </View>
-          </ScrollView>
+          </View>
 
           <View style={styles.footer}>
             <Pressable
@@ -275,7 +263,7 @@ export function EditMediaModal({
                 })
               }
               style={styles.applyButton}
-              accessibilityLabel={`Apply media changes for ${selectedTemplate?.name ?? "template"}`}
+              accessibilityLabel={`Apply template changes for ${selectedTemplate?.name ?? "template"}`}
               accessibilityRole="button"
             >
               <Text style={styles.applyButtonText}>Apply Changes</Text>
@@ -294,11 +282,11 @@ const styles = StyleSheet.create({
   },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.45)",
+    backgroundColor: "transparent",
   },
   sheet: {
-    maxHeight: "64%",
-    minHeight: 380,
+    maxHeight: "62%",
+    minHeight: 360,
     backgroundColor: colors.dark.background,
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,
@@ -342,6 +330,7 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
     paddingBottom: spacing.lg,
     gap: spacing.md,
   },

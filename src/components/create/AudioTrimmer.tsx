@@ -32,6 +32,8 @@ const WAVEFORM_BAR_COUNT = Math.round(
   TIMELINE_FRAME_COUNT * WAVEFORM_ZOOM_FACTOR,
 );
 const DURATION_WHEEL_HEIGHT = 190;
+const START_DRAG_SENSITIVITY = 0.62;
+const START_DRAG_DEADZONE_PX = 2;
 
 function formatTime(sec: number): string {
   const m = Math.floor(sec / 60);
@@ -203,14 +205,17 @@ export function AudioTrimmer({
           gestureState: PanResponderGestureState,
         ) => {
           const {
-            safeDuration: latestSafeDuration,
             railWidth: latestRailWidth,
             currentDuration: latestCurrentDuration,
             maxStart: latestMaxStart,
           } = latestValuesRef.current;
           if (latestRailWidth <= 0) return;
+          if (Math.abs(gestureState.dx) < START_DRAG_DEADZONE_PX) return;
 
-          const deltaSec = (gestureState.dx / latestRailWidth) * latestSafeDuration;
+          const deltaSec =
+            (gestureState.dx / latestRailWidth) *
+            latestMaxStart *
+            START_DRAG_SENSITIVITY;
           const nextStart = clamp(railGestureStartRef.current + deltaSec, 0, latestMaxStart);
           applyStart(nextStart, latestCurrentDuration);
         },
@@ -284,9 +289,12 @@ export function AudioTrimmer({
           );
 
           if (latestWaveformScrollableWidth <= 0 || latestMaxStart <= 0) return;
+          if (Math.abs(gestureState.dx) < START_DRAG_DEADZONE_PX) return;
 
           const deltaStart =
-            -(gestureState.dx / latestWaveformScrollableWidth) * latestMaxStart;
+            (-(gestureState.dx / latestWaveformScrollableWidth) *
+              latestMaxStart *
+              START_DRAG_SENSITIVITY);
           const nextStart = clamp(
             selectionGestureStartRef.current + deltaStart,
             0,

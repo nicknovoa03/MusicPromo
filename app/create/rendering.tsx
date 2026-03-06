@@ -17,6 +17,7 @@ import Constants from "expo-constants";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
+import { TemplateInfoBadge } from "@/components/create/TemplateInfoBadge";
 import type { EventName } from "@/lib/analytics";
 import {
   cancelRendererWork,
@@ -103,7 +104,7 @@ export default function RenderingScreen() {
     templateId?: string;
     templateTweaks?: string;
     spinSpeed?: string;
-    recordOpacity?: string;
+    recordTransparency?: string;
     stageBackgroundColor?: string;
     photoUri: string;
     photoName?: string;
@@ -112,6 +113,7 @@ export default function RenderingScreen() {
     trimStart: string;
     trimEnd: string;
     aspectRatio: string;
+    showTemplateInfo?: string;
   }>();
 
   const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
@@ -120,6 +122,7 @@ export default function RenderingScreen() {
   const projectTitle = firstParam(params.title)?.trim() || "New Project";
   const audioName = firstParam(params.audioName) || "";
   const aspectRatio = firstParam(params.aspectRatio) === "1:1" ? "1:1" : "9:16";
+  const showTemplateInfo = firstParam(params.showTemplateInfo) !== "0";
   const templateId = resolveTemplateId(firstParam(params.templateId));
   const parsedTemplateTweaks = parseTemplateTweaksParam(
     firstParam(params.templateTweaks),
@@ -128,7 +131,9 @@ export default function RenderingScreen() {
     ? parsedTemplateTweaks
     : normalizeTemplateTweaks({
         spinSpeed: Number(firstParam(params.spinSpeed)),
-        recordOpacity: Number(firstParam(params.recordOpacity)),
+        recordTransparency: Number.isFinite(Number(firstParam(params.recordTransparency)))
+          ? Number(firstParam(params.recordTransparency))
+          : undefined,
         stageBackgroundColor: firstParam(params.stageBackgroundColor) ?? undefined,
       });
   const previewTemplateDefinition = getTemplateDefinition(templateId);
@@ -137,11 +142,11 @@ export default function RenderingScreen() {
     decodeUriParam(firstParam(params.photoUri)),
   );
   const trackTitle = displayMediaLabel(audioName, "Untitled track");
-  const stageWidth = Math.min(SCREEN_WIDTH - STAGE_HORIZONTAL_PADDING, 440);
-  const stageHeight = Math.min(
-    Math.max(stageWidth * (aspectRatio === "9:16" ? 1.4 : 1.2), 460),
-    SCREEN_HEIGHT * 0.72,
-  );
+  const stageWidthRatio = aspectRatio === "9:16" ? 9 / 16 : 1;
+  const maxStageWidth = Math.min(SCREEN_WIDTH - STAGE_HORIZONTAL_PADDING, 440);
+  const maxStageHeight = SCREEN_HEIGHT * 0.72;
+  const stageWidth = Math.min(maxStageWidth, maxStageHeight * stageWidthRatio);
+  const stageHeight = stageWidth / stageWidthRatio;
 
   const [progress, setProgress] = useState(0);
   const [renderState, setRenderState] = useState<RenderState>("rendering");
@@ -191,6 +196,7 @@ export default function RenderingScreen() {
         : Math.min(trimEnd, trimStart + FAST_EXPORT_DURATION_SECONDS);
     const aspectRatio =
       firstParam(params.aspectRatio) === "1:1" ? "1:1" : "9:16";
+    const showTemplateInfo = firstParam(params.showTemplateInfo) !== "0";
     const templateId = resolveTemplateId(firstParam(params.templateId));
     const parsedTemplateTweaks = parseTemplateTweaksParam(
       firstParam(params.templateTweaks),
@@ -199,7 +205,9 @@ export default function RenderingScreen() {
       ? parsedTemplateTweaks
       : normalizeTemplateTweaks({
           spinSpeed: Number(firstParam(params.spinSpeed)),
-          recordOpacity: Number(firstParam(params.recordOpacity)),
+          recordTransparency: Number.isFinite(Number(firstParam(params.recordTransparency)))
+            ? Number(firstParam(params.recordTransparency))
+            : undefined,
           stageBackgroundColor:
             firstParam(params.stageBackgroundColor) ?? undefined,
         });
@@ -312,6 +320,10 @@ export default function RenderingScreen() {
           videoUri: encodeUriParam(videoUri),
           projectId: projectIdRef.current ?? "",
           posterUri: encodeUriParam(photoUri),
+          templateId,
+          templateTweaks: serializedTemplateTweaks,
+          aspectRatio,
+          showTemplateInfo: showTemplateInfo ? "1" : "0",
         },
       });
     } catch (err) {
@@ -415,17 +427,28 @@ export default function RenderingScreen() {
             <Text style={styles.percentageText}>{progress}%</Text>
 
             <View style={styles.stageWrap}>
-              <TemplateStageComponent
-                width={stageWidth}
-                height={stageHeight}
-                aspectRatio={aspectRatio}
-                photoUri={previewPhotoUri}
-                isPlaying={renderState === "rendering"}
-                playbackLabel="Now Playing"
-                trackTitle={trackTitle}
-                subtitle={projectTitle}
-                templateTweaks={templateTweaks}
-              />
+              <View style={[styles.stageFrame, { width: stageWidth, height: stageHeight }]}>
+                <TemplateStageComponent
+                  width={stageWidth}
+                  height={stageHeight}
+                  aspectRatio={aspectRatio}
+                  photoUri={previewPhotoUri}
+                  isPlaying={renderState === "rendering"}
+                  playbackLabel="Now Playing"
+                  trackTitle={trackTitle}
+                  subtitle={projectTitle}
+                  templateTweaks={templateTweaks}
+                />
+                {showTemplateInfo ? (
+                  <TemplateInfoBadge
+                    templateId={templateId}
+                    templateTweaks={templateTweaks}
+                    aspectRatio={aspectRatio}
+                    compact
+                    style={styles.stageTemplateInfoBadge}
+                  />
+                ) : null}
+              </View>
             </View>
 
             <Text style={styles.message}>
@@ -486,6 +509,15 @@ const styles = StyleSheet.create({
     width: "100%",
     alignItems: "center",
     marginBottom: spacing.lg,
+  },
+  stageFrame: {
+    position: "relative",
+  },
+  stageTemplateInfoBadge: {
+    position: "absolute",
+    top: spacing.sm,
+    left: spacing.sm,
+    right: spacing.sm,
   },
   message: {
     ...typography.body,

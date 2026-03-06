@@ -12,6 +12,7 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  type LayoutChangeEvent,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -28,6 +29,7 @@ import { AudioTrimmer } from "@/components/create/AudioTrimmer";
 import { type AspectRatio } from "@/components/create/AspectRatioToggle";
 import { EditMediaModal } from "@/components/create/EditMediaModal";
 import { TemplateCustomizeModal } from "@/components/create/TemplateCustomizeModal";
+import { TemplateInfoBadge } from "@/components/create/TemplateInfoBadge";
 import type { EventName } from "@/lib/analytics";
 import { decodeUriParam, encodeUriParam, fileNameFromUri } from "@/lib/uri";
 import { normalizeMediaUri } from "@/lib/mediaUri";
@@ -51,7 +53,7 @@ import {
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const SCREEN_HEIGHT = Dimensions.get("window").height;
-const STAGE_HORIZONTAL_PADDING = spacing.sm * 2;
+const STAGE_HORIZONTAL_PADDING = spacing.xs * 2;
 const FALLBACK_AUDIO_DURATION = 180;
 const DEFAULT_TRIM_DURATION = 5;
 const DEFAULT_PROJECT_TITLE = "New Project";
@@ -77,6 +79,12 @@ function parseAspectRatioParam(
   value: string | string[] | undefined,
 ): AspectRatio {
   return firstParam(value) === "1:1" ? "1:1" : "9:16";
+}
+
+function parseShowTemplateInfoParam(
+  value: string | string[] | undefined,
+): boolean {
+  return firstParam(value) !== "0";
 }
 
 function asProjectId(value?: string) {
@@ -236,8 +244,9 @@ export default function EditorScreen() {
     trimStart?: string;
     trimEnd?: string;
     spinSpeed?: string;
-    recordOpacity?: string;
+    recordTransparency?: string;
     stageBackgroundColor?: string;
+    showTemplateInfo?: string;
     returnToEditor?: string;
   }>();
 
@@ -253,6 +262,7 @@ export default function EditorScreen() {
   const paramAudioUri = normalizeMediaUri(decodeUriParam(firstParam(params.audioUri)));
   const paramPhotoName = firstParam(params.photoName);
   const paramAudioName = firstParam(params.audioName);
+  const hasRouteMediaSnapshot = Boolean(paramPhotoUri || paramAudioUri);
   const [currentProjectId, setCurrentProjectId] = useState<Id<"projects"> | null>(
     existingProjectId,
   );
@@ -279,9 +289,9 @@ export default function EditorScreen() {
     params.spinSpeed,
     DEFAULT_TEMPLATE_TWEAKS.spinSpeed,
   );
-  const initialRecordOpacity = parseNumberParam(
-    params.recordOpacity,
-    DEFAULT_TEMPLATE_TWEAKS.recordOpacity,
+  const initialRecordTransparency = parseNumberParam(
+    params.recordTransparency,
+    DEFAULT_TEMPLATE_TWEAKS.recordTransparency,
   );
   const initialStageBackgroundColor =
     firstParam(params.stageBackgroundColor) || null;
@@ -291,7 +301,7 @@ export default function EditorScreen() {
   const initialTemplateTweaks = normalizeTemplateTweaks(
     parsedTemplateTweaks ?? {
       spinSpeed: initialSpinSpeed,
-      recordOpacity: initialRecordOpacity,
+      recordTransparency: initialRecordTransparency,
       stageBackgroundColor: initialStageBackgroundColor,
     },
   );
@@ -301,6 +311,9 @@ export default function EditorScreen() {
     initialTrimEndRaw > initialTrimStart
       ? initialTrimEndRaw
       : initialTrimStart + DEFAULT_TRIM_DURATION;
+  const initialShowTemplateInfo = parseShowTemplateInfoParam(
+    params.showTemplateInfo,
+  );
 
   const createProject = useMutation(api.projects.create);
   const updateProject = useMutation(api.projects.update);
@@ -308,6 +321,9 @@ export default function EditorScreen() {
   const [templateId, setTemplateId] = useState(initialTemplateId);
   const [templateTweaks, setTemplateTweaks] =
     useState<TemplateTweaks>(initialTemplateTweaks);
+  const [showTemplateInfo, setShowTemplateInfo] = useState<boolean>(
+    initialShowTemplateInfo,
+  );
   const serializedTemplateTweaks = serializeTemplateTweaksParam(templateTweaks);
   const [isEditMediaModalVisible, setIsEditMediaModalVisible] = useState(false);
   const [isTemplateCustomizeVisible, setIsTemplateCustomizeVisible] =
@@ -330,6 +346,10 @@ export default function EditorScreen() {
   const [editorSaveStatus, setEditorSaveStatus] = useState<
     "idle" | "saving" | "saved" | "error"
   >("idle");
+  const [previewViewport, setPreviewViewport] = useState({
+    width: 0,
+    height: 0,
+  });
   const [forceAutosaveTick, setForceAutosaveTick] = useState(0);
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const remoteTemplateTweaksUnsupportedRef = useRef(false);
@@ -373,7 +393,7 @@ export default function EditorScreen() {
   }, [params.templateId]);
 
   useEffect(() => {
-    if (firstParam(params.templateTweaks)) return;
+    if (firstParam(params.templateTweaks) && hasRouteMediaSnapshot) return;
     const savedTemplateTweaksRaw = projectDetails?.templateTweaks;
     if (!savedTemplateTweaksRaw) return;
     const parsed = parseTemplateTweaksParam(savedTemplateTweaksRaw);
@@ -383,10 +403,10 @@ export default function EditorScreen() {
       const nextSerialized = serializeTemplateTweaksParam(parsed);
       return prevSerialized === nextSerialized ? prev : parsed;
     });
-  }, [params.templateTweaks, projectDetails?.templateTweaks]);
+  }, [hasRouteMediaSnapshot, params.templateTweaks, projectDetails?.templateTweaks]);
 
   useEffect(() => {
-    if (firstParam(params.templateTweaks)) return;
+    if (firstParam(params.templateTweaks) && hasRouteMediaSnapshot) return;
     if (!currentProjectId) return;
     if (projectDetails?.templateTweaks) return;
 
@@ -406,7 +426,12 @@ export default function EditorScreen() {
     return () => {
       isCancelled = true;
     };
-  }, [currentProjectId, params.templateTweaks, projectDetails?.templateTweaks]);
+  }, [
+    currentProjectId,
+    hasRouteMediaSnapshot,
+    params.templateTweaks,
+    projectDetails?.templateTweaks,
+  ]);
 
   const templateDefinitions = listTemplateDefinitions();
   const TemplateStageComponent = getTemplateDefinition(templateId).StageComponent;
@@ -697,11 +722,36 @@ export default function EditorScreen() {
     trimEnd,
   ]);
 
-  const stageWidth = Math.min(SCREEN_WIDTH - STAGE_HORIZONTAL_PADDING, 520);
-  const targetStageHeight = stageWidth * (aspectRatio === "9:16" ? 1.26 : 1.06);
-  const stageHeight = Math.min(
-    Math.max(targetStageHeight, 320),
-    SCREEN_HEIGHT * (aspectRatio === "9:16" ? 0.58 : 0.54),
+  const stageWidthRatio = aspectRatio === "9:16" ? 9 / 16 : 1;
+  const fallbackMaxStageWidth = Math.min(SCREEN_WIDTH - STAGE_HORIZONTAL_PADDING, 520);
+  const fallbackMaxStageHeight = SCREEN_HEIGHT * (aspectRatio === "9:16" ? 0.72 : 0.57);
+  const measuredMaxStageWidth =
+    previewViewport.width > 0
+      ? Math.max(previewViewport.width - spacing.sm * 2, 0)
+      : fallbackMaxStageWidth;
+  const measuredMaxStageHeight =
+    previewViewport.height > 0
+      ? Math.max(previewViewport.height - spacing.sm * 2, 0)
+      : fallbackMaxStageHeight;
+  const maxStageWidth = Math.min(fallbackMaxStageWidth, measuredMaxStageWidth);
+  const maxStageHeight = Math.min(fallbackMaxStageHeight, measuredMaxStageHeight);
+  const stageWidth = Math.max(
+    1,
+    Math.min(maxStageWidth, maxStageHeight * stageWidthRatio),
+  );
+  const stageHeight = stageWidth / stageWidthRatio;
+
+  const handlePreviewContainerLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      const { width, height } = event.nativeEvent.layout;
+      setPreviewViewport((prev) => {
+        if (Math.abs(prev.width - width) < 1 && Math.abs(prev.height - height) < 1) {
+          return prev;
+        }
+        return { width, height };
+      });
+    },
+    [],
   );
 
   const handleTrimChange = useCallback((start: number, end: number) => {
@@ -1207,6 +1257,7 @@ export default function EditorScreen() {
           aspectRatio,
           templateId,
           templateTweaks: serializedTemplateTweaks,
+          showTemplateInfo: showTemplateInfo ? "1" : "0",
           trimStart: String(trimStart),
           trimEnd: String(trimEnd),
           initialTab,
@@ -1226,6 +1277,7 @@ export default function EditorScreen() {
       aspectRatio,
       templateId,
       serializedTemplateTweaks,
+      showTemplateInfo,
       trimStart,
       trimEnd,
     ],
@@ -1273,6 +1325,7 @@ export default function EditorScreen() {
           aspectRatio,
           templateId,
           templateTweaks: serializedTemplateTweaks,
+          showTemplateInfo: showTemplateInfo ? "1" : "0",
         },
       });
     })();
@@ -1294,6 +1347,7 @@ export default function EditorScreen() {
     aspectRatio,
     templateId,
     serializedTemplateTweaks,
+    showTemplateInfo,
     persistProjectSnapshot,
   ]);
 
@@ -1325,6 +1379,26 @@ export default function EditorScreen() {
     setIsTemplateCustomizeVisible(true);
   }, [track]);
 
+  const handleToggleTemplateInfo = useCallback(() => {
+    setShowTemplateInfo((prev) => {
+      const next = !prev;
+      track("editor_controls_opened", {
+        surface: next ? "template_info_on" : "template_info_off",
+      });
+      return next;
+    });
+  }, [track]);
+
+  const handleToggleAspectRatio = useCallback(() => {
+    setAspectRatio((prev) => {
+      const next = prev === "9:16" ? "1:1" : "9:16";
+      track("editor_controls_opened", {
+        surface: next === "9:16" ? "aspect_ratio_9x16" : "aspect_ratio_1x1",
+      });
+      return next;
+    });
+  }, [track]);
+
   const handleCloseTemplateCustomize = useCallback(() => {
     setIsTemplateCustomizeVisible(false);
   }, []);
@@ -1335,8 +1409,8 @@ export default function EditorScreen() {
       if (normalizedNext.spinSpeed !== templateTweaks.spinSpeed) {
         track("template_tweak_changed", { control: "spin_speed" });
       }
-      if (normalizedNext.recordOpacity !== templateTweaks.recordOpacity) {
-        track("template_tweak_changed", { control: "record_opacity" });
+      if (normalizedNext.recordTransparency !== templateTweaks.recordTransparency) {
+        track("template_tweak_changed", { control: "record_transparency" });
       }
       if (normalizedNext.backgroundBlur !== templateTweaks.backgroundBlur) {
         track("template_tweak_changed", { control: "background_blur" });
@@ -1539,7 +1613,7 @@ export default function EditorScreen() {
         </View>
       )}
 
-      <View style={styles.previewContainer}>
+      <View style={styles.previewContainer} onLayout={handlePreviewContainerLayout}>
         <View style={[styles.previewStageFrame, { width: stageWidth, height: stageHeight }]}>
           <TemplateStageComponent
             width={stageWidth}
@@ -1553,34 +1627,72 @@ export default function EditorScreen() {
             templateTweaks={templateTweaks}
             onTogglePlay={handlePlayPause}
           />
+          <View style={styles.previewActionRow}>
+            <Pressable
+              onPress={handleOpenTemplateCustomize}
+              style={({ pressed }) => [
+                styles.previewTemplateButton,
+                pressed && styles.previewTemplateButtonPressed,
+              ]}
+              accessibilityLabel="Open template settings"
+              accessibilityRole="button"
+            >
+              <Ionicons name="settings-outline" size={18} color={colors.dark.text} />
+            </Pressable>
+            <Pressable
+              onPress={handleToggleTemplateInfo}
+              style={({ pressed }) => [
+                styles.previewInfoToggleButton,
+                showTemplateInfo && styles.previewInfoToggleButtonActive,
+                pressed && styles.previewTemplateButtonPressed,
+              ]}
+              accessibilityLabel={
+                showTemplateInfo
+                  ? "Hide template information"
+                  : "Show template information"
+              }
+              accessibilityRole="button"
+              accessibilityState={{ selected: showTemplateInfo }}
+            >
+              <Ionicons
+                name="information-circle-outline"
+                size={18}
+                color={showTemplateInfo ? colors.dark.background : colors.dark.text}
+              />
+            </Pressable>
+            <Pressable
+              onPress={handleOpenEditMedia}
+              style={({ pressed }) => [
+                styles.previewEditTemplateButton,
+                pressed && styles.previewEditTemplateButtonPressed,
+              ]}
+              accessibilityLabel="Edit template settings"
+              accessibilityRole="button"
+            >
+              <Ionicons name="images-outline" size={15} color={colors.dark.text} />
+              <Text style={styles.previewEditTemplateText}>Edit Template</Text>
+            </Pressable>
+          </View>
           <Pressable
-            onPress={handleOpenTemplateCustomize}
+            onPress={handleToggleAspectRatio}
             style={({ pressed }) => [
-              styles.previewTemplateButton,
-              pressed && styles.previewTemplateButtonPressed,
+              styles.previewAspectRatioBadge,
+              pressed && styles.previewAspectRatioBadgePressed,
             ]}
-            accessibilityLabel="Open template settings"
+            accessibilityLabel={`Switch aspect ratio (currently ${aspectRatio})`}
             accessibilityRole="button"
           >
-            <Ionicons name="settings-outline" size={18} color={colors.dark.text} />
+            <Text style={styles.previewAspectRatioText}>{aspectRatio}</Text>
           </Pressable>
-        </View>
-      </View>
-
-      <View style={styles.controls}>
-        <View style={styles.controlsTopRow}>
-          <Pressable
-            onPress={handleOpenEditMedia}
-            style={({ pressed }) => [
-              styles.controlActionButton,
-              pressed && styles.controlActionButtonPressed,
-            ]}
-            accessibilityLabel="Edit media settings"
-            accessibilityRole="button"
-          >
-            <Ionicons name="images-outline" size={16} color={colors.dark.text} />
-            <Text style={styles.controlActionText}>Edit Media</Text>
-          </Pressable>
+          {showTemplateInfo ? (
+            <TemplateInfoBadge
+              templateId={templateId}
+              templateTweaks={templateTweaks}
+              aspectRatio={aspectRatio}
+              compact
+              style={styles.previewTemplateInfoBadge}
+            />
+          ) : null}
         </View>
       </View>
 
@@ -1619,6 +1731,7 @@ export default function EditorScreen() {
         templateId={templateId}
         photoUri={photoUri}
         value={templateTweaks}
+        showTemplateInfo={showTemplateInfo}
         onClose={handleCloseTemplateCustomize}
         onApply={handleApplyTemplateCustomize}
       />
@@ -1790,18 +1903,23 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 0,
   },
   previewStageFrame: {
     position: "relative",
     alignItems: "center",
     justifyContent: "center",
   },
-  previewTemplateButton: {
+  previewActionRow: {
     position: "absolute",
     left: spacing.sm,
     bottom: spacing.sm,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  previewTemplateButton: {
     width: 40,
     height: 40,
     borderRadius: radius.full,
@@ -1811,45 +1929,77 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.12)",
   },
+  previewInfoToggleButton: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.full,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.dark.surface,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+  previewInfoToggleButtonActive: {
+    backgroundColor: colors.dark.text,
+    borderColor: "rgba(255,255,255,0.72)",
+  },
   previewTemplateButtonPressed: {
     opacity: 0.82,
     transform: [{ scale: 0.96 }],
   },
-  controls: {
-    alignItems: "stretch",
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.xs,
-    gap: spacing.sm,
-  },
-  controlsTopRow: {
+  previewEditTemplateButton: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm,
-  },
-  controlActionButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
     gap: 6,
-    minHeight: 36,
-    minWidth: 122,
+    minHeight: 40,
     paddingHorizontal: spacing.sm,
     borderRadius: radius.full,
     backgroundColor: colors.dark.surface,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.09)",
+    borderColor: "rgba(255,255,255,0.12)",
   },
-  controlActionButtonPressed: {
-    opacity: 0.85,
+  previewEditTemplateButtonPressed: {
+    opacity: 0.82,
   },
-  controlActionText: {
+  previewEditTemplateText: {
     ...typography.caption,
     color: colors.dark.text,
     fontWeight: "700",
   },
+  previewAspectRatioBadge: {
+    position: "absolute",
+    right: spacing.sm,
+    bottom: spacing.sm,
+    minHeight: 40,
+    minWidth: 56,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.full,
+    backgroundColor: colors.dark.surface,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+  previewAspectRatioText: {
+    ...typography.caption,
+    color: colors.dark.text,
+    fontWeight: "700",
+    letterSpacing: 0.3,
+  },
+  previewAspectRatioBadgePressed: {
+    opacity: 0.82,
+    transform: [{ scale: 0.96 }],
+  },
+  previewTemplateInfoBadge: {
+    position: "absolute",
+    top: spacing.sm,
+    left: spacing.sm,
+    right: spacing.sm,
+  },
   trimmerSection: {
     paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
     paddingBottom: spacing.lg,
     gap: spacing.sm,
   },
@@ -1859,5 +2009,7 @@ const styles = StyleSheet.create({
     color: colors.dark.textSecondary,
     textTransform: "uppercase",
     letterSpacing: 0.5,
+    textAlign: "center",
+    alignSelf: "center",
   },
 });

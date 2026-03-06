@@ -2,9 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Image,
+  Image as RNImage,
   Modal,
-  PanResponder,
   Platform,
   Pressable,
   SafeAreaView,
@@ -16,7 +15,10 @@ import {
 } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import * as Haptics from "expo-haptics";
+import { Image as ExpoImage } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
+import { toByteArray } from "base64-js";
+import { TemplateInfoBadge } from "@/components/create/TemplateInfoBadge";
 import { colors, radius, spacing, typography } from "@/constants/tokens";
 import { persistPickedMediaFile } from "@/lib/mediaStorage";
 import { getTemplateDefinition, type TemplateTweaks } from "@/lib/templates";
@@ -26,6 +28,7 @@ interface TemplateCustomizeModalProps {
   templateId: string;
   photoUri?: string | null;
   value: TemplateTweaks;
+  showTemplateInfo?: boolean;
   onClose: () => void;
   onApply: (next: TemplateTweaks) => void;
 }
@@ -37,14 +40,17 @@ interface BackgroundOption {
   swatch: string;
 }
 
-function isPresetBackgroundColor(color: string | null | undefined): boolean {
-  return BACKGROUND_OPTIONS.some((option) => option.color === (color ?? null));
+function isPresetBackgroundColor(
+  color: string | null | undefined,
+  options: BackgroundOption[],
+): boolean {
+  return options.some((option) => option.color === (color ?? null));
 }
 
 const SPIN_SPEED_OPTIONS = [0.6, 0.8, 1, 1.25, 1.5];
-const RECORD_OPACITY_OPTIONS = [0.55, 0.7, 0.85, 1];
+const RECORD_TRANSPARENCY_OPTIONS = [0, 0.15, 0.3, 0.45, 0.6];
 const BACKGROUND_BLUR_OPTIONS = [0, 2, 4, 8, 12, 18];
-const ROTATION_START_OPTIONS = [-120, -60, 0, 60, 120, 180];
+const ROTATION_START_OPTIONS = [0, 90, 180, 270];
 const ROTATION_DIRECTION_OPTIONS: Array<{
   label: string;
   value: "cw" | "ccw";
@@ -52,19 +58,14 @@ const ROTATION_DIRECTION_OPTIONS: Array<{
   { label: "CW", value: "cw" },
   { label: "CCW", value: "ccw" },
 ];
-const CUSTOM_COLOR_SATURATION = 68;
+const DEFAULT_CUSTOM_SATURATION = 68;
 const CUSTOM_LIGHTNESS_MIN = 8;
-const CUSTOM_LIGHTNESS_MAX = 42;
+const CUSTOM_LIGHTNESS_MAX = 94;
 const DEFAULT_CUSTOM_HUE = 252;
-const DEFAULT_CUSTOM_LIGHTNESS = 18;
-const CUSTOM_TONE_OPTIONS = [12, 18, 26, 34];
-const COLOR_WHEEL_SIZE = 164;
-const COLOR_WHEEL_DOT_SIZE = 10;
-const COLOR_WHEEL_SEGMENTS = 72;
-const COLOR_WHEEL_RING_THICKNESS = 24;
-const COLOR_WHEEL_MARKER_SIZE = 20;
+const DEFAULT_CUSTOM_LIGHTNESS = 34;
+const CUSTOM_TONE_OPTIONS = [14, 32, 50, 68, 86];
 const STAGE_HORIZONTAL_PADDING = spacing.sm * 2;
-const BACKGROUND_OPTIONS: BackgroundOption[] = [
+const DEFAULT_BACKGROUND_OPTIONS: BackgroundOption[] = [
   { id: "default", label: "Default", color: null, swatch: "#080A12" },
   { id: "indigo", label: "Indigo", color: "#14142d", swatch: "#35357a" },
   { id: "midnight", label: "Midnight", color: "#0a0f1c", swatch: "#1d2f58" },
@@ -76,8 +77,8 @@ function formatSpeed(value: number): string {
   return `${value.toFixed(value % 1 === 0 ? 0 : 2)}x`;
 }
 
-function formatOpacity(value: number): string {
-  return `${Math.round(value * 100)}%`;
+function formatTransparency(value: number): string {
+  return `${Math.round(clamp(value, 0, 1) * 100)}%`;
 }
 
 function formatBlur(value: number): string {
@@ -132,6 +133,79 @@ function hslToHex(h: number, s: number, l: number): string {
   return `#${toHex(red)}${toHex(green)}${toHex(blue)}`;
 }
 
+interface PaletteSwatch {
+  id: string;
+  label: string;
+  h: number;
+  s: number;
+  l: number;
+  hex: string;
+}
+
+interface PaletteSection {
+  id: string;
+  label: string;
+  swatches: PaletteSwatch[];
+}
+
+function buildPaletteSwatches(
+  prefix: string,
+  hues: number[],
+  saturation: number,
+  lightness: number,
+): PaletteSwatch[] {
+  return hues.map((hue) => ({
+    id: `${prefix}-${hue}`,
+    label: `${Math.round(hue)}deg`,
+    h: hue,
+    s: saturation,
+    l: lightness,
+    hex: hslToHex(hue, saturation, lightness),
+  }));
+}
+
+const PRIMARY_PALETTE_HUES = [0, 22, 42, 62, 90, 118, 145, 176, 205, 232, 262, 292, 322];
+const SECONDARY_PALETTE_HUES = [8, 30, 52, 74, 102, 130, 158, 186, 214, 242, 272, 302, 332];
+const GRAYSCALE_LIGHTNESS_STOPS = [8, 14, 22, 30, 38, 46, 56, 66, 76, 84, 90, 96];
+const SOFT_PALETTE_SATURATION_STOPS = [34, 30, 28, 32, 30, 28, 30, 32, 30, 28, 30, 32, 34];
+const SOFT_PALETTE_LIGHTNESS_STOPS = [72, 74, 76, 73, 75, 77, 74, 72, 73, 75, 74, 72, 71];
+
+const PALETTE_SECTIONS: PaletteSection[] = [
+  {
+    id: "core",
+    label: "Palette A",
+    swatches: buildPaletteSwatches("core", PRIMARY_PALETTE_HUES, 86, 52),
+  },
+  {
+    id: "studio",
+    label: "Palette B",
+    swatches: SECONDARY_PALETTE_HUES.map((hue, index) => {
+      const saturation = SOFT_PALETTE_SATURATION_STOPS[index] ?? 30;
+      const lightness = SOFT_PALETTE_LIGHTNESS_STOPS[index] ?? 74;
+      return {
+        id: `studio-${hue}`,
+        label: `${Math.round(hue)}deg`,
+        h: hue,
+        s: saturation,
+        l: lightness,
+        hex: hslToHex(hue, saturation, lightness),
+      };
+    }),
+  },
+  {
+    id: "gray",
+    label: "Grayscale",
+    swatches: GRAYSCALE_LIGHTNESS_STOPS.map((lightness) => ({
+      id: `gray-${lightness}`,
+      label: `Gray ${lightness}`,
+      h: 0,
+      s: 0,
+      l: lightness,
+      hex: hslToHex(0, 0, lightness),
+    })),
+  },
+];
+
 function hexToHsl(hex: string): { h: number; s: number; l: number } | null {
   const normalized = hex.trim().replace("#", "");
   if (!/^[0-9a-fA-F]{6}$/.test(normalized)) return null;
@@ -162,103 +236,214 @@ function hexToHsl(hex: string): { h: number; s: number; l: number } | null {
   };
 }
 
-interface ColorWheelProps {
-  hue: number;
-  disabled?: boolean;
-  onChange: (nextHue: number) => void;
+function hueDistance(a: number, b: number): number {
+  const delta = Math.abs(a - b) % 360;
+  return Math.min(delta, 360 - delta);
 }
 
-function ColorWheel({ hue, disabled = false, onChange }: ColorWheelProps) {
-  const center = COLOR_WHEEL_SIZE / 2;
-  const outerRadius = center - 6;
-  const innerRadius = outerRadius - COLOR_WHEEL_RING_THICKNESS;
-  const ringRadius = (outerRadius + innerRadius) / 2;
-  const markerHue = ((hue % 360) + 360) % 360;
-  const markerAngle = (markerHue * Math.PI) / 180;
-  const markerX = center + Math.cos(markerAngle) * ringRadius;
-  const markerY = center + Math.sin(markerAngle) * ringRadius;
+function rgbToHsl(r: number, g: number, b: number): { h: number; s: number; l: number } {
+  const red = clamp(r, 0, 255) / 255;
+  const green = clamp(g, 0, 255) / 255;
+  const blue = clamp(b, 0, 255) / 255;
 
-  const wheelDots = useMemo(
-    () =>
-      Array.from({ length: COLOR_WHEEL_SEGMENTS }, (_, index) => {
-        const dotHue = (index / COLOR_WHEEL_SEGMENTS) * 360;
-        const angle = (dotHue * Math.PI) / 180;
-        const x = center + Math.cos(angle) * ringRadius - COLOR_WHEEL_DOT_SIZE / 2;
-        const y = center + Math.sin(angle) * ringRadius - COLOR_WHEEL_DOT_SIZE / 2;
+  const max = Math.max(red, green, blue);
+  const min = Math.min(red, green, blue);
+  const delta = max - min;
+  const lightness = (max + min) / 2;
+  const saturation =
+    delta === 0 ? 0 : delta / (1 - Math.abs(2 * lightness - 1));
+
+  let hue = 0;
+  if (delta !== 0) {
+    if (max === red) hue = ((green - blue) / delta) % 6;
+    else if (max === green) hue = (blue - red) / delta + 2;
+    else hue = (red - green) / delta + 4;
+    hue *= 60;
+    if (hue < 0) hue += 360;
+  }
+
+  return {
+    h: hue,
+    s: saturation * 100,
+    l: lightness * 100,
+  };
+}
+
+async function buildPhotoMatchedBackgroundOptions(photoUri: string) {
+  try {
+    const thumbhash = await ExpoImage.generateThumbhashAsync(photoUri);
+    if (!thumbhash) return null;
+
+    const hashBytes = toByteArray(thumbhash.replace(/\\/g, "/"));
+    if (hashBytes.length < 6) return null;
+
+    // Thumbhash header contains the average LPQ color; decode it into average RGBA.
+    const header = hashBytes[0] | (hashBytes[1] << 8) | (hashBytes[2] << 16);
+    const lChannel = (header & 63) / 63;
+    const pChannel = ((header >> 6) & 63) / 31.5 - 1;
+    const qChannel = ((header >> 12) & 63) / 31.5 - 1;
+    const hasAlpha = header >> 23;
+    const alpha = hasAlpha ? (hashBytes[5] & 15) / 15 : 1;
+    const bChannel = lChannel - (2 / 3) * pChannel;
+    const rChannel = (3 * lChannel - bChannel + qChannel) / 2;
+    const gChannel = rChannel - qChannel;
+    const avgRgb = {
+      r: Math.round(clamp(rChannel, 0, 1) * 255),
+      g: Math.round(clamp(gChannel, 0, 1) * 255),
+      b: Math.round(clamp(bChannel, 0, 1) * 255),
+      a: clamp(alpha, 0, 1),
+    };
+    if (avgRgb.a <= 0) return null;
+
+    const { h: baseHue, s: averageSaturation, l: averageLightness } = rgbToHsl(
+      avgRgb.r,
+      avgRgb.g,
+      avgRgb.b,
+    );
+
+    if (averageSaturation < 16) {
+      const baseline = clamp(averageLightness, 30, 64);
+      const grayscaleStops = [baseline - 28, baseline - 16, baseline - 8, baseline + 2].map(
+        (stop) => clamp(stop, 6, 44),
+      );
+      return [
+        DEFAULT_BACKGROUND_OPTIONS[0],
+        ...grayscaleStops.map((stop, index) => ({
+          ...DEFAULT_BACKGROUND_OPTIONS[index + 1],
+          color: hslToHex(0, 0, stop),
+          swatch: hslToHex(0, 0, clamp(stop + 20, 22, 76)),
+        })),
+      ];
+    }
+
+    const livelySaturation = clamp(averageSaturation * 1.22 + 18, 34, 98);
+    const primary = {
+      h: baseHue,
+      s: livelySaturation,
+      l: clamp(averageLightness, 18, 78),
+    };
+    const secondary = {
+      h: (baseHue + 22) % 360,
+      s: clamp(livelySaturation * 0.9, 30, 88),
+      l: clamp(averageLightness + 5, 20, 80),
+    };
+    const tertiary = {
+      h: (baseHue + 46) % 360,
+      s: clamp(livelySaturation * 0.8, 26, 82),
+      l: clamp(averageLightness + 2, 18, 78),
+    };
+    const neutral = {
+      h: baseHue,
+      s: clamp(averageSaturation * 0.55 + 14, 18, 56),
+      l: clamp(averageLightness - 4, 20, 72),
+    };
+    const seeds = [primary, secondary, tertiary, neutral];
+    const backgroundLightnessStops = [12, 18, 24, 30];
+    const saturationScales = [0.9, 0.86, 0.82, 0.7];
+
+    return [
+      DEFAULT_BACKGROUND_OPTIONS[0],
+      ...seeds.map((seed, index) => {
+        const backgroundSaturation = clamp(
+          seed.s * saturationScales[index] + 10,
+          28,
+          92,
+        );
+        const backgroundLightness = clamp(
+          backgroundLightnessStops[index] + (seed.l - 50) * 0.12,
+          8,
+          42,
+        );
         return {
-          key: `dot-${index}`,
-          color: hslToHex(dotHue, 90, 56),
-          x,
-          y,
+          ...DEFAULT_BACKGROUND_OPTIONS[index + 1],
+          color: hslToHex(seed.h, backgroundSaturation, backgroundLightness),
+          swatch: hslToHex(
+            seed.h,
+            clamp(backgroundSaturation + 14, 40, 98),
+            clamp(backgroundLightness + 22, 24, 74),
+          ),
         };
       }),
-    [center, ringRadius],
-  );
+    ];
+  } catch {
+    return null;
+  }
+}
 
-  const updateHueFromPoint = useCallback(
-    (x: number, y: number) => {
-      const dx = x - center;
-      const dy = y - center;
-      const distance = Math.sqrt(dx * dx + dy * dy);
-      if (distance < innerRadius - 12 || distance > outerRadius + 12) return;
-      const nextHue = (((Math.atan2(dy, dx) * 180) / Math.PI) + 360) % 360;
-      onChange(nextHue);
+interface PaletteStripProps {
+  hue: number;
+  saturation: number;
+  lightness: number;
+  disabled?: boolean;
+  onSelect: (swatch: PaletteSwatch) => void;
+}
+
+function PaletteStrip({
+  hue,
+  saturation,
+  lightness,
+  disabled = false,
+  onSelect,
+}: PaletteStripProps) {
+  const normalizedHue = ((hue % 360) + 360) % 360;
+
+  const isSelected = useCallback(
+    (swatch: PaletteSwatch) => {
+      if (swatch.s <= 2) {
+        return saturation <= 8 && Math.abs(lightness - swatch.l) <= 4;
+      }
+      return (
+        hueDistance(normalizedHue, swatch.h) <= 10 &&
+        Math.abs(saturation - swatch.s) <= 16
+      );
     },
-    [center, innerRadius, onChange, outerRadius],
-  );
-
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => !disabled,
-        onMoveShouldSetPanResponder: (_, gestureState) =>
-          !disabled && (Math.abs(gestureState.dx) > 1 || Math.abs(gestureState.dy) > 1),
-        onPanResponderGrant: (event) =>
-          updateHueFromPoint(
-            event.nativeEvent.locationX,
-            event.nativeEvent.locationY,
-          ),
-        onPanResponderMove: (event) =>
-          updateHueFromPoint(
-            event.nativeEvent.locationX,
-            event.nativeEvent.locationY,
-          ),
-        onPanResponderTerminationRequest: () => false,
-      }),
-    [disabled, updateHueFromPoint],
+    [lightness, normalizedHue, saturation],
   );
 
   return (
-    <View
-      style={[styles.colorWheelTouch, disabled && styles.colorWheelTouchDisabled]}
-      {...panResponder.panHandlers}
+    <ScrollView
+      horizontal
+      nestedScrollEnabled
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.paletteStripRow}
+      style={styles.paletteStripScroll}
     >
-      <View style={[styles.colorWheelWrap, disabled && styles.colorWheelWrapDisabled]}>
-        {wheelDots.map((dot) => (
-          <View
-            key={dot.key}
-            style={[
-              styles.colorWheelDot,
-              {
-                backgroundColor: dot.color,
-                left: dot.x,
-                top: dot.y,
-              },
-            ]}
-          />
-        ))}
-        <View
-          style={[
-            styles.colorWheelMarker,
-            {
-              borderColor: hslToHex(markerHue, 100, 70),
-              left: markerX - COLOR_WHEEL_MARKER_SIZE / 2,
-              top: markerY - COLOR_WHEEL_MARKER_SIZE / 2,
-            },
-          ]}
-        />
-      </View>
-    </View>
+      {PALETTE_SECTIONS.map((section, sectionIndex) => (
+        <View key={section.id} style={styles.paletteSection}>
+          <Text style={styles.paletteSectionLabel}>{section.label}</Text>
+          <View style={styles.paletteSectionSwatches}>
+            {section.swatches.map((swatch) => {
+              const selected = isSelected(swatch);
+              return (
+                <Pressable
+                  key={swatch.id}
+                  onPress={() => onSelect(swatch)}
+                  disabled={disabled}
+                  style={[
+                    styles.paletteDotWrap,
+                    selected && styles.paletteDotWrapSelected,
+                    disabled && styles.paletteDotWrapDisabled,
+                  ]}
+                  accessibilityLabel={`${section.label} ${swatch.label}`}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected, disabled }}
+                >
+                  <View
+                    style={[
+                      styles.paletteDot,
+                      { backgroundColor: swatch.hex },
+                    ]}
+                  />
+                </Pressable>
+              );
+            })}
+          </View>
+          {sectionIndex < PALETTE_SECTIONS.length - 1 ? (
+            <View style={styles.paletteSectionDivider} />
+          ) : null}
+        </View>
+      ))}
+    </ScrollView>
   );
 }
 
@@ -281,28 +466,53 @@ export function TemplateCustomizeModal({
   templateId,
   photoUri,
   value,
+  showTemplateInfo = true,
   onClose,
   onApply,
 }: TemplateCustomizeModalProps) {
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [draft, setDraft] = useState<TemplateTweaks>(value);
   const [customHue, setCustomHue] = useState(DEFAULT_CUSTOM_HUE);
+  const [customSaturation, setCustomSaturation] = useState(DEFAULT_CUSTOM_SATURATION);
   const [customLightness, setCustomLightness] = useState(DEFAULT_CUSTOM_LIGHTNESS);
   const [isCustomColorEnabled, setIsCustomColorEnabled] = useState(false);
   const [isBackgroundPhotoLoading, setIsBackgroundPhotoLoading] = useState(false);
   const [lastPresetBackgroundColor, setLastPresetBackgroundColor] = useState<
     string | null
   >(null);
-  const customColor = useMemo(
-    () => hslToHex(customHue, CUSTOM_COLOR_SATURATION, customLightness),
-    [customHue, customLightness],
+  const [backgroundOptions, setBackgroundOptions] = useState<BackgroundOption[]>(
+    DEFAULT_BACKGROUND_OPTIONS,
   );
+  const customColor = useMemo(
+    () => hslToHex(customHue, customSaturation, customLightness),
+    [customHue, customSaturation, customLightness],
+  );
+
+  useEffect(() => {
+    const nextPhotoUri = photoUri?.trim();
+    if (!nextPhotoUri) {
+      setBackgroundOptions(DEFAULT_BACKGROUND_OPTIONS);
+      return;
+    }
+
+    let isActive = true;
+    void buildPhotoMatchedBackgroundOptions(nextPhotoUri).then((matchedOptions) => {
+      if (!isActive) return;
+      setBackgroundOptions(matchedOptions ?? DEFAULT_BACKGROUND_OPTIONS);
+    });
+    return () => {
+      isActive = false;
+    };
+  }, [photoUri]);
 
   useEffect(() => {
     if (!visible) return;
     setDraft(value);
     const hasBackgroundPhoto = Boolean(value.stageBackgroundImageUri);
-    const isPreset = isPresetBackgroundColor(value.stageBackgroundColor);
+    const isPreset = isPresetBackgroundColor(
+      value.stageBackgroundColor,
+      backgroundOptions,
+    );
     setIsCustomColorEnabled(
       !hasBackgroundPhoto && Boolean(value.stageBackgroundColor && !isPreset),
     );
@@ -313,32 +523,17 @@ export function TemplateCustomizeModal({
       : null;
     if (parsed) {
       setCustomHue(parsed.h);
+      setCustomSaturation(clamp(parsed.s, 0, 100));
       setCustomLightness(
         clamp(parsed.l, CUSTOM_LIGHTNESS_MIN, CUSTOM_LIGHTNESS_MAX),
       );
       return;
     }
     setCustomHue(DEFAULT_CUSTOM_HUE);
+    setCustomSaturation(DEFAULT_CUSTOM_SATURATION);
     setCustomLightness(DEFAULT_CUSTOM_LIGHTNESS);
   }, [value, visible]);
 
-  const isCustomBackgroundSelected = useMemo(
-    () =>
-      Boolean(
-        draft.stageBackgroundColor &&
-          !BACKGROUND_OPTIONS.some(
-            (option) => option.color === draft.stageBackgroundColor,
-          ),
-      ),
-    [draft.stageBackgroundColor],
-  );
-
-  const selectedBackground = useMemo(
-    () =>
-      BACKGROUND_OPTIONS.find((option) => option.color === draft.stageBackgroundColor) ??
-      BACKGROUND_OPTIONS[0],
-    [draft.stageBackgroundColor],
-  );
   const isBackgroundPhotoSelected = Boolean(draft.stageBackgroundImageUri);
   const TemplateStageComponent = getTemplateDefinition(templateId).StageComponent;
   const previewStageSize = Math.min(
@@ -346,6 +541,10 @@ export function TemplateCustomizeModal({
     windowHeight * 0.66,
     520,
   );
+  const selectedRotationDirectionLabel =
+    ROTATION_DIRECTION_OPTIONS.find(
+      (option) => option.value === draft.rotationDirection,
+    )?.label ?? "CW";
 
   const updateSpinSpeed = useCallback((spinSpeed: number) => {
     if (spinSpeed === draft.spinSpeed) return;
@@ -353,11 +552,11 @@ export function TemplateCustomizeModal({
     void triggerSelectionHaptic();
   }, [draft.spinSpeed]);
 
-  const updateRecordOpacity = useCallback((recordOpacity: number) => {
-    if (recordOpacity === draft.recordOpacity) return;
-    setDraft((prev) => ({ ...prev, recordOpacity }));
+  const updateRecordTransparency = useCallback((recordTransparency: number) => {
+    if (recordTransparency === draft.recordTransparency) return;
+    setDraft((prev) => ({ ...prev, recordTransparency }));
     void triggerSelectionHaptic();
-  }, [draft.recordOpacity]);
+  }, [draft.recordTransparency]);
 
   const updateBackgroundBlur = useCallback((backgroundBlur: number) => {
     if (backgroundBlur === draft.backgroundBlur) return;
@@ -403,7 +602,10 @@ export function TemplateCustomizeModal({
       setIsCustomColorEnabled(enabled);
       if (enabled) {
         const current = draft.stageBackgroundColor ?? null;
-        if (current && isPresetBackgroundColor(current)) {
+        if (
+          current &&
+          backgroundOptions.some((option) => option.color === current)
+        ) {
           setLastPresetBackgroundColor(current);
         }
         updateBackground(customColor);
@@ -413,20 +615,33 @@ export function TemplateCustomizeModal({
       const fallback = lastPresetBackgroundColor ?? null;
       updateBackground(fallback);
     },
-    [customColor, draft.stageBackgroundColor, lastPresetBackgroundColor, updateBackground],
+    [
+      backgroundOptions,
+      customColor,
+      draft.stageBackgroundColor,
+      lastPresetBackgroundColor,
+      updateBackground,
+    ],
   );
 
-  const handleCustomHueChange = useCallback(
-    (nextHue: number) => {
-      const clampedHue = clamp(nextHue, 0, 360);
-      setCustomHue(clampedHue);
-      if (!isCustomColorEnabled) return;
-      updateBackground(
-        hslToHex(clampedHue, CUSTOM_COLOR_SATURATION, customLightness),
-        false,
+  const handleCustomPaletteSelect = useCallback(
+    (swatch: PaletteSwatch) => {
+      const nextHue = clamp(swatch.h, 0, 360);
+      const nextSaturation = clamp(swatch.s, 0, 100);
+      const nextLightness = clamp(
+        swatch.l,
+        CUSTOM_LIGHTNESS_MIN,
+        CUSTOM_LIGHTNESS_MAX,
       );
+      setCustomHue(nextHue);
+      setCustomSaturation(nextSaturation);
+      setCustomLightness(nextLightness);
+      if (isCustomColorEnabled) {
+        updateBackground(hslToHex(nextHue, nextSaturation, nextLightness), false);
+      }
+      void triggerSelectionHaptic();
     },
-    [customLightness, isCustomColorEnabled, updateBackground],
+    [isCustomColorEnabled, updateBackground],
   );
 
   const handleCustomLightnessChange = useCallback(
@@ -439,11 +654,11 @@ export function TemplateCustomizeModal({
       setCustomLightness(clampedLightness);
       if (!isCustomColorEnabled) return;
       updateBackground(
-        hslToHex(customHue, CUSTOM_COLOR_SATURATION, clampedLightness),
+        hslToHex(customHue, customSaturation, clampedLightness),
         false,
       );
     },
-    [customHue, isCustomColorEnabled, updateBackground],
+    [customHue, customSaturation, isCustomColorEnabled, updateBackground],
   );
 
   const handleCustomToneSelect = useCallback(
@@ -548,6 +763,15 @@ export function TemplateCustomizeModal({
               subtitle="Template Controls"
               templateTweaks={draft}
             />
+            {showTemplateInfo ? (
+              <TemplateInfoBadge
+                templateId={templateId}
+                templateTweaks={draft}
+                aspectRatio="1:1"
+                compact
+                style={styles.previewTemplateInfoBadge}
+              />
+            ) : null}
           </View>
         </View>
 
@@ -559,13 +783,6 @@ export function TemplateCustomizeModal({
           <View style={styles.controlSection}>
             <View style={styles.controlHeader}>
               <Text style={styles.controlLabel}>Background</Text>
-              <Text style={styles.controlValue}>
-                {draft.stageBackgroundImageUri
-                  ? "Photo"
-                  : isCustomBackgroundSelected
-                    ? "Custom"
-                    : selectedBackground.label}
-              </Text>
             </View>
             <ScrollView
               horizontal
@@ -573,7 +790,7 @@ export function TemplateCustomizeModal({
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.backgroundRow}
             >
-              {BACKGROUND_OPTIONS.map((option) => {
+              {backgroundOptions.map((option) => {
                 const selected = option.color === draft.stageBackgroundColor;
                 return (
                   <Pressable
@@ -639,7 +856,7 @@ export function TemplateCustomizeModal({
                 {isBackgroundPhotoLoading ? (
                   <ActivityIndicator size="small" color={colors.dark.text} />
                 ) : draft.stageBackgroundImageUri ? (
-                  <Image
+                  <RNImage
                     source={{ uri: draft.stageBackgroundImageUri }}
                     style={[styles.backgroundSwatch, styles.photoBackgroundThumb]}
                     resizeMode="cover"
@@ -675,9 +892,19 @@ export function TemplateCustomizeModal({
                   </View>
                 </View>
 
-                <View style={styles.customWheelRow}>
-                  <ColorWheel hue={customHue} onChange={handleCustomHueChange} />
+                <View style={styles.customHueHeader}>
+                  <Text style={styles.customHueLabel}>Palette</Text>
+                  <Text style={styles.customHueValue}>
+                    Sat {Math.round(customSaturation)}%
+                  </Text>
                 </View>
+                <PaletteStrip
+                  hue={customHue}
+                  saturation={customSaturation}
+                  lightness={customLightness}
+                  disabled={!isCustomColorEnabled}
+                  onSelect={handleCustomPaletteSelect}
+                />
 
                 <ScrollView
                   horizontal
@@ -712,43 +939,45 @@ export function TemplateCustomizeModal({
             ) : null}
           </View>
 
-          <View style={styles.controlSection}>
-            <View style={styles.controlHeader}>
-              <Text style={styles.controlLabel}>Background Blur</Text>
-              <Text style={styles.controlValue}>
-                {formatBlur(draft.backgroundBlur)}
-              </Text>
-            </View>
-            <ScrollView
-              horizontal
-              nestedScrollEnabled
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.optionRow}
-            >
-              {BACKGROUND_BLUR_OPTIONS.map((option) => {
-                const selected = option === draft.backgroundBlur;
-                return (
-                  <Pressable
-                    key={`blur-${option}`}
-                    onPress={() => updateBackgroundBlur(option)}
-                    style={[styles.optionPill, selected && styles.optionPillSelected]}
-                    accessibilityLabel={`Background blur ${formatBlur(option)}`}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected }}
-                  >
-                    <Text
-                      style={[
-                        styles.optionPillText,
-                        selected && styles.optionPillTextSelected,
-                      ]}
+          {isBackgroundPhotoSelected ? (
+            <View style={styles.controlSection}>
+              <View style={styles.controlHeader}>
+                <Text style={styles.controlLabel}>Background Blur</Text>
+                <Text style={styles.controlValue}>
+                  {formatBlur(draft.backgroundBlur)}
+                </Text>
+              </View>
+              <ScrollView
+                horizontal
+                nestedScrollEnabled
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.optionRow}
+              >
+                {BACKGROUND_BLUR_OPTIONS.map((option) => {
+                  const selected = option === draft.backgroundBlur;
+                  return (
+                    <Pressable
+                      key={`blur-${option}`}
+                      onPress={() => updateBackgroundBlur(option)}
+                      style={[styles.optionPill, selected && styles.optionPillSelected]}
+                      accessibilityLabel={`Background blur ${formatBlur(option)}`}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected }}
                     >
-                      {formatBlur(option)}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          </View>
+                      <Text
+                        style={[
+                          styles.optionPillText,
+                          selected && styles.optionPillTextSelected,
+                        ]}
+                      >
+                        {formatBlur(option)}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          ) : null}
 
           <View style={styles.controlSection}>
             <View style={styles.controlHeader}>
@@ -788,9 +1017,9 @@ export function TemplateCustomizeModal({
 
           <View style={styles.controlSection}>
             <View style={styles.controlHeader}>
-              <Text style={styles.controlLabel}>Record Opacity</Text>
+              <Text style={styles.controlLabel}>Record Transparency</Text>
               <Text style={styles.controlValue}>
-                {formatOpacity(draft.recordOpacity)}
+                {formatTransparency(draft.recordTransparency)}
               </Text>
             </View>
             <ScrollView
@@ -799,14 +1028,14 @@ export function TemplateCustomizeModal({
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.optionRow}
             >
-              {RECORD_OPACITY_OPTIONS.map((option) => {
-                const selected = option === draft.recordOpacity;
+              {RECORD_TRANSPARENCY_OPTIONS.map((option) => {
+                const selected = option === draft.recordTransparency;
                 return (
                   <Pressable
                     key={String(option)}
-                    onPress={() => updateRecordOpacity(option)}
+                    onPress={() => updateRecordTransparency(option)}
                     style={[styles.optionPill, selected && styles.optionPillSelected]}
-                    accessibilityLabel={`Record opacity ${formatOpacity(option)}`}
+                    accessibilityLabel={`Record transparency ${Math.round(option * 100)}%`}
                     accessibilityRole="button"
                     accessibilityState={{ selected }}
                   >
@@ -816,7 +1045,7 @@ export function TemplateCustomizeModal({
                         selected && styles.optionPillTextSelected,
                       ]}
                     >
-                      {formatOpacity(option)}
+                      {`${Math.round(option * 100)}%`}
                     </Text>
                   </Pressable>
                 );
@@ -860,6 +1089,13 @@ export function TemplateCustomizeModal({
                 );
               })}
             </ScrollView>
+          </View>
+
+          <View style={styles.controlSection}>
+            <View style={styles.controlHeader}>
+              <Text style={styles.controlLabel}>Spin Direction</Text>
+              <Text style={styles.controlValue}>{selectedRotationDirectionLabel}</Text>
+            </View>
             <ScrollView
               horizontal
               nestedScrollEnabled
@@ -951,8 +1187,15 @@ const styles = StyleSheet.create({
   },
   previewCard: {
     minHeight: 300,
+    position: "relative",
     alignItems: "center",
     justifyContent: "center",
+  },
+  previewTemplateInfoBadge: {
+    position: "absolute",
+    top: spacing.sm,
+    left: spacing.xs,
+    right: spacing.xs,
   },
   controlSection: {
     gap: spacing.sm,
@@ -1091,51 +1334,77 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: 0.2,
   },
-  customWheelRow: {
+  customHueHeader: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
+  customHueLabel: {
+    ...typography.caption,
+    color: colors.dark.textSecondary,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.35,
+  },
+  customHueValue: {
+    ...typography.caption,
+    color: colors.dark.text,
+    fontWeight: "700",
+  },
+  paletteStripScroll: {
+    marginHorizontal: -spacing.xs,
+  },
+  paletteStripRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.xs,
+    paddingHorizontal: spacing.xs,
     paddingVertical: spacing.xs,
   },
-  colorWheelTouch: {
-    width: COLOR_WHEEL_SIZE,
-    height: COLOR_WHEEL_SIZE,
+  paletteSection: {
+    gap: spacing.xs,
+  },
+  paletteSectionLabel: {
+    ...typography.caption,
+    color: colors.dark.textSecondary,
+    fontWeight: "700",
+    fontSize: 10,
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+    paddingHorizontal: spacing.xs,
+  },
+  paletteSectionSwatches: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  paletteSectionDivider: {
+    marginTop: spacing.xs,
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    marginHorizontal: spacing.xs,
+  },
+  paletteDotWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: radius.full,
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.16)",
     alignItems: "center",
     justifyContent: "center",
   },
-  colorWheelTouchDisabled: {
+  paletteDotWrapSelected: {
+    borderColor: colors.dark.text,
+    transform: [{ scale: 1.08 }],
+  },
+  paletteDotWrapDisabled: {
     opacity: 0.42,
   },
-  colorWheelWrap: {
-    width: COLOR_WHEEL_SIZE,
-    height: COLOR_WHEEL_SIZE,
-    borderRadius: COLOR_WHEEL_SIZE / 2,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.02)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-  },
-  colorWheelWrapDisabled: {
-    borderColor: "rgba(255,255,255,0.04)",
-  },
-  colorWheelDot: {
-    position: "absolute",
-    width: COLOR_WHEEL_DOT_SIZE,
-    height: COLOR_WHEEL_DOT_SIZE,
-    borderRadius: COLOR_WHEEL_DOT_SIZE / 2,
-  },
-  colorWheelMarker: {
-    position: "absolute",
-    width: COLOR_WHEEL_MARKER_SIZE,
-    height: COLOR_WHEEL_MARKER_SIZE,
+  paletteDot: {
+    width: 18,
+    height: 18,
     borderRadius: radius.full,
-    borderWidth: 2.5,
-    backgroundColor: "rgba(8,10,16,0.86)",
-    shadowColor: "#000000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.35,
-    shadowRadius: 4,
-    pointerEvents: "none",
   },
   customToneRow: {
     flexDirection: "row",

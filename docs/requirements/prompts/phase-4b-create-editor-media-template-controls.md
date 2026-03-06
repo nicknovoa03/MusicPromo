@@ -130,7 +130,7 @@ Files:
 
 Track at minimum:
 - `editor_controls_opened` (with `surface: edit_media | template`)
-- `template_tweak_changed` (with `control: spin_speed | record_opacity | stage_background`)
+- `template_tweak_changed` (with `control: spin_speed | record_transparency | stage_background`)
 - `template_selected_from_edit_media`
 - `media_swap_started_from_edit_media`
 

@@ -14,9 +14,15 @@ import { usePostHog } from "posthog-react-native";
 import * as Sharing from "expo-sharing";
 import * as MediaLibrary from "expo-media-library";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
+import { TemplateInfoBadge } from "@/components/create/TemplateInfoBadge";
 import type { EventName } from "@/lib/analytics";
 import { decodeUriParam } from "@/lib/uri";
 import { normalizeMediaUri } from "@/lib/mediaUri";
+import {
+  normalizeTemplateTweaks,
+  parseTemplateTweaksParam,
+  resolveTemplateId,
+} from "@/lib/templates";
 
 function firstParam(param: string | string[] | undefined) {
   return Array.isArray(param) ? param[0] : param;
@@ -29,9 +35,20 @@ export default function ShareScreen() {
     videoUri: string;
     projectId: string;
     posterUri?: string;
+    templateId?: string;
+    templateTweaks?: string;
+    aspectRatio?: string;
+    showTemplateInfo?: string;
   }>();
   const videoUri = normalizeMediaUri(decodeUriParam(firstParam(params.videoUri)));
   const posterUri = normalizeMediaUri(decodeUriParam(firstParam(params.posterUri)));
+  const templateId = resolveTemplateId(firstParam(params.templateId));
+  const parsedTemplateTweaks = parseTemplateTweaksParam(
+    firstParam(params.templateTweaks),
+  );
+  const templateTweaks = parsedTemplateTweaks ?? normalizeTemplateTweaks();
+  const aspectRatio = firstParam(params.aspectRatio) === "1:1" ? "1:1" : "9:16";
+  const showTemplateInfo = firstParam(params.showTemplateInfo) !== "0";
 
   const [savedToRoll, setSavedToRoll] = useState(false);
   const [saveError, setSaveError] = useState<"permission" | "failed" | null>(
@@ -172,6 +189,15 @@ export default function ShareScreen() {
               color={colors.dark.textSecondary}
             />
           )}
+          {showTemplateInfo ? (
+            <TemplateInfoBadge
+              templateId={templateId}
+              templateTweaks={templateTweaks}
+              aspectRatio={aspectRatio}
+              compact
+              style={styles.shareTemplateInfoBadge}
+            />
+          ) : null}
         </View>
 
         {/* Share buttons */}
@@ -274,10 +300,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginBottom: spacing.xl,
+    position: "relative",
   },
   previewImage: {
     ...StyleSheet.absoluteFillObject,
     borderRadius: radius.lg,
+  },
+  shareTemplateInfoBadge: {
+    position: "absolute",
+    left: spacing.xs,
+    right: spacing.xs,
+    bottom: spacing.xs,
   },
   actions: {
     width: "100%",

@@ -6,7 +6,7 @@ export interface RenderRequest {
   templateId?: string;
   templateTweaks?: {
     spinSpeed?: number;
-    recordOpacity?: number;
+    recordTransparency?: number;
     backgroundBlur?: number;
     rotationStartDeg?: number;
     rotationDirection?: "cw" | "ccw";

@@ -37,6 +37,10 @@ export function GraphicPopTemplateStage({
   );
   const normalizedRotationDirection =
     templateTweaks?.rotationDirection === "ccw" ? "ccw" : "cw";
+  const normalizedRecordOpacity = Math.min(
+    Math.max(1 - (templateTweaks?.recordTransparency ?? 0), 0.35),
+    1,
+  );
 
   return (
     <View
@@ -113,7 +117,7 @@ export function GraphicPopTemplateStage({
           size={layout.discSize}
           spinning={isPlaying}
           spinSpeed={templateTweaks?.spinSpeed ?? 1}
-          discOpacity={templateTweaks?.recordOpacity ?? 1}
+          discOpacity={normalizedRecordOpacity}
           rotationStartDeg={normalizedRotationStartDeg}
           rotationDirection={normalizedRotationDirection}
           tone="graphic-pop"

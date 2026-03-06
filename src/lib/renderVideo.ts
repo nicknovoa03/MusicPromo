@@ -44,7 +44,7 @@ export interface RenderOptions {
   aspectRatio: "9:16" | "1:1";
   templateTweaks?: {
     spinSpeed?: number;
-    recordOpacity?: number;
+    recordTransparency?: number;
     backgroundBlur?: number;
     rotationStartDeg?: number;
     rotationDirection?: "cw" | "ccw";
@@ -99,8 +99,8 @@ const VIDEO_OUTPUT_RANGE = "pc";
 const BASE_SPIN_ROTATION_SECONDS = 4;
 const MIN_SPIN_SPEED = 0.25;
 const MAX_SPIN_SPEED = 4;
-const MIN_RECORD_OPACITY = 0.35;
-const MAX_RECORD_OPACITY = 1;
+const MIN_RECORD_TRANSPARENCY = 0;
+const MAX_RECORD_TRANSPARENCY = 0.65;
 const MIN_BACKGROUND_BLUR = 0;
 const MAX_BACKGROUND_BLUR = 24;
 const MIN_ROTATION_START_DEG = -180;
@@ -527,12 +527,13 @@ async function renderVinylVideoWithVariant(
   const spinRotateExpression = `${rotationStartRadians.toFixed(
     6,
   )}+${rotationDirectionMultiplier}*2*PI*t*${normalizedSpinSpeed.toFixed(3)}/${BASE_SPIN_ROTATION_SECONDS}`;
-  const normalizedRecordOpacity = clampNumber(
-    templateTweaks?.recordOpacity,
-    MIN_RECORD_OPACITY,
-    MAX_RECORD_OPACITY,
-    1,
+  const normalizedRecordTransparency = clampNumber(
+    templateTweaks?.recordTransparency,
+    MIN_RECORD_TRANSPARENCY,
+    MAX_RECORD_TRANSPARENCY,
+    0,
   );
+  const normalizedDiscAlpha = 1 - normalizedRecordTransparency;
   const stageBackgroundHex =
     sanitizeHexColor(templateTweaks?.stageBackgroundColor) ??
     variant.stageBackgroundHex;
@@ -667,8 +668,8 @@ async function renderVinylVideoWithVariant(
       `color=c=${toFfmpegColor(vinylTone.holeHexColor, vinylTone.holeAlphaByte)}:s=${discSize}x${discSize}:d=${duration}[hole_raw]`,
       `[hole_raw]format=rgba,geq='r=${holeRgb.r}:g=${holeRgb.g}:b=${holeRgb.b}:a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${holeRadius},2)),${vinylTone.holeAlphaByte},0)'[hole]`,
       `[disc_labeled][hole]overlay=0:0:format=auto[disc_with_hole]`,
-      `[disc_with_hole]format=rgba,colorchannelmixer=aa=${normalizedRecordOpacity.toFixed(3)}[disc_opacity]`,
-      `[disc_opacity]rotate=${spinRotateExpression}:ow=iw:oh=ih:fillcolor=black@0[disc_rot]`,
+      `[disc_with_hole]format=rgba,colorchannelmixer=aa=${normalizedDiscAlpha.toFixed(3)}[disc_alpha]`,
+      `[disc_alpha]rotate=${spinRotateExpression}:ow=iw:oh=ih:fillcolor=black@0[disc_rot]`,
       `color=c=${toFfmpegColor(variant.ambientGlowHex, 255)}:s=${ambientGlowSize}x${ambientGlowSize}:d=${duration}[ambient_glow_raw]`,
       `[ambient_glow_raw]format=rgba,geq='r=${ambientGlowRgb.r}:g=${ambientGlowRgb.g}:b=${ambientGlowRgb.b}:a=if(lte(pow(X-${ambientGlowRadius},2)+pow(Y-${ambientGlowRadius},2),pow(${ambientGlowRadius},2)),${variant.ambientGlowAlphaByte},0)'[ambient_glow]`,
       `[bg][ambient_glow]overlay=${ambientGlowX}:${ambientGlowY}:format=auto[scene_ambient]`,
@@ -717,7 +718,7 @@ async function renderVinylVideoWithVariant(
       `color=c=${toFfmpegColor(variant.ambientGlowHex, 255)}:s=${ambientGlowSize}x${ambientGlowSize}:d=${duration}[safe_ambient_glow_raw]`,
       `[safe_ambient_glow_raw]format=rgba,geq='r=${ambientGlowRgb.r}:g=${ambientGlowRgb.g}:b=${ambientGlowRgb.b}:a=if(lte(pow(X-${ambientGlowRadius},2)+pow(Y-${ambientGlowRadius},2),pow(${ambientGlowRadius},2)),${variant.ambientGlowAlphaByte},0)'[safe_ambient_glow]`,
       `[safe_bg][safe_ambient_glow]overlay=${ambientGlowX}:${ambientGlowY}:format=auto[safe_scene_0]`,
-      `[safe_disc]format=rgba,colorchannelmixer=aa=${normalizedRecordOpacity.toFixed(3)}[safe_disc_dim]`,
+      `[safe_disc]format=rgba,colorchannelmixer=aa=${normalizedDiscAlpha.toFixed(3)}[safe_disc_dim]`,
       `[safe_scene_0][safe_disc_dim]overlay=${discX}:${discY}:format=auto[safe_scene]`,
     );
     lines.push(
