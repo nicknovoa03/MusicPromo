@@ -395,8 +395,7 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
   const isPickingPhoto = loadingTarget === "photo";
   const isPickingAudio = loadingTarget === "audio";
   const activeAspectRatio = aspectRatio ?? preferredAspectRatio;
-  const dockOverlayCompensation =
-    Platform.OS === "ios" && tabEmbedded ? 82 : 0;
+  const dockOverlayCompensation = tabEmbedded ? 82 : 0;
   const contentSidePadding = spacing.md;
   const contentHorizontalPadding = contentSidePadding * 2;
   const contentTopPadding = spacing.md;

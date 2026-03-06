@@ -3,6 +3,7 @@ import {
   View,
   Text,
   StyleSheet,
+  Platform,
   Pressable,
   Alert,
   ActivityIndicator,
@@ -138,6 +139,7 @@ export default function ProfileScreen() {
     null,
   );
   const [linksDraft, setLinksDraft] = useState<DraftProfileLink[]>([]);
+  const [isEditingArtistName, setIsEditingArtistName] = useState(false);
 
   useEffect(() => {
     let isActive = true;
@@ -197,6 +199,7 @@ export default function ProfileScreen() {
     setArtistNameDraft(sourceArtistName);
     setAvatarImageUrlDraft(sourceAvatarImageUrl);
     setLinksDraft(sourceLinks);
+    setIsEditingArtistName(false);
   }, [isProfileLoading, sourceArtistName, sourceAvatarImageUrl, sourceLinks]);
 
   const track = useCallback(
@@ -544,17 +547,103 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.profileCard}>
-          <View style={styles.avatarFrame}>
-            <View style={styles.avatar}>
+          <View style={styles.profileIdentityRow}>
+            <View style={styles.profileIdentityColumn}>
+              <Pressable
+                onPress={() => {
+                  void handlePickAvatar();
+                }}
+                disabled={profileInputsDisabled}
+                style={({ pressed }) => [
+                  styles.avatarTapTarget,
+                  pressed && !profileInputsDisabled && styles.optionChipPressed,
+                ]}
+                accessibilityLabel="Edit profile picture"
+                accessibilityRole="button"
+              >
+                <View style={styles.avatarFrame}>
+                  <View style={styles.avatar}>
+                    {avatarImageUrlDraft ? (
+                      <Image source={{ uri: avatarImageUrlDraft }} style={styles.avatarImage} />
+                    ) : (
+                      <Ionicons name="person" size={36} color={colors.light.textSecondary} />
+                    )}
+                  </View>
+                </View>
+                <View style={styles.avatarHintBadge}>
+                  {isPickingAvatar ? (
+                    <ActivityIndicator size="small" color={colors.light.textSecondary} />
+                  ) : (
+                    <>
+                      <Ionicons name="camera-outline" size={12} color={colors.light.text} />
+                      <Text style={styles.avatarHintText}>Edit</Text>
+                    </>
+                  )}
+                </View>
+              </Pressable>
               {avatarImageUrlDraft ? (
-                <Image source={{ uri: avatarImageUrlDraft }} style={styles.avatarImage} />
-              ) : (
-                <Ionicons name="person" size={36} color={colors.light.textSecondary} />
-              )}
+                <Pressable
+                  onPress={() => setAvatarImageUrlDraft(null)}
+                  disabled={profileInputsDisabled}
+                  style={({ pressed }) => [
+                    styles.removeAvatarButton,
+                    profileInputsDisabled && styles.optionChipDisabled,
+                    pressed && !profileInputsDisabled && styles.optionChipPressed,
+                  ]}
+                  accessibilityLabel="Remove profile picture"
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.removeAvatarButtonText}>Remove</Text>
+                </Pressable>
+              ) : null}
+            </View>
+
+            <View style={styles.profileIdentityTextBlock}>
+              <Pressable
+                onPress={() => setIsEditingArtistName(true)}
+                disabled={profileInputsDisabled}
+                style={({ pressed }) => [
+                  styles.artistNameEditor,
+                  pressed && !profileInputsDisabled && styles.optionChipPressed,
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="Edit artist name"
+              >
+                <Text style={styles.artistNameLabel}>Artist Name</Text>
+                {isEditingArtistName ? (
+                  <TextInput
+                    value={artistNameDraft}
+                    onChangeText={setArtistNameDraft}
+                    placeholder="Artist name"
+                    placeholderTextColor="#8D8AA4"
+                    editable={!profileInputsDisabled}
+                    style={styles.artistNameInput}
+                    autoCapitalize="words"
+                    autoCorrect={false}
+                    autoFocus
+                    returnKeyType="done"
+                    onSubmitEditing={() => setIsEditingArtistName(false)}
+                    onBlur={() => setIsEditingArtistName(false)}
+                  />
+                ) : (
+                  <View style={styles.artistNameDisplayRow}>
+                    <Text
+                      style={[
+                        styles.artistNameText,
+                        !artistNameDraft.trim() && styles.artistNamePlaceholder,
+                      ]}
+                    >
+                      {artistNameDraft.trim() || "Tap to add artist name"}
+                    </Text>
+                    <Ionicons name="pencil" size={14} color="#7C78A0" />
+                  </View>
+                )}
+              </Pressable>
+
+              <Text style={styles.name}>{displayName}</Text>
+              <Text style={styles.email}>{displayEmail}</Text>
             </View>
           </View>
-          <Text style={styles.name}>{displayName}</Text>
-          <Text style={styles.email}>{displayEmail}</Text>
           <View style={styles.profileMetaRow}>
             <View style={styles.metaPill}>
               <Text style={styles.metaLabel}>Artist</Text>
@@ -577,66 +666,13 @@ export default function ProfileScreen() {
             </View>
           ) : (
             <View style={styles.profileEditor}>
-              <Text style={styles.profileEditorTitle}>Artist Profile</Text>
-              <View style={styles.settingBlock}>
-                <Text style={styles.settingLabel}>Artist Name</Text>
-                <TextInput
-                  value={artistNameDraft}
-                  onChangeText={setArtistNameDraft}
-                  placeholder="Artist name"
-                  placeholderTextColor="#7F7F86"
-                  editable={!profileInputsDisabled}
-                  style={styles.textInput}
-                  autoCapitalize="words"
-                  autoCorrect={false}
-                  returnKeyType="done"
-                />
+              <View style={styles.profileEditorHeader}>
+                <Text style={styles.profileEditorTitle}>Connected Platforms</Text>
+                <Text style={styles.profileEditorSubtitle}>
+                  Add links where fans can discover your music.
+                </Text>
               </View>
-
-              <View style={styles.settingBlock}>
-                <Text style={styles.settingLabel}>Profile Picture</Text>
-                <View style={styles.optionRow}>
-                  <Pressable
-                    onPress={() => {
-                      void handlePickAvatar();
-                    }}
-                    disabled={profileInputsDisabled}
-                    style={({ pressed }) => [
-                      styles.optionChip,
-                      pressed && !profileInputsDisabled && styles.optionChipPressed,
-                    ]}
-                    accessibilityLabel="Pick profile picture"
-                    accessibilityRole="button"
-                  >
-                    {isPickingAvatar ? (
-                      <ActivityIndicator size="small" color={colors.light.textSecondary} />
-                    ) : (
-                      <Text style={styles.optionChipText}>Upload</Text>
-                    )}
-                  </Pressable>
-                  <Pressable
-                    onPress={() => setAvatarImageUrlDraft(null)}
-                    disabled={profileInputsDisabled || !avatarImageUrlDraft}
-                    style={({ pressed }) => [
-                      styles.optionChip,
-                      styles.optionChipDanger,
-                      (profileInputsDisabled || !avatarImageUrlDraft) &&
-                        styles.optionChipDisabled,
-                      pressed &&
-                        !profileInputsDisabled &&
-                        avatarImageUrlDraft &&
-                        styles.optionChipPressed,
-                    ]}
-                    accessibilityLabel="Remove profile picture"
-                    accessibilityRole="button"
-                  >
-                    <Text style={styles.optionChipDangerText}>Remove</Text>
-                  </Pressable>
-                </View>
-              </View>
-
-              <View style={styles.settingBlock}>
-                <Text style={styles.settingLabel}>Connected Platforms</Text>
+              <View style={styles.linksPanel}>
 
                 <View style={styles.platformChipWrap}>
                   {availablePlatforms.map((platform) => (
@@ -799,7 +835,7 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingTop: spacing.sm,
-    paddingBottom: 0,
+    paddingBottom: Platform.select({ ios: 112, android: 96, default: 96 }),
   },
   backgroundOrbPrimary: {
     position: "absolute",
@@ -840,9 +876,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     borderRadius: radius.lg,
     backgroundColor: "#FFFFFF",
-    alignItems: "center",
+    alignItems: "stretch",
     borderWidth: 1,
     borderColor: "#E3E2F0",
+  },
+  profileIdentityRow: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.md,
+  },
+  profileIdentityColumn: {
+    width: 104,
+    alignItems: "center",
+  },
+  avatarTapTarget: {
+    alignItems: "center",
   },
   profileLoadingRow: {
     width: "100%",
@@ -862,20 +911,35 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: "#ECEBF5",
   },
+  profileEditorHeader: {
+    marginBottom: spacing.sm,
+  },
   profileEditorTitle: {
     ...typography.caption,
     color: "#7B769D",
     textTransform: "uppercase",
     letterSpacing: 1,
-    marginBottom: spacing.sm,
+  },
+  profileEditorSubtitle: {
+    ...typography.caption,
+    color: "#8E8BA7",
+    marginTop: spacing.xs,
+  },
+  linksPanel: {
+    width: "100%",
+    backgroundColor: "#F7F7FB",
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: "#E2E1ED",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
   },
   avatarFrame: {
-    width: 94,
-    height: 94,
+    width: 96,
+    height: 96,
     borderRadius: radius.full,
     padding: 3,
     backgroundColor: "#6C66E8",
-    marginBottom: spacing.md,
   },
   avatar: {
     width: "100%",
@@ -890,19 +954,95 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
   },
-  name: {
+  avatarHintBadge: {
+    marginTop: spacing.xs,
+    minHeight: 24,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: "#D5D3E7",
+    backgroundColor: "#F7F6FF",
+    paddingHorizontal: spacing.sm,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 4,
+  },
+  avatarHintText: {
+    ...typography.caption,
+    color: colors.light.text,
+    fontWeight: "600",
+  },
+  removeAvatarButton: {
+    marginTop: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: "#F1C8CF",
+    backgroundColor: "#FFF6F7",
+  },
+  removeAvatarButtonText: {
+    ...typography.caption,
+    color: colors.accent.error,
+    fontWeight: "600",
+  },
+  profileIdentityTextBlock: {
+    flex: 1,
+    gap: spacing.xs,
+    paddingTop: spacing.xs,
+  },
+  artistNameEditor: {
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: "#D8D5EB",
+    backgroundColor: "#F7F6FF",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    minHeight: 62,
+    justifyContent: "center",
+  },
+  artistNameLabel: {
+    ...typography.caption,
+    color: "#7C78A0",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+    marginBottom: spacing.xs,
+  },
+  artistNameInput: {
     ...typography.h2,
     color: colors.light.text,
+    paddingVertical: 0,
+  },
+  artistNameDisplayRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
+  artistNameText: {
+    ...typography.h2,
+    color: colors.light.text,
+    flex: 1,
+  },
+  artistNamePlaceholder: {
+    color: "#8E8BA7",
+    fontSize: 20,
+  },
+  name: {
+    ...typography.body,
+    color: colors.light.text,
+    fontWeight: "600",
   },
   email: {
-    ...typography.body,
+    ...typography.caption,
     color: colors.light.textSecondary,
-    marginTop: spacing.xs,
+    marginTop: 2,
   },
   profileMetaRow: {
-    marginTop: spacing.md,
+    marginTop: spacing.lg,
     flexDirection: "row",
     gap: spacing.sm,
+    justifyContent: "flex-start",
   },
   metaPill: {
     borderRadius: radius.full,
@@ -953,67 +1093,11 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.light.textSecondary,
   },
-  settingBlock: {
-    width: "100%",
-    backgroundColor: "#F7F7FB",
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: "#E2E1ED",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  settingLabel: {
-    ...typography.body,
-    color: colors.light.text,
-    fontWeight: "600",
-    marginBottom: spacing.sm,
-  },
-  textInput: {
-    ...typography.body,
-    color: colors.light.text,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: "#D3D2E3",
-    backgroundColor: "#FFFFFF",
-    minHeight: 44,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  optionRow: {
-    flexDirection: "row",
-    gap: spacing.sm,
-  },
-  optionChip: {
-    flex: 1,
-    borderRadius: radius.full,
-    borderWidth: 1,
-    borderColor: "#D3D2E3",
-    paddingVertical: spacing.sm,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#FFFFFF",
-    minHeight: 42,
-  },
-  optionChipDanger: {
-    borderColor: "#F1C8CF",
-    backgroundColor: "#FFF6F7",
-  },
   optionChipDisabled: {
     opacity: 0.5,
   },
   optionChipPressed: {
     opacity: 0.85,
-  },
-  optionChipText: {
-    ...typography.body,
-    color: colors.light.textSecondary,
-    fontWeight: "600",
-  },
-  optionChipDangerText: {
-    ...typography.body,
-    color: colors.accent.error,
-    fontWeight: "600",
   },
   platformChipWrap: {
     flexDirection: "row",

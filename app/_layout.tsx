@@ -50,9 +50,8 @@ function AppStatusBar() {
   const child = segments[1];
 
   const isDarkSurface =
-    (root === "(tabs)" && child === "profile") ||
-    (root === "create" &&
-      (child === "editor" || child === "rendering" || child === "share"));
+    root === "create" &&
+    (child === "editor" || child === "rendering" || child === "share");
 
   return <StatusBar style={isDarkSurface ? "light" : "dark"} />;
 }

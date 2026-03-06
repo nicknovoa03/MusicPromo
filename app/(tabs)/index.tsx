@@ -3,6 +3,7 @@ import {
   View,
   Text,
   StyleSheet,
+  Platform,
   Pressable,
   FlatList,
   ActivityIndicator,
@@ -700,7 +701,7 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingHorizontal: spacing.lg,
-    paddingBottom: 0,
+    paddingBottom: Platform.select({ ios: 106, android: 92, default: 92 }),
     paddingTop: spacing.xs,
   },
   listContentEmpty: {
