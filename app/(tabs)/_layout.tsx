@@ -6,7 +6,8 @@ import {
   Text,
   View,
 } from "react-native";
-import { Tabs, useRouter } from "expo-router";
+import { Tabs, useRouter, useSegments } from "expo-router";
+import { Icon, Label, NativeTabs } from "expo-router/unstable-native-tabs";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { usePostHog } from "posthog-react-native";
@@ -41,6 +42,7 @@ function LiquidGlassTabBarBackground() {
 
 export default function TabsLayout() {
   const router = useRouter();
+  const segments = useSegments();
   const { isAuthenticated } = useConvexAuth();
   const getOrCreateUser = useMutation(api.users.getOrCreate);
   const upsertPushToken = useMutation(api.pushTokens.upsertForCurrentUser);
@@ -52,6 +54,7 @@ export default function TabsLayout() {
   const didBootstrapPush = useRef(false);
   const didRouteToOnboarding = useRef(false);
   const hasWarnedMissingConvexToken = useRef(false);
+  const previousNativeTabRoute = useRef<string | null>(null);
   const [localOnboardingReady, setLocalOnboardingReady] = useState(false);
   const [localOnboardingCompleted, setLocalOnboardingCompleted] = useState(false);
 
@@ -209,6 +212,16 @@ export default function TabsLayout() {
     }
   }, [user]);
 
+  useEffect(() => {
+    if (Platform.OS !== "ios") return;
+    const inTabsGroup = segments[0] === "(tabs)";
+    const activeRoute = inTabsGroup ? (segments[1] ?? null) : null;
+    if (activeRoute === "create" && previousNativeTabRoute.current !== "create") {
+      track("create_started");
+    }
+    previousNativeTabRoute.current = activeRoute;
+  }, [segments, track]);
+
   if (isAuthenticated && (!hasOnboardingStatus || !isOnboardingCompleted)) {
     return (
       <View style={styles.gateContainer}>
@@ -223,6 +236,45 @@ export default function TabsLayout() {
         <ActivityIndicator size="large" color={colors.accent.primary} />
         <Text style={styles.gateText}>Preparing guest workspace...</Text>
       </View>
+    );
+  }
+
+  if (Platform.OS === "ios") {
+    return (
+      <NativeTabs
+        blurEffect="systemThinMaterialLight"
+        backgroundColor={colors.light.background}
+        shadowColor="transparent"
+        iconColor={{
+          default: colors.light.textSecondary,
+          selected: colors.light.text,
+        }}
+        labelStyle={{
+          default: {
+            fontSize: typography.caption.fontSize,
+            fontWeight: "500",
+            color: colors.light.textSecondary,
+          },
+          selected: {
+            fontSize: typography.caption.fontSize,
+            fontWeight: "600",
+            color: colors.light.text,
+          },
+        }}
+      >
+        <NativeTabs.Trigger name="index">
+          <Icon sf={{ default: "house", selected: "house.fill" }} />
+          <Label>Home</Label>
+        </NativeTabs.Trigger>
+        <NativeTabs.Trigger name="create">
+          <Icon sf={{ default: "plus.circle", selected: "plus.circle.fill" }} />
+          <Label>Create</Label>
+        </NativeTabs.Trigger>
+        <NativeTabs.Trigger name="profile">
+          <Icon sf={{ default: "person", selected: "person.fill" }} />
+          <Label>Profile</Label>
+        </NativeTabs.Trigger>
+      </NativeTabs>
     );
   }
 

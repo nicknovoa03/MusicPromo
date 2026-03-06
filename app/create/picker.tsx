@@ -7,6 +7,7 @@ import {
   Image,
   Alert,
   ActivityIndicator,
+  Platform,
   useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -53,7 +54,11 @@ function firstParam(param: string | string[] | undefined) {
   return Array.isArray(param) ? param[0] : param;
 }
 
-export default function PickerScreen() {
+interface PickerScreenProps {
+  tabEmbedded?: boolean;
+}
+
+export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps) {
   const { width: windowWidth } = useWindowDimensions();
   const router = useRouter();
   const params = useLocalSearchParams<{
@@ -390,10 +395,12 @@ export default function PickerScreen() {
   const isPickingPhoto = loadingTarget === "photo";
   const isPickingAudio = loadingTarget === "audio";
   const activeAspectRatio = aspectRatio ?? preferredAspectRatio;
+  const dockOverlayCompensation =
+    Platform.OS === "ios" && tabEmbedded ? 82 : 0;
   const contentSidePadding = spacing.md;
   const contentHorizontalPadding = contentSidePadding * 2;
   const contentTopPadding = spacing.md;
-  const contentBottomPadding = spacing.lg;
+  const contentBottomPadding = spacing.lg + dockOverlayCompensation;
   const cardGap = spacing.md;
   const availableWidth = Math.max(0, windowWidth - contentHorizontalPadding);
   const availableHeight = Math.max(

@@ -639,6 +639,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.light.background,
+    position: "relative",
   },
   header: {
     flexDirection: "row",
@@ -699,7 +700,7 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingHorizontal: spacing.lg,
-    paddingBottom: 140,
+    paddingBottom: 0,
     paddingTop: spacing.xs,
   },
   listContentEmpty: {

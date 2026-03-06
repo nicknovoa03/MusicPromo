@@ -799,7 +799,7 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingTop: spacing.sm,
-    paddingBottom: spacing.xxl,
+    paddingBottom: 0,
   },
   backgroundOrbPrimary: {
     position: "absolute",
