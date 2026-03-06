@@ -7,29 +7,105 @@ import {
   Alert,
   ActivityIndicator,
   ScrollView,
+  TextInput,
+  Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useAuth, useUser } from "@clerk/clerk-expo";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import * as ImagePicker from "expo-image-picker";
 import { usePostHog } from "posthog-react-native";
 import { api } from "../../convex/_generated/api";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
 import {
-  DEFAULT_LOCAL_PROFILE_PREFERENCES,
-  setLocalProfilePreferences,
-  getLocalProfilePreferences,
+  DEFAULT_LOCAL_ARTIST_PROFILE,
+  PROFILE_LINK_PLATFORMS,
+  getLocalArtistProfile,
+  setLocalArtistProfile,
+  type ProfileLink,
+  type ProfileLinkPlatform,
 } from "@/lib/localProfile";
 import { clearLocalOnboardingCompleted } from "@/lib/onboarding";
 import { getExpoPushTokenAsync } from "@/lib/notifications";
 import type { EventName } from "@/lib/analytics";
 import { useLocalSession } from "@/providers/localSession";
+import { persistPickedMediaFile } from "@/lib/mediaStorage";
 import { sleep } from "@/lib/utils";
 
-type AspectRatio = "9:16" | "1:1";
-const ASPECT_RATIO_OPTIONS: AspectRatio[] = ["9:16", "1:1"];
-const VIDEO_LENGTH_OPTIONS = [15, 30, 60] as const;
+const PLATFORM_LABELS: Record<ProfileLinkPlatform, string> = {
+  spotify: "Spotify",
+  soundcloud: "SoundCloud",
+  "apple-music": "Apple Music",
+  youtube: "YouTube",
+  instagram: "Instagram",
+  tiktok: "TikTok",
+  x: "X",
+  website: "Website",
+};
+
+type DraftProfileLink = {
+  platform: ProfileLinkPlatform;
+  url: string;
+  sortOrder: number;
+};
+
+function normalizeProfileLinkPlatform(value: unknown): ProfileLinkPlatform | null {
+  if (typeof value !== "string") return null;
+  if ((PROFILE_LINK_PLATFORMS as readonly string[]).includes(value)) {
+    return value as ProfileLinkPlatform;
+  }
+  return null;
+}
+
+function normalizeDraftLinks(value: unknown): DraftProfileLink[] {
+  if (!Array.isArray(value)) return [];
+
+  const seen = new Set<ProfileLinkPlatform>();
+  const links: DraftProfileLink[] = [];
+
+  value.forEach((entry, index) => {
+    if (!entry || typeof entry !== "object") return;
+    const input = entry as Record<string, unknown>;
+    const platform = normalizeProfileLinkPlatform(input.platform);
+    if (!platform || seen.has(platform)) return;
+
+    const url = typeof input.url === "string" ? input.url : "";
+    const sortOrder =
+      typeof input.sortOrder === "number" && Number.isFinite(input.sortOrder)
+        ? input.sortOrder
+        : index;
+
+    seen.add(platform);
+    links.push({
+      platform,
+      url,
+      sortOrder,
+    });
+  });
+
+  return links.sort((a, b) => a.sortOrder - b.sortOrder);
+}
+
+function normalizeProfileUrl(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const withProtocol = /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(trimmed)
+    ? trimmed
+    : `https://${trimmed}`;
+
+  try {
+    const parsed = new URL(withProtocol);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -44,27 +120,34 @@ export default function ProfileScreen() {
   const softDeleteCurrent = useMutation(api.users.softDeleteCurrent);
   const removePushToken = useMutation(api.pushTokens.removeForCurrentUser);
 
-  const [savingPreference, setSavingPreference] = useState<
-    "aspectRatio" | "videoLength" | null
-  >(null);
   const [isBootstrappingUser, setIsBootstrappingUser] = useState(false);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [isPickingAvatar, setIsPickingAvatar] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
-  const [localPreferences, setLocalPreferences] = useState(
-    DEFAULT_LOCAL_PROFILE_PREFERENCES
+
+  const [localArtistProfile, setLocalArtistProfileState] = useState(
+    DEFAULT_LOCAL_ARTIST_PROFILE,
   );
-  const [isLocalPreferencesReady, setIsLocalPreferencesReady] = useState(false);
+  const [isLocalArtistProfileReady, setIsLocalArtistProfileReady] =
+    useState(false);
+
+  const [artistNameDraft, setArtistNameDraft] = useState("");
+  const [avatarImageUrlDraft, setAvatarImageUrlDraft] = useState<string | null>(
+    null,
+  );
+  const [linksDraft, setLinksDraft] = useState<DraftProfileLink[]>([]);
 
   useEffect(() => {
     let isActive = true;
-    setIsLocalPreferencesReady(false);
+    setIsLocalArtistProfileReady(false);
 
     (async () => {
-      const prefs = await getLocalProfilePreferences();
+      const profile = await getLocalArtistProfile();
       if (!isActive) return;
-      setLocalPreferences(prefs);
-      setIsLocalPreferencesReady(true);
+      setLocalArtistProfileState(profile);
+      setIsLocalArtistProfileReady(true);
     })();
 
     return () => {
@@ -75,40 +158,46 @@ export default function ProfileScreen() {
   const usesLocalProfile = isLocalGuest || !isSignedIn;
   const isConvexUnavailableForSignedIn = Boolean(isSignedIn) && !isAuthenticated;
 
-  const isLoading = usesLocalProfile
-    ? !isLocalPreferencesReady
+  const isProfileLoading = usesLocalProfile
+    ? !isLocalArtistProfileReady
     : isConvexUnavailableForSignedIn
       ? false
       : convexUser === undefined || isBootstrappingUser || isConvexAuthLoading;
+
   const isGuest = usesLocalProfile
     ? true
     : convexUser?.isGuest ?? !clerkUser?.primaryEmailAddress;
+
   const displayName = usesLocalProfile
     ? "Guest"
     : convexUser?.name ?? clerkUser?.fullName ?? "Guest";
+
   const displayEmail = usesLocalProfile
     ? "Local-only session"
     : convexUser?.email ?? clerkUser?.primaryEmailAddress?.emailAddress ?? "No email";
 
-  const selectedAspectRatio = useMemo<AspectRatio>(() => {
-    if (usesLocalProfile) return localPreferences.defaultAspectRatio;
-    return convexUser?.preferences?.defaultAspectRatio ?? "9:16";
-  }, [
-    usesLocalProfile,
-    localPreferences.defaultAspectRatio,
-    convexUser?.preferences?.defaultAspectRatio,
-  ]);
+  const sourceArtistName = usesLocalProfile
+    ? localArtistProfile.artistName
+    : convexUser?.artistName ?? "";
 
-  const selectedVideoLength = useMemo(() => {
-    if (usesLocalProfile) return localPreferences.defaultVideoLength;
-    const value = convexUser?.preferences?.defaultVideoLength;
-    if (value === 30 || value === 60) return value;
-    return 15;
-  }, [
-    usesLocalProfile,
-    localPreferences.defaultVideoLength,
-    convexUser?.preferences?.defaultVideoLength,
-  ]);
+  const sourceAvatarImageUrl = usesLocalProfile
+    ? localArtistProfile.avatarImageUrl
+    : convexUser?.avatarImageUrl ?? null;
+
+  const sourceLinks = useMemo(
+    () =>
+      normalizeDraftLinks(
+        usesLocalProfile ? localArtistProfile.links : (convexUser?.links ?? []),
+      ),
+    [usesLocalProfile, localArtistProfile.links, convexUser?.links],
+  );
+
+  useEffect(() => {
+    if (isProfileLoading) return;
+    setArtistNameDraft(sourceArtistName);
+    setAvatarImageUrlDraft(sourceAvatarImageUrl);
+    setLinksDraft(sourceLinks);
+  }, [isProfileLoading, sourceArtistName, sourceAvatarImageUrl, sourceLinks]);
 
   const track = useCallback(
     (event: EventName, props?: Record<string, string>) => {
@@ -142,130 +231,187 @@ export default function ProfileScreen() {
     );
   }, []);
 
-  const ensureUserRecord = useCallback(async (currentConvexUser: typeof convexUser) => {
-    const convexToken = await getToken({ template: "convex" });
-    if (!convexToken) {
-      throw new Error("MissingConvexTemplate");
-    }
-
-    if (currentConvexUser) return;
-
-    setIsBootstrappingUser(true);
-    try {
-      let lastError: unknown = null;
-      for (let attempt = 0; attempt < 3; attempt += 1) {
-        try {
-          await getOrCreateUser({});
-          return;
-        } catch (error) {
-          lastError = error;
-          if (isUnauthenticatedError(error) && attempt < 2) {
-            await sleep(350);
-            continue;
-          }
-          throw error;
-        }
+  const ensureUserRecord = useCallback(
+    async (currentConvexUser: typeof convexUser) => {
+      const convexToken = await getToken({ template: "convex" });
+      if (!convexToken) {
+        throw new Error("MissingConvexTemplate");
       }
-      if (lastError) throw lastError;
-    } finally {
-      setIsBootstrappingUser(false);
-    }
-  }, [getOrCreateUser, getToken, isUnauthenticatedError]);
 
-  const savePreference = useCallback(
-    async (params: {
-      savingKey: "aspectRatio" | "videoLength";
-      setting: "defaultAspectRatio" | "defaultVideoLength";
-      value: AspectRatio | (typeof VIDEO_LENGTH_OPTIONS)[number];
-      selectedValue: AspectRatio | (typeof VIDEO_LENGTH_OPTIONS)[number];
-      genericError: string;
-    }) => {
-      const { savingKey, setting, value, selectedValue, genericError } = params;
-      if (savingPreference || value === selectedValue) return;
+      if (currentConvexUser) return;
 
-      setErrorText(null);
-      setSavingPreference(savingKey);
+      setIsBootstrappingUser(true);
       try {
-        if (usesLocalProfile) {
-          const localUpdates =
-            setting === "defaultAspectRatio"
-              ? { defaultAspectRatio: value as AspectRatio }
-              : {
-                  defaultVideoLength:
-                    value as (typeof VIDEO_LENGTH_OPTIONS)[number],
-                };
-          const saved = await setLocalProfilePreferences(localUpdates);
-          setLocalPreferences(saved);
-        } else {
-          const remotePreferences =
-            setting === "defaultAspectRatio"
-              ? { defaultAspectRatio: value as AspectRatio }
-              : {
-                  defaultVideoLength:
-                    value as (typeof VIDEO_LENGTH_OPTIONS)[number],
-                };
-          await ensureUserRecord(convexUser);
-          await updateProfile({ preferences: remotePreferences });
+        let lastError: unknown = null;
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          try {
+            await getOrCreateUser({});
+            return;
+          } catch (error) {
+            lastError = error;
+            if (isUnauthenticatedError(error) && attempt < 2) {
+              await sleep(350);
+              continue;
+            }
+            throw error;
+          }
         }
-
-        track("profile_preference_updated", {
-          setting,
-          value: String(value),
-          isGuest: String(isGuest),
-        });
-      } catch (error) {
-        const saveError = isMissingConvexTemplateError(error)
-          ? "Clerk JWT template 'convex' is missing. Configure it in Clerk, then sign out/in."
-          : isUnauthenticatedError(error)
-            ? "Session isn't ready yet. Please wait a moment and try again."
-            : genericError;
-        setErrorText(saveError);
-        console.warn("Failed to save profile preference:", {
-          setting,
-          error,
-        });
+        if (lastError) throw lastError;
       } finally {
-        setSavingPreference(null);
+        setIsBootstrappingUser(false);
       }
     },
-    [
-      convexUser,
-      savingPreference,
-      usesLocalProfile,
-      ensureUserRecord,
-      updateProfile,
-      track,
-      isGuest,
-      isMissingConvexTemplateError,
-      isUnauthenticatedError,
-    ],
+    [getOrCreateUser, getToken, isUnauthenticatedError],
   );
 
-  const saveAspectRatio = useCallback(
-    async (next: AspectRatio) => {
-      await savePreference({
-        savingKey: "aspectRatio",
-        setting: "defaultAspectRatio",
-        value: next,
-        selectedValue: selectedAspectRatio,
-        genericError: "Couldn't update aspect ratio. Please try again.",
-      });
+  const handleAddLink = useCallback((platform: ProfileLinkPlatform) => {
+    setLinksDraft((prev) => {
+      if (prev.some((link) => link.platform === platform)) return prev;
+      return [
+        ...prev,
+        {
+          platform,
+          url: "",
+          sortOrder: prev.length,
+        },
+      ];
+    });
+  }, []);
+
+  const handleUpdateLinkUrl = useCallback(
+    (platform: ProfileLinkPlatform, url: string) => {
+      setLinksDraft((prev) =>
+        prev.map((link) =>
+          link.platform === platform
+            ? {
+                ...link,
+                url,
+              }
+            : link,
+        ),
+      );
     },
-    [savePreference, selectedAspectRatio],
+    [],
   );
 
-  const saveVideoLength = useCallback(
-    async (next: (typeof VIDEO_LENGTH_OPTIONS)[number]) => {
-      await savePreference({
-        savingKey: "videoLength",
-        setting: "defaultVideoLength",
-        value: next,
-        selectedValue: selectedVideoLength,
-        genericError: "Couldn't update default length. Please try again.",
+  const handleRemoveLink = useCallback((platform: ProfileLinkPlatform) => {
+    setLinksDraft((prev) =>
+      prev
+        .filter((link) => link.platform !== platform)
+        .map((link, index) => ({ ...link, sortOrder: index })),
+    );
+  }, []);
+
+  const handlePickAvatar = useCallback(async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert(
+        "Permission needed",
+        "Allow photo access to use an artist profile image.",
+      );
+      return;
+    }
+
+    setIsPickingAvatar(true);
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        quality: 1,
+        allowsEditing: false,
+        preferredAssetRepresentationMode:
+          ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
       });
-    },
-    [savePreference, selectedVideoLength],
-  );
+      if (result.canceled || !result.assets[0]) return;
+
+      const picked = result.assets[0];
+      const persistedUri = await persistPickedMediaFile({
+        sourceUri: picked.uri,
+        fileNameHint:
+          picked.fileName ?? picked.uri.split("/").pop() ?? "artist-avatar.jpg",
+      });
+      setAvatarImageUrlDraft(persistedUri);
+    } catch {
+      Alert.alert(
+        "Profile image not saved",
+        "Could not load that image. Please try another one.",
+      );
+    } finally {
+      setIsPickingAvatar(false);
+    }
+  }, []);
+
+  const saveProfile = useCallback(async () => {
+    if (isSavingProfile || isSigningOut || isDeleting) return;
+
+    setErrorText(null);
+    setIsSavingProfile(true);
+
+    try {
+      const artistName = artistNameDraft.trim();
+      const avatarImageUrl = avatarImageUrlDraft?.trim()
+        ? avatarImageUrlDraft.trim()
+        : null;
+
+      const normalizedLinks: ProfileLink[] = [];
+      for (const link of linksDraft) {
+        const trimmedUrl = link.url.trim();
+        if (!trimmedUrl) continue;
+
+        const normalizedUrl = normalizeProfileUrl(trimmedUrl);
+        if (!normalizedUrl) {
+          setErrorText(
+            `Invalid URL for ${PLATFORM_LABELS[link.platform]}. Check the link and try again.`,
+          );
+          return;
+        }
+
+        normalizedLinks.push({
+          platform: link.platform,
+          url: normalizedUrl,
+          sortOrder: normalizedLinks.length,
+        });
+      }
+
+      if (usesLocalProfile) {
+        const saved = await setLocalArtistProfile({
+          artistName,
+          avatarImageUrl,
+          links: normalizedLinks,
+        });
+        setLocalArtistProfileState(saved);
+      } else {
+        await ensureUserRecord(convexUser);
+        await updateProfile({
+          artistName: artistName || null,
+          avatarImageUrl,
+          links: normalizedLinks,
+        });
+      }
+    } catch (error) {
+      const saveError = isMissingConvexTemplateError(error)
+        ? "Clerk JWT template 'convex' is missing. Configure it in Clerk, then sign out/in."
+        : isUnauthenticatedError(error)
+          ? "Session isn't ready yet. Please wait a moment and try again."
+          : "Couldn't update profile. Please try again.";
+      setErrorText(saveError);
+      console.warn("Failed to save profile:", error);
+    } finally {
+      setIsSavingProfile(false);
+    }
+  }, [
+    artistNameDraft,
+    avatarImageUrlDraft,
+    convexUser,
+    ensureUserRecord,
+    isDeleting,
+    isMissingConvexTemplateError,
+    isSavingProfile,
+    isSigningOut,
+    isUnauthenticatedError,
+    linksDraft,
+    updateProfile,
+    usesLocalProfile,
+  ]);
 
   const runSignOut = useCallback(async () => {
     setIsSigningOut(true);
@@ -370,115 +516,205 @@ export default function ProfileScreen() {
     );
   }, [runDeleteAccount]);
 
+  const availablePlatforms = useMemo(() => {
+    const used = new Set(linksDraft.map((link) => link.platform));
+    return PROFILE_LINK_PLATFORMS.filter((platform) => !used.has(platform));
+  }, [linksDraft]);
+  const connectedPlatformsCount = useMemo(
+    () => linksDraft.filter((link) => link.url.trim().length > 0).length,
+    [linksDraft],
+  );
+  const artistNameStatus = artistNameDraft.trim().length > 0 ? "Set" : "Empty";
+
   const actionsDisabled = isSigningOut || isDeleting;
+  const profileInputsDisabled =
+    isProfileLoading || isSavingProfile || isSigningOut || isDeleting || isPickingAvatar;
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <View style={styles.backgroundOrbPrimary} />
+      <View style={styles.backgroundOrbSecondary} />
+      <ScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Profile</Text>
+          <Text style={styles.headerSubtitle}>Artist identity and distribution links</Text>
         </View>
 
         <View style={styles.profileCard}>
-          <View style={styles.avatar}>
-            <Ionicons name="person" size={36} color={colors.dark.textSecondary} />
+          <View style={styles.avatarFrame}>
+            <View style={styles.avatar}>
+              {avatarImageUrlDraft ? (
+                <Image source={{ uri: avatarImageUrlDraft }} style={styles.avatarImage} />
+              ) : (
+                <Ionicons name="person" size={36} color={colors.light.textSecondary} />
+              )}
+            </View>
           </View>
           <Text style={styles.name}>{displayName}</Text>
           <Text style={styles.email}>{displayEmail}</Text>
+          <View style={styles.profileMetaRow}>
+            <View style={styles.metaPill}>
+              <Text style={styles.metaLabel}>Artist</Text>
+              <Text style={styles.metaValue}>{artistNameStatus}</Text>
+            </View>
+            <View style={styles.metaPill}>
+              <Text style={styles.metaLabel}>Links</Text>
+              <Text style={styles.metaValue}>{connectedPlatformsCount}</Text>
+            </View>
+          </View>
           {isGuest && (
             <View style={styles.guestBadge}>
               <Text style={styles.guestBadgeText}>Guest Session</Text>
             </View>
           )}
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Defaults</Text>
-          <Text style={styles.sectionDescription}>
-            New create sessions use these defaults. Existing projects keep their saved values.
-          </Text>
-
-          {isLoading ? (
-            <View style={styles.loadingRow}>
+          {isProfileLoading ? (
+            <View style={styles.profileLoadingRow}>
               <ActivityIndicator color={colors.accent.primary} />
-              <Text style={styles.loadingText}>Loading profile settings...</Text>
+              <Text style={styles.loadingText}>Loading profile...</Text>
             </View>
           ) : (
-            <>
+            <View style={styles.profileEditor}>
+              <Text style={styles.profileEditorTitle}>Artist Profile</Text>
               <View style={styles.settingBlock}>
-                <View style={styles.settingHeader}>
-                  <Text style={styles.settingLabel}>Default Aspect Ratio</Text>
-                  {savingPreference === "aspectRatio" && (
-                    <ActivityIndicator size="small" color={colors.accent.primary} />
-                  )}
-                </View>
+                <Text style={styles.settingLabel}>Artist Name</Text>
+                <TextInput
+                  value={artistNameDraft}
+                  onChangeText={setArtistNameDraft}
+                  placeholder="Artist name"
+                  placeholderTextColor="#7F7F86"
+                  editable={!profileInputsDisabled}
+                  style={styles.textInput}
+                  autoCapitalize="words"
+                  autoCorrect={false}
+                  returnKeyType="done"
+                />
+              </View>
+
+              <View style={styles.settingBlock}>
+                <Text style={styles.settingLabel}>Profile Picture</Text>
                 <View style={styles.optionRow}>
-                  {ASPECT_RATIO_OPTIONS.map((option) => {
-                    const selected = option === selectedAspectRatio;
-                    return (
-                      <Pressable
-                        key={option}
-                        onPress={() => void saveAspectRatio(option)}
-                        disabled={actionsDisabled}
-                        style={({ pressed }) => [
-                          styles.optionChip,
-                          selected && styles.optionChipSelected,
-                          pressed && !actionsDisabled && styles.optionChipPressed,
-                        ]}
-                        accessibilityLabel={`Set default aspect ratio to ${option}`}
-                        accessibilityRole="button"
-                      >
-                        <Text
-                          style={[
-                            styles.optionChipText,
-                            selected && styles.optionChipTextSelected,
-                          ]}
-                        >
-                          {option}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
+                  <Pressable
+                    onPress={() => {
+                      void handlePickAvatar();
+                    }}
+                    disabled={profileInputsDisabled}
+                    style={({ pressed }) => [
+                      styles.optionChip,
+                      pressed && !profileInputsDisabled && styles.optionChipPressed,
+                    ]}
+                    accessibilityLabel="Pick profile picture"
+                    accessibilityRole="button"
+                  >
+                    {isPickingAvatar ? (
+                      <ActivityIndicator size="small" color={colors.light.textSecondary} />
+                    ) : (
+                      <Text style={styles.optionChipText}>Upload</Text>
+                    )}
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setAvatarImageUrlDraft(null)}
+                    disabled={profileInputsDisabled || !avatarImageUrlDraft}
+                    style={({ pressed }) => [
+                      styles.optionChip,
+                      styles.optionChipDanger,
+                      (profileInputsDisabled || !avatarImageUrlDraft) &&
+                        styles.optionChipDisabled,
+                      pressed &&
+                        !profileInputsDisabled &&
+                        avatarImageUrlDraft &&
+                        styles.optionChipPressed,
+                    ]}
+                    accessibilityLabel="Remove profile picture"
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.optionChipDangerText}>Remove</Text>
+                  </Pressable>
                 </View>
               </View>
 
               <View style={styles.settingBlock}>
-                <View style={styles.settingHeader}>
-                  <Text style={styles.settingLabel}>Default Video Length</Text>
-                  {savingPreference === "videoLength" && (
-                    <ActivityIndicator size="small" color={colors.accent.primary} />
-                  )}
+                <Text style={styles.settingLabel}>Connected Platforms</Text>
+
+                <View style={styles.platformChipWrap}>
+                  {availablePlatforms.map((platform) => (
+                    <Pressable
+                      key={`add-${platform}`}
+                      onPress={() => handleAddLink(platform)}
+                      disabled={profileInputsDisabled}
+                      style={({ pressed }) => [
+                        styles.addPlatformChip,
+                        pressed && !profileInputsDisabled && styles.optionChipPressed,
+                      ]}
+                      accessibilityLabel={`Add ${PLATFORM_LABELS[platform]} link`}
+                      accessibilityRole="button"
+                    >
+                      <Ionicons name="add" size={13} color={colors.light.textSecondary} />
+                      <Text style={styles.addPlatformChipText}>{PLATFORM_LABELS[platform]}</Text>
+                    </Pressable>
+                  ))}
                 </View>
-                <View style={styles.optionRow}>
-                  {VIDEO_LENGTH_OPTIONS.map((option) => {
-                    const selected = option === selectedVideoLength;
-                    return (
+
+                {linksDraft.length === 0 ? (
+                  <Text style={styles.emptyLinksText}>
+                    Add platforms above to include profile links.
+                  </Text>
+                ) : null}
+
+                {linksDraft.map((link) => (
+                  <View key={link.platform} style={styles.linkRow}>
+                    <View style={styles.linkHeader}>
+                      <Text style={styles.linkPlatform}>{PLATFORM_LABELS[link.platform]}</Text>
                       <Pressable
-                        key={option}
-                        onPress={() => void saveVideoLength(option)}
-                        disabled={actionsDisabled}
+                        onPress={() => handleRemoveLink(link.platform)}
+                        disabled={profileInputsDisabled}
                         style={({ pressed }) => [
-                          styles.optionChip,
-                          selected && styles.optionChipSelected,
-                          pressed && !actionsDisabled && styles.optionChipPressed,
+                          styles.linkRemoveButton,
+                          pressed && !profileInputsDisabled && styles.optionChipPressed,
                         ]}
-                        accessibilityLabel={`Set default video length to ${option} seconds`}
+                        accessibilityLabel={`Remove ${PLATFORM_LABELS[link.platform]} link`}
                         accessibilityRole="button"
                       >
-                        <Text
-                          style={[
-                            styles.optionChipText,
-                            selected && styles.optionChipTextSelected,
-                          ]}
-                        >
-                          {option}s
-                        </Text>
+                        <Ionicons name="close" size={16} color={colors.light.textSecondary} />
                       </Pressable>
-                    );
-                  })}
-                </View>
+                    </View>
+                    <TextInput
+                      value={link.url}
+                      onChangeText={(text) => handleUpdateLinkUrl(link.platform, text)}
+                      placeholder="https://"
+                      placeholderTextColor="#7F7F86"
+                      editable={!profileInputsDisabled}
+                      style={styles.linkInput}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      keyboardType="url"
+                    />
+                  </View>
+                ))}
               </View>
-            </>
+
+              <Pressable
+                onPress={() => {
+                  void saveProfile();
+                }}
+                disabled={profileInputsDisabled}
+                style={({ pressed }) => [
+                  styles.saveButton,
+                  profileInputsDisabled && styles.saveButtonDisabled,
+                  pressed && !profileInputsDisabled && styles.optionChipPressed,
+                ]}
+                accessibilityLabel="Save profile"
+                accessibilityRole="button"
+              >
+                {isSavingProfile ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.saveButtonText}>Save Profile</Text>
+                )}
+              </Pressable>
+            </View>
           )}
         </View>
 
@@ -497,18 +733,18 @@ export default function ProfileScreen() {
             accessibilityRole="button"
           >
             <View style={styles.actionRowLeft}>
-              <Ionicons name="log-out-outline" size={20} color={colors.dark.text} />
+              <Ionicons name="log-out-outline" size={20} color={colors.light.text} />
               <Text style={styles.actionText}>
                 {isLocalGuest ? "Exit Guest Mode" : "Sign Out"}
               </Text>
             </View>
             {isSigningOut ? (
-              <ActivityIndicator size="small" color={colors.dark.textSecondary} />
+              <ActivityIndicator size="small" color={colors.light.textSecondary} />
             ) : (
               <Ionicons
                 name="chevron-forward"
                 size={16}
-                color={colors.dark.textSecondary}
+                color={colors.light.textSecondary}
               />
             )}
           </Pressable>
@@ -539,7 +775,7 @@ export default function ProfileScreen() {
                   <Ionicons
                     name="chevron-forward"
                     size={16}
-                    color={colors.dark.textSecondary}
+                    color={colors.light.textSecondary}
                   />
                 )}
               </Pressable>
@@ -558,60 +794,148 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.dark.background,
+    backgroundColor: colors.light.background,
+    position: "relative",
   },
   content: {
+    paddingTop: spacing.sm,
     paddingBottom: spacing.xxl,
+  },
+  backgroundOrbPrimary: {
+    position: "absolute",
+    width: 260,
+    height: 260,
+    borderRadius: 130,
+    backgroundColor: "rgba(88, 86, 214, 0.08)",
+    top: -90,
+    right: -80,
+  },
+  backgroundOrbSecondary: {
+    position: "absolute",
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: "rgba(245, 133, 41, 0.07)",
+    top: 110,
+    left: -110,
   },
   header: {
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    paddingBottom: spacing.sm,
   },
   headerTitle: {
     ...typography.h1,
-    color: colors.dark.text,
+    color: colors.light.text,
+  },
+  headerSubtitle: {
+    ...typography.caption,
+    color: "#6E6A8C",
+    marginTop: spacing.xs,
+    letterSpacing: 0.5,
   },
   profileCard: {
     marginHorizontal: spacing.lg,
     marginTop: spacing.sm,
-    paddingVertical: spacing.lg,
+    paddingVertical: spacing.xl,
     paddingHorizontal: spacing.lg,
     borderRadius: radius.lg,
-    backgroundColor: colors.dark.surface,
+    backgroundColor: "#FFFFFF",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#262628",
+    borderColor: "#E3E2F0",
   },
-  avatar: {
-    width: 82,
-    height: 82,
-    borderRadius: radius.full,
-    backgroundColor: "#121214",
+  profileLoadingRow: {
+    width: "100%",
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: spacing.sm,
+    marginTop: spacing.lg,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: "#ECEBF5",
+  },
+  profileEditor: {
+    width: "100%",
+    marginTop: spacing.lg,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: "#ECEBF5",
+  },
+  profileEditorTitle: {
+    ...typography.caption,
+    color: "#7B769D",
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    marginBottom: spacing.sm,
+  },
+  avatarFrame: {
+    width: 94,
+    height: 94,
+    borderRadius: radius.full,
+    padding: 3,
+    backgroundColor: "#6C66E8",
     marginBottom: spacing.md,
+  },
+  avatar: {
+    width: "100%",
+    height: "100%",
+    borderRadius: radius.full,
+    backgroundColor: "#F2F1FB",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  avatarImage: {
+    width: "100%",
+    height: "100%",
   },
   name: {
     ...typography.h2,
-    color: colors.dark.text,
+    color: colors.light.text,
   },
   email: {
     ...typography.body,
-    color: colors.dark.textSecondary,
+    color: colors.light.textSecondary,
     marginTop: spacing.xs,
   },
-  guestBadge: {
+  profileMetaRow: {
     marginTop: spacing.md,
+    flexDirection: "row",
+    gap: spacing.sm,
+  },
+  metaPill: {
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: "#DEDDF0",
+    backgroundColor: "#F6F5FF",
+    paddingHorizontal: spacing.md,
+    minHeight: 30,
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.xs,
+  },
+  metaLabel: {
+    ...typography.caption,
+    color: "#7C78A0",
+  },
+  metaValue: {
+    ...typography.caption,
+    color: colors.light.text,
+    fontWeight: "700",
+  },
+  guestBadge: {
+    marginTop: spacing.sm,
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.md,
     borderRadius: radius.full,
-    backgroundColor: "#2A1C11",
+    backgroundColor: "#FFF3E9",
     borderWidth: 1,
-    borderColor: "#543217",
+    borderColor: "#F3CCAD",
   },
   guestBadgeText: {
     ...typography.caption,
-    color: "#FFB876",
+    color: "#9B4E1A",
     fontWeight: "600",
   },
   section: {
@@ -620,46 +944,41 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     ...typography.caption,
-    color: colors.dark.textSecondary,
+    color: colors.light.textSecondary,
     textTransform: "uppercase",
     letterSpacing: 1,
     marginBottom: spacing.sm,
   },
-  sectionDescription: {
-    ...typography.caption,
-    color: "#7F7F86",
-    lineHeight: 18,
-    marginBottom: spacing.md,
-  },
-  loadingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: spacing.md,
-  },
   loadingText: {
     ...typography.body,
-    color: colors.dark.textSecondary,
+    color: colors.light.textSecondary,
   },
   settingBlock: {
-    backgroundColor: colors.dark.surface,
+    width: "100%",
+    backgroundColor: "#F7F7FB",
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.dark.border,
+    borderColor: "#E2E1ED",
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
     marginBottom: spacing.sm,
   },
-  settingHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: spacing.sm,
-  },
   settingLabel: {
     ...typography.body,
-    color: colors.dark.text,
+    color: colors.light.text,
     fontWeight: "600",
+    marginBottom: spacing.sm,
+  },
+  textInput: {
+    ...typography.body,
+    color: colors.light.text,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: "#D3D2E3",
+    backgroundColor: "#FFFFFF",
+    minHeight: 44,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
   optionRow: {
     flexDirection: "row",
@@ -669,26 +988,117 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: "#38383C",
+    borderColor: "#D3D2E3",
     paddingVertical: spacing.sm,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#101012",
+    backgroundColor: "#FFFFFF",
+    minHeight: 42,
   },
-  optionChipSelected: {
-    backgroundColor: colors.dark.text,
-    borderColor: colors.dark.text,
+  optionChipDanger: {
+    borderColor: "#F1C8CF",
+    backgroundColor: "#FFF6F7",
+  },
+  optionChipDisabled: {
+    opacity: 0.5,
   },
   optionChipPressed: {
     opacity: 0.85,
   },
   optionChipText: {
     ...typography.body,
-    color: colors.dark.textSecondary,
+    color: colors.light.textSecondary,
     fontWeight: "600",
   },
-  optionChipTextSelected: {
-    color: "#000000",
+  optionChipDangerText: {
+    ...typography.body,
+    color: colors.accent.error,
+    fontWeight: "600",
+  },
+  platformChipWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
+    marginBottom: spacing.md,
+  },
+  addPlatformChip: {
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: "#D3D2E3",
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: spacing.md,
+    minHeight: 34,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: spacing.xs,
+  },
+  addPlatformChipText: {
+    ...typography.caption,
+    color: colors.light.textSecondary,
+    fontWeight: "600",
+  },
+  emptyLinksText: {
+    ...typography.caption,
+    color: "#8E8BA7",
+    marginBottom: spacing.sm,
+  },
+  linkRow: {
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: "#D3D2E3",
+    backgroundColor: "#FFFFFF",
+    padding: spacing.sm,
+    marginTop: spacing.xs,
+    gap: spacing.xs,
+  },
+  linkHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  linkPlatform: {
+    ...typography.caption,
+    color: "#5C5A76",
+    fontWeight: "600",
+  },
+  linkInput: {
+    ...typography.body,
+    color: colors.light.text,
+    flex: 1,
+    minHeight: 36,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: "#D3D2E3",
+    backgroundColor: "#FAFAFF",
+  },
+  linkRemoveButton: {
+    width: 30,
+    height: 30,
+    borderRadius: radius.full,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  saveButton: {
+    width: "100%",
+    minHeight: 48,
+    borderRadius: radius.full,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.accent.primary,
+    marginTop: spacing.sm,
+    borderWidth: 1,
+    borderColor: "#4D4BC9",
+  },
+  saveButtonDisabled: {
+    opacity: 0.6,
+  },
+  saveButtonText: {
+    ...typography.body,
+    color: "#FFFFFF",
+    fontWeight: "700",
   },
   errorText: {
     ...typography.caption,
@@ -703,16 +1113,16 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
-    backgroundColor: colors.dark.surface,
+    backgroundColor: "#FFFFFF",
     borderWidth: 1,
-    borderColor: colors.dark.border,
+    borderColor: colors.light.border,
     marginBottom: spacing.sm,
   },
   actionRowPressed: {
     opacity: 0.86,
   },
   deleteRowPressed: {
-    backgroundColor: "#221012",
+    backgroundColor: "#FFF2F3",
   },
   actionRowLeft: {
     flexDirection: "row",
@@ -721,7 +1131,7 @@ const styles = StyleSheet.create({
   },
   actionText: {
     ...typography.body,
-    color: colors.dark.text,
+    color: colors.light.text,
     fontWeight: "600",
   },
   deleteText: {

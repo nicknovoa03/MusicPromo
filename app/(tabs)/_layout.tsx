@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Platform,
   StyleSheet,
   Text,
   View,
@@ -26,6 +27,16 @@ function extractNotificationType(data: unknown) {
   if (!data || typeof data !== "object") return "unknown";
   const type = (data as { type?: unknown }).type;
   return typeof type === "string" ? type : "unknown";
+}
+
+function LiquidGlassTabBarBackground() {
+  return (
+    <View style={styles.glassRoot} pointerEvents="none">
+      <View style={styles.glassTint} />
+      <View style={styles.glassTopSheen} />
+      <View style={styles.glassInnerStroke} />
+    </View>
+  );
 }
 
 export default function TabsLayout() {
@@ -221,17 +232,41 @@ export default function TabsLayout() {
         headerShown: false,
         tabBarActiveTintColor: colors.light.text,
         tabBarInactiveTintColor: colors.light.textSecondary,
+        tabBarBackground: () => <LiquidGlassTabBarBackground />,
         tabBarStyle: {
-          backgroundColor: colors.light.background,
-          borderTopColor: colors.light.border,
-          borderTopWidth: StyleSheet.hairlineWidth,
-          height: 88,
-          paddingBottom: 30,
+          position: "absolute",
+          left: 14,
+          right: 14,
+          bottom: 0,
+          height: 82,
+          borderTopWidth: 0,
+          backgroundColor: "transparent",
+          borderTopLeftRadius: 28,
+          borderTopRightRadius: 28,
+          borderBottomLeftRadius: 0,
+          borderBottomRightRadius: 0,
+          overflow: "hidden",
+          paddingBottom: 8,
           paddingTop: 8,
+          ...Platform.select({
+            ios: {
+              shadowColor: "#102440",
+              shadowOpacity: 0.18,
+              shadowRadius: 14,
+              shadowOffset: { width: 0, height: 2 },
+            },
+            android: {
+              elevation: 10,
+            },
+          }),
+        },
+        tabBarItemStyle: {
+          borderRadius: 20,
         },
         tabBarLabelStyle: {
           fontSize: typography.caption.fontSize,
-          fontWeight: "500",
+          fontWeight: "600",
+          marginTop: -1,
         },
       }}
     >
@@ -272,6 +307,35 @@ export default function TabsLayout() {
 }
 
 const styles = StyleSheet.create({
+  glassRoot: {
+    flex: 1,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    overflow: "hidden",
+  },
+  glassTint: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(245,250,255,0.74)",
+  },
+  glassTopSheen: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: StyleSheet.hairlineWidth + 1,
+    backgroundColor: "rgba(255,255,255,0.42)",
+  },
+  glassInnerStroke: {
+    ...StyleSheet.absoluteFillObject,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.72)",
+  },
   gateContainer: {
     flex: 1,
     alignItems: "center",
