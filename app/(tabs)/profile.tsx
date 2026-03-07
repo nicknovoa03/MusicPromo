@@ -28,14 +28,18 @@ import { useAuth, useUser } from "@clerk/clerk-expo";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import * as ImagePicker from "expo-image-picker";
+import * as ExpoSwiftUI from "@expo/ui/swift-ui";
 import { usePostHog } from "posthog-react-native";
 import { api } from "../../convex/_generated/api";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
 import {
   DEFAULT_LOCAL_ARTIST_PROFILE,
+  DEFAULT_LOCAL_PROFILE_PREFERENCES,
   PROFILE_LINK_PLATFORMS,
   getLocalArtistProfile,
+  getLocalProfilePreferences,
   setLocalArtistProfile,
+  setLocalProfilePreferences,
   type ProfileLink,
   type ProfileLinkPlatform,
 } from "@/lib/localProfile";
@@ -44,6 +48,10 @@ import { getExpoPushTokenAsync } from "@/lib/notifications";
 import type { EventName } from "@/lib/analytics";
 import { useLocalSession } from "@/providers/localSession";
 import { persistPickedMediaFile } from "@/lib/mediaStorage";
+import {
+  getIOSNativeUIPhase5Availability,
+  type ExpoSwiftUIModule,
+} from "@/lib/iosNativeUi";
 import { sleep } from "@/lib/utils";
 
 const PLATFORM_LABELS: Record<ProfileLinkPlatform, string> = {
@@ -62,6 +70,13 @@ type DraftProfileLink = {
   url: string;
   sortOrder: number;
 };
+
+type AspectRatioPreference = "9:16" | "1:1";
+type VideoLengthPreference = 15 | 30 | 60;
+
+const ASPECT_RATIO_OPTIONS: AspectRatioPreference[] = ["9:16", "1:1"];
+const VIDEO_LENGTH_OPTIONS: VideoLengthPreference[] = [15, 30, 60];
+const VIDEO_LENGTH_LABELS = VIDEO_LENGTH_OPTIONS.map((seconds) => `${seconds} sec`);
 
 function normalizeProfileLinkPlatform(value: unknown): ProfileLinkPlatform | null {
   if (typeof value !== "string") return null;
@@ -137,6 +152,7 @@ export default function ProfileScreen() {
 
   const [isBootstrappingUser, setIsBootstrappingUser] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [isSavingPreferences, setIsSavingPreferences] = useState(false);
   const [isPickingAvatar, setIsPickingAvatar] = useState(false);
   const [isPickingHero, setIsPickingHero] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
@@ -148,13 +164,23 @@ export default function ProfileScreen() {
   );
   const [isLocalArtistProfileReady, setIsLocalArtistProfileReady] =
     useState(false);
+  const [localProfilePreferences, setLocalProfilePreferencesState] = useState(
+    DEFAULT_LOCAL_PROFILE_PREFERENCES,
+  );
+  const [isLocalProfilePreferencesReady, setIsLocalProfilePreferencesReady] =
+    useState(false);
 
   const [artistNameDraft, setArtistNameDraft] = useState("");
   const [heroImageUrlDraft, setHeroImageUrlDraft] = useState<string | null>(null);
   const [avatarImageUrlDraft, setAvatarImageUrlDraft] = useState<string | null>(
     null,
   );
+  const [defaultAspectRatioDraft, setDefaultAspectRatioDraft] =
+    useState<AspectRatioPreference>("9:16");
+  const [defaultVideoLengthDraft, setDefaultVideoLengthDraft] =
+    useState<VideoLengthPreference>(15);
   const [linksDraft, setLinksDraft] = useState<DraftProfileLink[]>([]);
+  const [nativeFieldSeed, setNativeFieldSeed] = useState(0);
   const [isProfileSettingsOpen, setIsProfileSettingsOpen] = useState(false);
   const [isClosingProfileSettings, setIsClosingProfileSettings] = useState(false);
   const profileSettingsTranslateX = useRef(new Animated.Value(windowWidth)).current;
@@ -175,11 +201,27 @@ export default function ProfileScreen() {
     };
   }, []);
 
+  useEffect(() => {
+    let isActive = true;
+    setIsLocalProfilePreferencesReady(false);
+
+    (async () => {
+      const preferences = await getLocalProfilePreferences();
+      if (!isActive) return;
+      setLocalProfilePreferencesState(preferences);
+      setIsLocalProfilePreferencesReady(true);
+    })();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
   const usesLocalProfile = isLocalGuest || !isSignedIn;
   const isConvexUnavailableForSignedIn = Boolean(isSignedIn) && !isAuthenticated;
 
   const isProfileLoading = usesLocalProfile
-    ? !isLocalArtistProfileReady
+    ? !isLocalArtistProfileReady || !isLocalProfilePreferencesReady
     : isConvexUnavailableForSignedIn
       ? false
       : convexUser === undefined || isBootstrappingUser || isConvexAuthLoading;
@@ -212,14 +254,33 @@ export default function ProfileScreen() {
       ),
     [usesLocalProfile, localArtistProfile.links, convexUser?.links],
   );
+  const sourceDefaultAspectRatio = usesLocalProfile
+    ? localProfilePreferences.defaultAspectRatio
+    : convexUser?.preferences?.defaultAspectRatio ??
+      localProfilePreferences.defaultAspectRatio;
+  const sourceDefaultVideoLength = usesLocalProfile
+    ? localProfilePreferences.defaultVideoLength
+    : convexUser?.preferences?.defaultVideoLength ??
+      localProfilePreferences.defaultVideoLength;
 
   useEffect(() => {
     if (isProfileLoading) return;
     setArtistNameDraft(sourceArtistName);
     setHeroImageUrlDraft(sourceHeroImageUrl);
     setAvatarImageUrlDraft(sourceAvatarImageUrl);
+    setDefaultAspectRatioDraft(sourceDefaultAspectRatio);
+    setDefaultVideoLengthDraft(sourceDefaultVideoLength);
     setLinksDraft(sourceLinks);
-  }, [isProfileLoading, sourceArtistName, sourceHeroImageUrl, sourceAvatarImageUrl, sourceLinks]);
+    setNativeFieldSeed((prev) => prev + 1);
+  }, [
+    isProfileLoading,
+    sourceArtistName,
+    sourceHeroImageUrl,
+    sourceAvatarImageUrl,
+    sourceDefaultAspectRatio,
+    sourceDefaultVideoLength,
+    sourceLinks,
+  ]);
 
   const track = useCallback(
     (event: EventName, props?: Record<string, string>) => {
@@ -302,16 +363,28 @@ export default function ProfileScreen() {
 
   const handleUpdateLinkUrl = useCallback(
     (platform: ProfileLinkPlatform, url: string) => {
-      setLinksDraft((prev) =>
-        prev.map((link) =>
+      setLinksDraft((prev) => {
+        const existingIndex = prev.findIndex((link) => link.platform === platform);
+        if (existingIndex === -1) {
+          return [
+            ...prev,
+            {
+              platform,
+              url,
+              sortOrder: prev.length,
+            },
+          ];
+        }
+
+        return prev.map((link) =>
           link.platform === platform
             ? {
                 ...link,
                 url,
               }
             : link,
-        ),
-      );
+        );
+      });
     },
     [],
   );
@@ -333,7 +406,7 @@ export default function ProfileScreen() {
 
   const saveProfile = useCallback(
     async (options: SaveProfileOptions = {}) => {
-      if (isSavingProfile || isSigningOut || isDeleting) return;
+      if (isSavingProfile || isSavingPreferences || isSigningOut || isDeleting) return;
       const includeLinks = options.includeLinks ?? true;
 
       setErrorText(null);
@@ -417,11 +490,127 @@ export default function ProfileScreen() {
       isDeleting,
       isMissingConvexTemplateError,
       isSavingProfile,
+      isSavingPreferences,
       isSigningOut,
       isUnauthenticatedError,
       linksDraft,
       updateProfile,
       usesLocalProfile,
+    ],
+  );
+
+  const savePreferences = useCallback(
+    async (updates: Partial<{
+      defaultAspectRatio: AspectRatioPreference;
+      defaultVideoLength: VideoLengthPreference;
+    }>) => {
+      if (
+        isProfileLoading ||
+        isSavingPreferences ||
+        isSavingProfile ||
+        isSigningOut ||
+        isDeleting
+      ) {
+        return;
+      }
+
+      setErrorText(null);
+      setIsSavingPreferences(true);
+      const nextPreferences = {
+        defaultAspectRatio: updates.defaultAspectRatio ?? defaultAspectRatioDraft,
+        defaultVideoLength: updates.defaultVideoLength ?? defaultVideoLengthDraft,
+      };
+
+      try {
+        const cached = await setLocalProfilePreferences(nextPreferences);
+        setLocalProfilePreferencesState(cached);
+
+        if (!usesLocalProfile) {
+          await ensureUserRecord(convexUser);
+          await updateProfile({
+            preferences: nextPreferences,
+          });
+        }
+
+        const changedKey =
+          updates.defaultAspectRatio !== undefined
+            ? "default_aspect_ratio"
+            : updates.defaultVideoLength !== undefined
+              ? "default_video_length"
+              : "multiple";
+        const changedValue =
+          updates.defaultAspectRatio !== undefined
+            ? updates.defaultAspectRatio
+            : updates.defaultVideoLength !== undefined
+              ? String(updates.defaultVideoLength)
+              : `${nextPreferences.defaultAspectRatio}|${nextPreferences.defaultVideoLength}`;
+
+        track("profile_preference_updated", {
+          key: changedKey,
+          value: changedValue,
+          mode: usesLocalProfile ? "local" : "convex",
+        });
+      } catch (error) {
+        const preferenceError = isMissingConvexTemplateError(error)
+          ? "Clerk JWT template 'convex' is missing. Configure it in Clerk, then sign out/in."
+          : isUnauthenticatedError(error)
+            ? "Session isn't ready yet. Please wait a moment and try again."
+            : "Couldn't update preferences. Please try again.";
+        setErrorText(preferenceError);
+        console.warn("Failed to save preferences:", error);
+      } finally {
+        setIsSavingPreferences(false);
+      }
+    },
+    [
+      convexUser,
+      defaultAspectRatioDraft,
+      defaultVideoLengthDraft,
+      ensureUserRecord,
+      isDeleting,
+      isMissingConvexTemplateError,
+      isProfileLoading,
+      isSavingPreferences,
+      isSavingProfile,
+      isSigningOut,
+      isUnauthenticatedError,
+      track,
+      updateProfile,
+      usesLocalProfile,
+    ],
+  );
+
+  const handleNativeAspectRatioSelect = useCallback(
+    (index: number) => {
+      if (isProfileLoading || isSavingPreferences || isSavingProfile) return;
+      const nextAspectRatio = ASPECT_RATIO_OPTIONS[index] ?? ASPECT_RATIO_OPTIONS[0];
+      if (nextAspectRatio === defaultAspectRatioDraft) return;
+      setDefaultAspectRatioDraft(nextAspectRatio);
+      void savePreferences({ defaultAspectRatio: nextAspectRatio });
+    },
+    [
+      defaultAspectRatioDraft,
+      isProfileLoading,
+      isSavingPreferences,
+      isSavingProfile,
+      savePreferences,
+    ],
+  );
+
+  const handleNativeVideoLengthSelect = useCallback(
+    (index: number) => {
+      if (isProfileLoading || isSavingPreferences || isSavingProfile) return;
+      const nextVideoLength = VIDEO_LENGTH_OPTIONS[index] ?? VIDEO_LENGTH_OPTIONS[0];
+      if (nextVideoLength === defaultVideoLengthDraft) return;
+      setDefaultVideoLengthDraft(nextVideoLength);
+      void savePreferences({ defaultVideoLength: nextVideoLength });
+    },
+    [
+      defaultVideoLengthDraft,
+      isProfileLoading,
+      isSavingPreferences,
+      isSavingProfile,
+      savePreferences,
     ],
   );
 
@@ -597,27 +786,60 @@ export default function ProfileScreen() {
     );
   }, [runDeleteAccount]);
 
-  const availablePlatforms = useMemo(() => {
-    const used = new Set(linksDraft.map((link) => link.platform));
-    return PROFILE_LINK_PLATFORMS.filter((platform) => !used.has(platform));
+  const linksDraftByPlatform = useMemo(() => {
+    const mapping = {} as Record<ProfileLinkPlatform, string>;
+    for (const platform of PROFILE_LINK_PLATFORMS) {
+      mapping[platform] = "";
+    }
+    for (const link of linksDraft) {
+      mapping[link.platform] = link.url;
+    }
+    return mapping;
   }, [linksDraft]);
+  const nativeProfileAvailability = getIOSNativeUIPhase5Availability({
+    minIOSVersion: 16,
+  });
+  const nativeProfileEnabledByContract = nativeProfileAvailability.enabled;
+  const expoSwiftUI = nativeProfileEnabledByContract
+    ? (ExpoSwiftUI as ExpoSwiftUIModule)
+    : null;
+  const expoSwiftUIAny = expoSwiftUI as Record<string, unknown> | null;
+  const hasNativeProfileComponents = Boolean(
+    expoSwiftUIAny &&
+      "Host" in expoSwiftUIAny &&
+      "Form" in expoSwiftUIAny &&
+      "Section" in expoSwiftUIAny &&
+      "LabeledContent" in expoSwiftUIAny &&
+      "TextField" in expoSwiftUIAny &&
+      "Picker" in expoSwiftUIAny &&
+      "Button" in expoSwiftUIAny &&
+      "Text" in expoSwiftUIAny,
+  );
+  const canUseNativeProfileSettings =
+    nativeProfileEnabledByContract &&
+    expoSwiftUI !== null &&
+    hasNativeProfileComponents;
+
   const heroHeight = Math.max(380, Math.min(Math.round(windowHeight * 0.5), 560));
   const heroBannerHeight = Math.max(
     240,
     Math.min(Math.round(windowWidth * 0.72), Math.round(heroHeight * 0.76)),
   );
   const heroArtistName = artistNameDraft.trim() || "Tap to add artist name";
+  const primaryEmail = clerkUser?.primaryEmailAddress?.emailAddress ?? null;
   const actionsDisabled = isSigningOut || isDeleting;
   const profileInputsDisabled =
     isProfileLoading ||
     isSavingProfile ||
+    isSavingPreferences ||
     isSigningOut ||
     isDeleting ||
     isPickingAvatar ||
     isPickingHero;
-  const profileSettingsDisabled = profileInputsDisabled || isSavingProfile;
+  const profileSettingsDisabled = profileInputsDisabled;
   const modalTopInset = Platform.OS === "ios" ? (insets.top > 0 ? insets.top : 44) : 0;
   const heroTopInsetOffset = Platform.OS === "ios" ? -insets.top : 0;
+  const shouldUseRNSettingsGesture = !canUseNativeProfileSettings;
 
   const handleOpenProfileSettings = useCallback(() => {
     if (isProfileSettingsOpen || isClosingProfileSettings) return;
@@ -649,9 +871,10 @@ export default function ProfileScreen() {
     }).start(() => {
       setIsClosingProfileSettings(false);
       setIsProfileSettingsOpen(false);
-      void saveProfile({ includeLinks: false });
+      void saveProfile({ includeLinks: canUseNativeProfileSettings });
     });
   }, [
+    canUseNativeProfileSettings,
     isProfileSettingsOpen,
     isClosingProfileSettings,
     profileSettingsTranslateX,
@@ -763,142 +986,279 @@ export default function ProfileScreen() {
                   edges={[]}
                 >
                   <StatusBar style="dark" />
-                <View
-                  style={styles.profileSettingsHeader}
-                  {...profileSettingsPanResponder.panHandlers}
-                >
-                  <Pressable
-                    onPress={handleCloseProfileSettings}
-                    style={({ pressed }) => [
-                      styles.profileSettingsBackButton,
-                      pressed && styles.profileSettingsBackButtonPressed,
-                    ]}
-                    accessibilityLabel="Close edit profile"
-                    accessibilityRole="button"
+                  <View
+                    style={styles.profileSettingsHeader}
+                    {...(shouldUseRNSettingsGesture
+                      ? profileSettingsPanResponder.panHandlers
+                      : {})}
                   >
-                    <Ionicons name="chevron-back" size={24} color="#121826" />
-                  </Pressable>
-                  <Text style={styles.profileSettingsHeaderTitle}>Edit profile</Text>
-                </View>
-                <ScrollView
-                  contentContainerStyle={styles.profileSettingsContent}
-                  keyboardShouldPersistTaps="handled"
-                >
-                  <View style={styles.profileSettingsAvatarSection}>
-                    <View style={styles.profileSettingsMediaRow}>
-                      <View style={styles.profileSettingsMediaColumn}>
-                        <Pressable
-                          onPress={() => {
-                            void handlePickAvatar();
-                          }}
-                          disabled={profileSettingsDisabled}
-                          style={({ pressed }) => [
-                            styles.profileSettingsMediaCircle,
-                            profileSettingsDisabled && styles.heroActionDisabled,
-                            pressed && !profileSettingsDisabled && styles.optionChipPressed,
-                          ]}
-                          accessibilityLabel="Edit profile picture"
-                          accessibilityRole="button"
-                        >
-                          {avatarImageUrlDraft ? (
-                            <Image
-                              source={{ uri: avatarImageUrlDraft }}
-                              style={styles.profileSettingsMediaImage}
+                    <Pressable
+                      onPress={handleCloseProfileSettings}
+                      style={({ pressed }) => [
+                        styles.profileSettingsBackButton,
+                        pressed && styles.profileSettingsBackButtonPressed,
+                      ]}
+                      accessibilityLabel="Close edit profile"
+                      accessibilityRole="button"
+                    >
+                      <Ionicons name="chevron-back" size={24} color="#121826" />
+                    </Pressable>
+                    <Text style={styles.profileSettingsHeaderTitle}>Edit profile</Text>
+                  </View>
+                  {canUseNativeProfileSettings && expoSwiftUI ? (
+                    <expoSwiftUI.Host
+                      style={styles.nativeSettingsHost}
+                      useViewportSizeMeasurement
+                      colorScheme="light"
+                    >
+                      <expoSwiftUI.Form>
+                        <expoSwiftUI.Section title="Identity">
+                          <expoSwiftUI.LabeledContent label="Account">
+                            <expoSwiftUI.Text>{displayName}</expoSwiftUI.Text>
+                          </expoSwiftUI.LabeledContent>
+                          {primaryEmail ? (
+                            <expoSwiftUI.LabeledContent label="Email">
+                              <expoSwiftUI.Text>{primaryEmail}</expoSwiftUI.Text>
+                            </expoSwiftUI.LabeledContent>
+                          ) : null}
+                          <expoSwiftUI.LabeledContent label="Artist name">
+                            <expoSwiftUI.TextField
+                              key={`native-artist-name-${nativeFieldSeed}`}
+                              defaultValue={artistNameDraft}
+                              placeholder="Add name"
+                              autocorrection={false}
+                              onChangeText={setArtistNameDraft}
                             />
-                          ) : (
-                            <Ionicons name="person" size={44} color="#8792AA" />
-                          )}
-                        </Pressable>
-                        <Text style={styles.profileSettingsMediaLabel}>Avatar</Text>
-                        <Pressable
-                          onPress={() => {
-                            void handlePickAvatar();
-                          }}
-                          disabled={profileSettingsDisabled}
-                          style={({ pressed }) => [
-                            styles.profileSettingsMediaCtaButton,
-                            pressed && !profileSettingsDisabled && styles.optionChipPressed,
-                          ]}
-                          accessibilityLabel="Edit avatar"
-                          accessibilityRole="button"
-                        >
-                          {isPickingAvatar ? (
-                            <ActivityIndicator size="small" color="#4A5BEA" />
-                          ) : (
-                            <Text style={styles.profileSettingsMediaCtaText}>Edit avatar</Text>
-                          )}
-                        </Pressable>
+                          </expoSwiftUI.LabeledContent>
+                          <expoSwiftUI.Button
+                            disabled={profileSettingsDisabled}
+                            systemImage="person.crop.circle.badge.plus"
+                            onPress={() => {
+                              void handlePickAvatar();
+                            }}
+                          >
+                            {isPickingAvatar ? "Updating avatar..." : "Change avatar photo"}
+                          </expoSwiftUI.Button>
+                          <expoSwiftUI.Button
+                            disabled={profileSettingsDisabled}
+                            systemImage="photo.badge.plus"
+                            onPress={() => {
+                              void handlePickHero();
+                            }}
+                          >
+                            {isPickingHero ? "Updating banner..." : "Change banner photo"}
+                          </expoSwiftUI.Button>
+                          <expoSwiftUI.Button
+                            variant="borderedProminent"
+                            disabled={profileSettingsDisabled}
+                            systemImage="checkmark"
+                            onPress={() => {
+                              void saveProfile();
+                            }}
+                          >
+                            {isSavingProfile ? "Saving profile..." : "Save profile changes"}
+                          </expoSwiftUI.Button>
+                        </expoSwiftUI.Section>
+
+                        <expoSwiftUI.Section title="Preferences">
+                          <expoSwiftUI.Picker
+                            options={ASPECT_RATIO_OPTIONS}
+                            selectedIndex={Math.max(
+                              0,
+                              ASPECT_RATIO_OPTIONS.indexOf(defaultAspectRatioDraft),
+                            )}
+                            label="Default aspect ratio"
+                            variant="menu"
+                            onOptionSelected={(event) => {
+                              handleNativeAspectRatioSelect(event.nativeEvent.index);
+                            }}
+                          />
+                          <expoSwiftUI.Picker
+                            options={VIDEO_LENGTH_LABELS}
+                            selectedIndex={Math.max(
+                              0,
+                              VIDEO_LENGTH_OPTIONS.indexOf(defaultVideoLengthDraft),
+                            )}
+                            label="Default video length"
+                            variant="menu"
+                            onOptionSelected={(event) => {
+                              handleNativeVideoLengthSelect(event.nativeEvent.index);
+                            }}
+                          />
+                        </expoSwiftUI.Section>
+
+                        <expoSwiftUI.Section title="Profile Links">
+                          {PROFILE_LINK_PLATFORMS.map((platform) => (
+                            <expoSwiftUI.LabeledContent
+                              key={platform}
+                              label={PLATFORM_LABELS[platform]}
+                            >
+                              <expoSwiftUI.TextField
+                                key={`native-link-${platform}-${nativeFieldSeed}`}
+                                defaultValue={linksDraftByPlatform[platform] ?? ""}
+                                placeholder="https://"
+                                autocorrection={false}
+                                keyboardType="url"
+                                onChangeText={(value) => {
+                                  handleUpdateLinkUrl(platform, value);
+                                }}
+                              />
+                            </expoSwiftUI.LabeledContent>
+                          ))}
+                        </expoSwiftUI.Section>
+
+                        <expoSwiftUI.Section title="Account Actions">
+                          <expoSwiftUI.Button
+                            disabled={actionsDisabled}
+                            systemImage="rectangle.portrait.and.arrow.right"
+                            onPress={handleSignOut}
+                          >
+                            {isSigningOut
+                              ? "Signing out..."
+                              : isLocalGuest
+                                ? "Exit guest mode"
+                                : "Sign out"}
+                          </expoSwiftUI.Button>
+                          {!isLocalGuest ? (
+                            <expoSwiftUI.Button
+                              role="destructive"
+                              disabled={actionsDisabled}
+                              systemImage="trash"
+                              onPress={handleDeleteAccount}
+                            >
+                              {isDeleting ? "Deleting account..." : "Delete account"}
+                            </expoSwiftUI.Button>
+                          ) : null}
+                        </expoSwiftUI.Section>
+
+                        {errorText ? (
+                          <expoSwiftUI.Section title="Status">
+                            <expoSwiftUI.Text color="#C8383B">{errorText}</expoSwiftUI.Text>
+                          </expoSwiftUI.Section>
+                        ) : null}
+                      </expoSwiftUI.Form>
+                    </expoSwiftUI.Host>
+                  ) : (
+                    <ScrollView
+                      contentContainerStyle={styles.profileSettingsContent}
+                      keyboardShouldPersistTaps="handled"
+                    >
+                      <View style={styles.profileSettingsAvatarSection}>
+                        <View style={styles.profileSettingsMediaRow}>
+                          <View style={styles.profileSettingsMediaColumn}>
+                            <Pressable
+                              onPress={() => {
+                                void handlePickAvatar();
+                              }}
+                              disabled={profileSettingsDisabled}
+                              style={({ pressed }) => [
+                                styles.profileSettingsMediaCircle,
+                                profileSettingsDisabled && styles.heroActionDisabled,
+                                pressed && !profileSettingsDisabled && styles.optionChipPressed,
+                              ]}
+                              accessibilityLabel="Edit profile picture"
+                              accessibilityRole="button"
+                            >
+                              {avatarImageUrlDraft ? (
+                                <Image
+                                  source={{ uri: avatarImageUrlDraft }}
+                                  style={styles.profileSettingsMediaImage}
+                                />
+                              ) : (
+                                <Ionicons name="person" size={44} color="#8792AA" />
+                              )}
+                            </Pressable>
+                            <Text style={styles.profileSettingsMediaLabel}>Avatar</Text>
+                            <Pressable
+                              onPress={() => {
+                                void handlePickAvatar();
+                              }}
+                              disabled={profileSettingsDisabled}
+                              style={({ pressed }) => [
+                                styles.profileSettingsMediaCtaButton,
+                                pressed && !profileSettingsDisabled && styles.optionChipPressed,
+                              ]}
+                              accessibilityLabel="Edit avatar"
+                              accessibilityRole="button"
+                            >
+                              {isPickingAvatar ? (
+                                <ActivityIndicator size="small" color="#4A5BEA" />
+                              ) : (
+                                <Text style={styles.profileSettingsMediaCtaText}>Edit avatar</Text>
+                              )}
+                            </Pressable>
+                          </View>
+
+                          <View style={styles.profileSettingsMediaColumn}>
+                            <Pressable
+                              onPress={() => {
+                                void handlePickHero();
+                              }}
+                              disabled={profileSettingsDisabled}
+                              style={({ pressed }) => [
+                                styles.profileSettingsMediaCircle,
+                                profileSettingsDisabled && styles.heroActionDisabled,
+                                pressed && !profileSettingsDisabled && styles.optionChipPressed,
+                              ]}
+                              accessibilityLabel="Edit banner picture"
+                              accessibilityRole="button"
+                            >
+                              {heroImageUrlDraft ? (
+                                <Image
+                                  source={{ uri: heroImageUrlDraft }}
+                                  style={styles.profileSettingsMediaImage}
+                                />
+                              ) : (
+                                <Ionicons name="image-outline" size={40} color="#8792AA" />
+                              )}
+                            </Pressable>
+                            <Text style={styles.profileSettingsMediaLabel}>Banner</Text>
+                            <Pressable
+                              onPress={() => {
+                                void handlePickHero();
+                              }}
+                              disabled={profileSettingsDisabled}
+                              style={({ pressed }) => [
+                                styles.profileSettingsMediaCtaButton,
+                                pressed && !profileSettingsDisabled && styles.optionChipPressed,
+                              ]}
+                              accessibilityLabel="Edit banner"
+                              accessibilityRole="button"
+                            >
+                              {isPickingHero ? (
+                                <ActivityIndicator size="small" color="#4A5BEA" />
+                              ) : (
+                                <Text style={styles.profileSettingsMediaCtaText}>Edit banner</Text>
+                              )}
+                            </Pressable>
+                          </View>
+                        </View>
                       </View>
 
-                      <View style={styles.profileSettingsMediaColumn}>
-                        <Pressable
-                          onPress={() => {
-                            void handlePickHero();
-                          }}
-                          disabled={profileSettingsDisabled}
-                          style={({ pressed }) => [
-                            styles.profileSettingsMediaCircle,
-                            profileSettingsDisabled && styles.heroActionDisabled,
-                            pressed && !profileSettingsDisabled && styles.optionChipPressed,
-                          ]}
-                          accessibilityLabel="Edit banner picture"
-                          accessibilityRole="button"
-                        >
-                          {heroImageUrlDraft ? (
-                            <Image
-                              source={{ uri: heroImageUrlDraft }}
-                              style={styles.profileSettingsMediaImage}
-                            />
-                          ) : (
-                            <Ionicons name="image-outline" size={40} color="#8792AA" />
-                          )}
-                        </Pressable>
-                        <Text style={styles.profileSettingsMediaLabel}>Banner</Text>
-                        <Pressable
-                          onPress={() => {
-                            void handlePickHero();
-                          }}
-                          disabled={profileSettingsDisabled}
-                          style={({ pressed }) => [
-                            styles.profileSettingsMediaCtaButton,
-                            pressed && !profileSettingsDisabled && styles.optionChipPressed,
-                          ]}
-                          accessibilityLabel="Edit banner"
-                          accessibilityRole="button"
-                        >
-                          {isPickingHero ? (
-                            <ActivityIndicator size="small" color="#4A5BEA" />
-                          ) : (
-                            <Text style={styles.profileSettingsMediaCtaText}>Edit banner</Text>
-                          )}
-                        </Pressable>
+                      <View style={styles.profileSettingsCard}>
+                        <View style={styles.profileSettingsRow}>
+                          <Text style={styles.profileSettingsRowLabel}>Name</Text>
+                          <TextInput
+                            value={artistNameDraft}
+                            onChangeText={setArtistNameDraft}
+                            placeholder="Add name"
+                            placeholderTextColor="#A7AFC0"
+                            editable={!profileSettingsDisabled}
+                            onSubmitEditing={() => {
+                              void saveProfile({ includeLinks: false });
+                            }}
+                            onBlur={() => {
+                              void saveProfile({ includeLinks: false });
+                            }}
+                            style={styles.profileSettingsNameInput}
+                            autoCapitalize="words"
+                            autoCorrect={false}
+                            returnKeyType="done"
+                          />
+                        </View>
                       </View>
-                    </View>
-                  </View>
-
-                  <View style={styles.profileSettingsCard}>
-                    <View style={styles.profileSettingsRow}>
-                      <Text style={styles.profileSettingsRowLabel}>Name</Text>
-                      <TextInput
-                        value={artistNameDraft}
-                        onChangeText={setArtistNameDraft}
-                        placeholder="Add name"
-                        placeholderTextColor="#A7AFC0"
-                        editable={!profileSettingsDisabled}
-                        onSubmitEditing={() => {
-                          void saveProfile({ includeLinks: false });
-                        }}
-                        onBlur={() => {
-                          void saveProfile({ includeLinks: false });
-                        }}
-                        style={styles.profileSettingsNameInput}
-                        autoCapitalize="words"
-                        autoCorrect={false}
-                        returnKeyType="done"
-                      />
-                    </View>
-                  </View>
-                </ScrollView>
+                    </ScrollView>
+                  )}
               </SafeAreaView>
             </Animated.View>
             </View>
@@ -1089,6 +1449,10 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
   },
   profileSettingsScreen: {
+    flex: 1,
+    backgroundColor: "#F4F5F7",
+  },
+  nativeSettingsHost: {
     flex: 1,
     backgroundColor: "#F4F5F7",
   },
