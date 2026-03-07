@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Animated,
   ActivityIndicator,
   Alert,
+  Easing,
   Image as RNImage,
   Modal,
+  PanResponder,
   Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -15,11 +17,17 @@ import {
 } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import * as Haptics from "expo-haptics";
+import * as ExpoSwiftUI from "@expo/ui/swift-ui";
 import { Image as ExpoImage } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { toByteArray } from "base64-js";
 import { TemplateInfoBadge } from "@/components/create/TemplateInfoBadge";
 import { colors, radius, spacing, typography } from "@/constants/tokens";
+import {
+  getIOSNativeUIPhase5Availability,
+  type ExpoSwiftUIModule,
+} from "@/lib/iosNativeUi";
 import { persistPickedMediaFile } from "@/lib/mediaStorage";
 import { getTemplateDefinition, type TemplateTweaks } from "@/lib/templates";
 
@@ -66,6 +74,7 @@ const DEFAULT_CUSTOM_LIGHTNESS = 34;
 const CUSTOM_TONE_OPTIONS = [14, 32, 50, 68, 86];
 const CUSTOM_TONE_LABELS = ["Deep", "Dark", "Base", "Soft", "Glow"] as const;
 const STAGE_HORIZONTAL_PADDING = spacing.sm * 2;
+const SHEET_RESTING_OFFSET = 14;
 const DEFAULT_BACKGROUND_OPTIONS: BackgroundOption[] = [
   { id: "default", label: "Default", color: null, swatch: "#080A12" },
   { id: "indigo", label: "Indigo", color: "#14142d", swatch: "#35357a" },
@@ -94,6 +103,24 @@ function formatRotationStart(value: number): string {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(value, max));
+}
+
+function findClosestOptionIndex(options: number[], value: number): number {
+  const exactIndex = options.indexOf(value);
+  if (exactIndex >= 0) return exactIndex;
+  if (options.length === 0) return 0;
+
+  let closestIndex = 0;
+  let closestDistance = Number.POSITIVE_INFINITY;
+  for (let index = 0; index < options.length; index += 1) {
+    const option = options[index];
+    const distance = Math.abs(option - value);
+    if (distance < closestDistance) {
+      closestDistance = distance;
+      closestIndex = index;
+    }
+  }
+  return closestIndex;
 }
 
 function hslToHex(h: number, s: number, l: number): string {
@@ -495,12 +522,23 @@ export function TemplateCustomizeModal({
   onApply,
 }: TemplateCustomizeModalProps) {
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const sheetTranslateY = useRef(new Animated.Value(0)).current;
+  const windowWidthRef = useRef(windowWidth);
+  const windowHeightRef = useRef(windowHeight);
+  const openAnimationRef = useRef<Animated.CompositeAnimation | null>(null);
+  const dragStartOffsetRef = useRef(0);
+  const isClosingFromSwipeRef = useRef(false);
+  const closeRequestedRef = useRef(false);
+  const closeAnimationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [draft, setDraft] = useState<TemplateTweaks>(value);
   const [customHue, setCustomHue] = useState(DEFAULT_CUSTOM_HUE);
   const [customSaturation, setCustomSaturation] = useState(DEFAULT_CUSTOM_SATURATION);
   const [customLightness, setCustomLightness] = useState(DEFAULT_CUSTOM_LIGHTNESS);
   const [isCustomColorEnabled, setIsCustomColorEnabled] = useState(false);
   const [isBackgroundPhotoLoading, setIsBackgroundPhotoLoading] = useState(false);
+  const [isNativeBackgroundExpanded, setIsNativeBackgroundExpanded] = useState(true);
+  const [isNativeAdvancedExpanded, setIsNativeAdvancedExpanded] = useState(false);
   const [lastPresetBackgroundColor, setLastPresetBackgroundColor] = useState<
     string | null
   >(null);
@@ -510,6 +548,58 @@ export function TemplateCustomizeModal({
   const customColor = useMemo(
     () => hslToHex(customHue, customSaturation, customLightness),
     [customHue, customSaturation, customLightness],
+  );
+  const modalTopInset = useMemo(() => {
+    if (Platform.OS !== "ios") return 0;
+    if (insets.top > 0) return insets.top;
+    return 44;
+  }, [insets.top]);
+
+  useEffect(() => {
+    if (visible) return;
+    windowWidthRef.current = windowWidth;
+    windowHeightRef.current = windowHeight;
+  }, [visible, windowHeight, windowWidth]);
+
+  useEffect(() => {
+    if (!visible) return;
+    isClosingFromSwipeRef.current = false;
+    closeRequestedRef.current = false;
+    if (closeAnimationTimerRef.current) {
+      clearTimeout(closeAnimationTimerRef.current);
+      closeAnimationTimerRef.current = null;
+    }
+    dragStartOffsetRef.current = 0;
+    openAnimationRef.current?.stop();
+    const entryOffset = Math.max(windowHeightRef.current + SHEET_RESTING_OFFSET, 1);
+    sheetTranslateY.stopAnimation();
+    sheetTranslateY.setValue(entryOffset);
+    openAnimationRef.current = Animated.timing(sheetTranslateY, {
+      toValue: SHEET_RESTING_OFFSET,
+      duration: 220,
+      easing: Easing.bezier(0.22, 1, 0.36, 1),
+      useNativeDriver: true,
+    });
+    openAnimationRef.current.start(({ finished }) => {
+      if (finished) {
+        sheetTranslateY.setValue(SHEET_RESTING_OFFSET);
+      }
+      openAnimationRef.current = null;
+    });
+    setIsNativeBackgroundExpanded(true);
+    setIsNativeAdvancedExpanded(false);
+  }, [visible, sheetTranslateY]);
+
+  useEffect(
+    () => () => {
+      openAnimationRef.current?.stop();
+      openAnimationRef.current = null;
+      if (closeAnimationTimerRef.current) {
+        clearTimeout(closeAnimationTimerRef.current);
+        closeAnimationTimerRef.current = null;
+      }
+    },
+    [],
   );
 
   useEffect(() => {
@@ -560,9 +650,11 @@ export function TemplateCustomizeModal({
 
   const isBackgroundPhotoSelected = Boolean(draft.stageBackgroundImageUri);
   const TemplateStageComponent = getTemplateDefinition(templateId).StageComponent;
+  const stageViewportWidth = visible ? windowWidthRef.current : windowWidth;
+  const stageViewportHeight = visible ? windowHeightRef.current : windowHeight;
   const previewStageSize = Math.min(
-    windowWidth - STAGE_HORIZONTAL_PADDING,
-    windowHeight * 0.66,
+    stageViewportWidth - STAGE_HORIZONTAL_PADDING,
+    stageViewportHeight * 0.66,
     520,
   );
   const selectedRotationDirectionLabel =
@@ -570,29 +662,79 @@ export function TemplateCustomizeModal({
       (option) => option.value === draft.rotationDirection,
     )?.label ?? "CW";
   const showToneOptions = customSaturation > 2;
+  const nativeTemplateControlsAvailability = getIOSNativeUIPhase5Availability({
+    minIOSVersion: 16,
+  });
+  const nativeTemplateControlsEnabledByContract =
+    nativeTemplateControlsAvailability.enabled;
+  const expoSwiftUI = nativeTemplateControlsEnabledByContract
+    ? (ExpoSwiftUI as ExpoSwiftUIModule)
+    : null;
+  const expoSwiftUIAny = expoSwiftUI as Record<string, unknown> | null;
+  const hasNativeTemplateControlsComponents = Boolean(
+    expoSwiftUIAny &&
+      "Host" in expoSwiftUIAny &&
+      "Form" in expoSwiftUIAny &&
+      "Section" in expoSwiftUIAny &&
+      "DisclosureGroup" in expoSwiftUIAny &&
+      "Picker" in expoSwiftUIAny &&
+      "Slider" in expoSwiftUIAny &&
+      "LabeledContent" in expoSwiftUIAny &&
+      "Text" in expoSwiftUIAny &&
+      "Button" in expoSwiftUIAny &&
+      "ColorPicker" in expoSwiftUIAny,
+  );
+  const canUseNativeTemplateControls =
+    nativeTemplateControlsEnabledByContract &&
+    expoSwiftUI !== null &&
+    hasNativeTemplateControlsComponents;
+  const backgroundOptionsLabels = useMemo(
+    () => backgroundOptions.map((option) => option.label),
+    [backgroundOptions],
+  );
+  const selectedBackgroundOptionIndex = useMemo(() => {
+    const optionIndex = backgroundOptions.findIndex(
+      (option) => option.color === (draft.stageBackgroundColor ?? null),
+    );
+    return optionIndex >= 0 ? optionIndex : null;
+  }, [backgroundOptions, draft.stageBackgroundColor]);
 
-  const updateSpinSpeed = useCallback((spinSpeed: number) => {
+  const updateSpinSpeed = useCallback((spinSpeed: number, withHaptics = true) => {
     if (spinSpeed === draft.spinSpeed) return;
     setDraft((prev) => ({ ...prev, spinSpeed }));
-    void triggerSelectionHaptic();
+    if (withHaptics) {
+      void triggerSelectionHaptic();
+    }
   }, [draft.spinSpeed]);
 
-  const updateRecordTransparency = useCallback((recordTransparency: number) => {
+  const updateRecordTransparency = useCallback((
+    recordTransparency: number,
+    withHaptics = true,
+  ) => {
     if (recordTransparency === draft.recordTransparency) return;
     setDraft((prev) => ({ ...prev, recordTransparency }));
-    void triggerSelectionHaptic();
+    if (withHaptics) {
+      void triggerSelectionHaptic();
+    }
   }, [draft.recordTransparency]);
 
-  const updateBackgroundBlur = useCallback((backgroundBlur: number) => {
+  const updateBackgroundBlur = useCallback((backgroundBlur: number, withHaptics = true) => {
     if (backgroundBlur === draft.backgroundBlur) return;
     setDraft((prev) => ({ ...prev, backgroundBlur }));
-    void triggerSelectionHaptic();
+    if (withHaptics) {
+      void triggerSelectionHaptic();
+    }
   }, [draft.backgroundBlur]);
 
-  const updateRotationStartDeg = useCallback((rotationStartDeg: number) => {
+  const updateRotationStartDeg = useCallback((
+    rotationStartDeg: number,
+    withHaptics = true,
+  ) => {
     if (rotationStartDeg === draft.rotationStartDeg) return;
     setDraft((prev) => ({ ...prev, rotationStartDeg }));
-    void triggerSelectionHaptic();
+    if (withHaptics) {
+      void triggerSelectionHaptic();
+    }
   }, [draft.rotationStartDeg]);
 
   const updateRotationDirection = useCallback((rotationDirection: "cw" | "ccw") => {
@@ -754,227 +896,610 @@ export function TemplateCustomizeModal({
     }
   }, [setBackgroundPhoto]);
 
+  const animateSheetBackToRest = useCallback(() => {
+    Animated.timing(sheetTranslateY, {
+      toValue: SHEET_RESTING_OFFSET,
+      duration: 150,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [sheetTranslateY]);
+
+  const requestCloseOnce = useCallback(() => {
+    if (closeRequestedRef.current) return;
+    closeRequestedRef.current = true;
+    isClosingFromSwipeRef.current = false;
+    dragStartOffsetRef.current = 0;
+    if (closeAnimationTimerRef.current) {
+      clearTimeout(closeAnimationTimerRef.current);
+      closeAnimationTimerRef.current = null;
+    }
+    onClose();
+  }, [onClose]);
+
+  const closeFromSwipe = useCallback(() => {
+    if (isClosingFromSwipeRef.current || closeRequestedRef.current) return;
+    isClosingFromSwipeRef.current = true;
+    dragStartOffsetRef.current = 0;
+    openAnimationRef.current?.stop();
+    openAnimationRef.current = null;
+    sheetTranslateY.stopAnimation();
+    if (closeAnimationTimerRef.current) {
+      clearTimeout(closeAnimationTimerRef.current);
+    }
+    closeAnimationTimerRef.current = setTimeout(() => {
+      requestCloseOnce();
+    }, 220);
+    Animated.timing(sheetTranslateY, {
+      toValue: windowHeight + SHEET_RESTING_OFFSET + 56,
+      duration: 200,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start(() => {
+      requestCloseOnce();
+    });
+  }, [requestCloseOnce, sheetTranslateY, windowHeight]);
+
+  const headerPanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () =>
+          !isClosingFromSwipeRef.current && !closeRequestedRef.current,
+        onStartShouldSetPanResponderCapture: () => false,
+        onMoveShouldSetPanResponder: (_, gestureState) =>
+          !isClosingFromSwipeRef.current &&
+          gestureState.dy > 0 &&
+          Math.abs(gestureState.dy) >= Math.abs(gestureState.dx),
+        onMoveShouldSetPanResponderCapture: (_, gestureState) =>
+          !isClosingFromSwipeRef.current &&
+          gestureState.dy > 0 &&
+          Math.abs(gestureState.dy) >= Math.abs(gestureState.dx),
+        onPanResponderGrant: () => {
+          if (isClosingFromSwipeRef.current || closeRequestedRef.current) return;
+          sheetTranslateY.stopAnimation((currentValue) => {
+            dragStartOffsetRef.current = Number.isFinite(currentValue)
+              ? Math.max(0, currentValue)
+              : 0;
+          });
+        },
+        onPanResponderMove: (_, gestureState) => {
+          if (isClosingFromSwipeRef.current || closeRequestedRef.current) return;
+          if (
+            gestureState.dy <= 0 &&
+            dragStartOffsetRef.current <= SHEET_RESTING_OFFSET
+          ) {
+            return;
+          }
+          const nextOffset = clamp(
+            dragStartOffsetRef.current + gestureState.dy,
+            SHEET_RESTING_OFFSET,
+            windowHeight,
+          );
+          sheetTranslateY.setValue(nextOffset);
+        },
+        onPanResponderRelease: (_, gestureState) => {
+          if (isClosingFromSwipeRef.current || closeRequestedRef.current) return;
+          const draggedDistance = dragStartOffsetRef.current + gestureState.dy;
+          const pullDistance = Math.max(
+            0,
+            draggedDistance - SHEET_RESTING_OFFSET,
+          );
+          const shouldDismiss = pullDistance > 12 || gestureState.vy > 0.12;
+          dragStartOffsetRef.current = 0;
+          if (shouldDismiss) {
+            closeFromSwipe();
+            return;
+          }
+          animateSheetBackToRest();
+        },
+        onPanResponderTerminate: () => {
+          if (isClosingFromSwipeRef.current || closeRequestedRef.current) return;
+          sheetTranslateY.stopAnimation((currentValue) => {
+            dragStartOffsetRef.current = 0;
+            if (currentValue > SHEET_RESTING_OFFSET + 2) {
+              closeFromSwipe();
+              return;
+            }
+            animateSheetBackToRest();
+          });
+        },
+        onPanResponderTerminationRequest: () => false,
+      }),
+    [animateSheetBackToRest, closeFromSwipe, sheetTranslateY, windowHeight],
+  );
+
+  const backdropOpacity = useMemo(
+    () =>
+      sheetTranslateY.interpolate({
+        inputRange: [
+          SHEET_RESTING_OFFSET,
+          windowHeight * 0.55,
+          windowHeight + SHEET_RESTING_OFFSET,
+        ],
+        outputRange: [0.36, 0.18, 0],
+        extrapolate: "clamp",
+      }),
+    [sheetTranslateY, windowHeight],
+  );
+
+  const handleNativeBackgroundPresetSelect = useCallback(
+    (index: number) => {
+      const option = backgroundOptions[index];
+      if (!option) return;
+      setIsCustomColorEnabled(false);
+      setLastPresetBackgroundColor(option.color);
+      updateBackground(option.color);
+    },
+    [backgroundOptions, updateBackground],
+  );
+
+  const handleNativeBackgroundColorChange = useCallback(
+    (nextColor: string) => {
+      setIsCustomColorEnabled(true);
+      const parsed = hexToHsl(nextColor);
+      if (parsed) {
+        setCustomHue(parsed.h);
+        setCustomSaturation(clamp(parsed.s, 0, 100));
+        setCustomLightness(clamp(parsed.l, CUSTOM_LIGHTNESS_MIN, CUSTOM_LIGHTNESS_MAX));
+      }
+      updateBackground(nextColor, false);
+    },
+    [updateBackground],
+  );
+
   return (
     <Modal
       visible={visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
+      animationType="none"
+      presentationStyle="overFullScreen"
+      transparent
       allowSwipeDismissal={false}
       onRequestClose={onClose}
     >
-      <SafeAreaView style={styles.root}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Template Controls</Text>
-          <Pressable
-            onPress={onClose}
-            style={styles.headerClose}
-            accessibilityLabel="Close template controls"
-            accessibilityRole="button"
-          >
-            <Ionicons name="close" size={18} color={colors.dark.text} />
-          </Pressable>
-        </View>
-
-        <View style={styles.previewContainer}>
-          <View style={styles.previewCard}>
-            <TemplateStageComponent
-              width={previewStageSize}
-              height={previewStageSize}
-              aspectRatio="1:1"
-              photoUri={photoUri ?? null}
-              isPlaying
-              playbackLabel="Now Playing"
-              trackTitle="Template Preview"
-              subtitle="Template Controls"
-              templateTweaks={draft}
-            />
-            {showTemplateInfo ? (
-              <TemplateInfoBadge
-                templateId={templateId}
-                templateTweaks={draft}
-                aspectRatio="1:1"
-                compact
-                style={styles.previewTemplateInfoBadge}
-              />
-            ) : null}
-          </View>
-        </View>
-
-        <ScrollView
-          style={styles.controlsScroll}
-          contentContainerStyle={styles.content}
-          showsVerticalScrollIndicator={false}
+      <View style={styles.modalRoot}>
+        <Animated.View
+          pointerEvents="none"
+          style={[styles.modalBackdrop, { opacity: backdropOpacity }]}
+        />
+        <Animated.View
+          style={[
+            styles.sheetAnimatedLayer,
+            {
+              transform: [{ translateY: sheetTranslateY }],
+            },
+          ]}
         >
-          <View style={styles.controlSection}>
-            <View style={styles.controlHeader}>
-              <Text style={styles.controlLabel}>Background</Text>
+          <SafeAreaView style={styles.root} edges={["bottom"]}>
+          <View
+            style={[styles.topGestureZone, { paddingTop: modalTopInset }]}
+            {...headerPanResponder.panHandlers}
+          >
+            <View style={styles.headerGestureArea}>
+              <View style={styles.dragHandle} />
             </View>
-            <ScrollView
-              horizontal
-              nestedScrollEnabled
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.backgroundRow}
-            >
-              {backgroundOptions.map((option) => {
-                const selected = option.color === draft.stageBackgroundColor;
-                return (
-                  <Pressable
-                    key={option.id}
-                    onPress={() => {
-                      setIsCustomColorEnabled(false);
-                      setLastPresetBackgroundColor(option.color);
-                      updateBackground(option.color);
-                    }}
-                    style={[
-                      styles.backgroundSwatchWrap,
-                      selected && styles.backgroundSwatchWrapSelected,
-                    ]}
-                    accessibilityLabel={`Background ${option.label}`}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected }}
-                  >
-                    <View
-                      style={[
-                        styles.backgroundSwatch,
-                        { backgroundColor: option.swatch },
-                      ]}
+            <View style={styles.header}>
+              <Text style={styles.headerTitle}>Template Controls</Text>
+            </View>
+          </View>
+
+          <View style={styles.previewContainer}>
+            <View style={styles.previewCard}>
+              <TemplateStageComponent
+                width={previewStageSize}
+                height={previewStageSize}
+                aspectRatio="1:1"
+                photoUri={photoUri ?? null}
+                isPlaying
+                playbackLabel="Now Playing"
+                trackTitle="Template Preview"
+                subtitle="Template Controls"
+                templateTweaks={draft}
+              />
+              {showTemplateInfo ? (
+                <TemplateInfoBadge
+                  templateId={templateId}
+                  templateTweaks={draft}
+                  aspectRatio="1:1"
+                  compact
+                  style={styles.previewTemplateInfoBadge}
+                />
+              ) : null}
+            </View>
+          </View>
+
+          {canUseNativeTemplateControls && expoSwiftUI ? (
+            <View style={styles.nativeControlsWrap}>
+              <expoSwiftUI.Host
+                style={styles.nativeControlsHost}
+                useViewportSizeMeasurement
+                colorScheme="dark"
+              >
+                <expoSwiftUI.Form>
+                  <expoSwiftUI.Section title="Quick Tune">
+                    <expoSwiftUI.LabeledContent label="Spin speed">
+                      <expoSwiftUI.Text>{formatSpeed(draft.spinSpeed)}</expoSwiftUI.Text>
+                    </expoSwiftUI.LabeledContent>
+                    <expoSwiftUI.Slider
+                      min={0}
+                      max={SPIN_SPEED_OPTIONS.length - 1}
+                      steps={SPIN_SPEED_OPTIONS.length - 1}
+                      value={findClosestOptionIndex(SPIN_SPEED_OPTIONS, draft.spinSpeed)}
+                      color={colors.accent.primary}
+                      onValueChange={(nextValue) => {
+                        const sliderIndex = Math.round(
+                          clamp(nextValue, 0, SPIN_SPEED_OPTIONS.length - 1),
+                        );
+                        const spinSpeed = SPIN_SPEED_OPTIONS[sliderIndex] ?? draft.spinSpeed;
+                        updateSpinSpeed(spinSpeed, false);
+                      }}
                     />
-                  </Pressable>
-                );
-              })}
-              <Pressable
-                onPress={() => toggleCustomColorEnabled(!isCustomColorEnabled)}
-                style={[
-                  styles.backgroundSwatchWrap,
-                  styles.customBackgroundToggleWrap,
-                  isCustomColorEnabled && styles.backgroundSwatchWrapSelected,
-                ]}
-                accessibilityLabel="Toggle custom background color"
-                accessibilityRole="button"
-                accessibilityState={{ selected: isCustomColorEnabled }}
+
+                    <expoSwiftUI.LabeledContent label="Record transparency">
+                      <expoSwiftUI.Text>
+                        {formatTransparency(draft.recordTransparency)}
+                      </expoSwiftUI.Text>
+                    </expoSwiftUI.LabeledContent>
+                    <expoSwiftUI.Slider
+                      min={0}
+                      max={RECORD_TRANSPARENCY_OPTIONS.length - 1}
+                      steps={RECORD_TRANSPARENCY_OPTIONS.length - 1}
+                      value={findClosestOptionIndex(
+                        RECORD_TRANSPARENCY_OPTIONS,
+                        draft.recordTransparency,
+                      )}
+                      color={colors.accent.primary}
+                      onValueChange={(nextValue) => {
+                        const sliderIndex = Math.round(
+                          clamp(nextValue, 0, RECORD_TRANSPARENCY_OPTIONS.length - 1),
+                        );
+                        const recordTransparency =
+                          RECORD_TRANSPARENCY_OPTIONS[sliderIndex] ??
+                          draft.recordTransparency;
+                        updateRecordTransparency(recordTransparency, false);
+                      }}
+                    />
+
+                    {isBackgroundPhotoSelected ? (
+                      <>
+                        <expoSwiftUI.LabeledContent label="Background blur">
+                          <expoSwiftUI.Text>{formatBlur(draft.backgroundBlur)}</expoSwiftUI.Text>
+                        </expoSwiftUI.LabeledContent>
+                        <expoSwiftUI.Slider
+                          min={0}
+                          max={BACKGROUND_BLUR_OPTIONS.length - 1}
+                          steps={BACKGROUND_BLUR_OPTIONS.length - 1}
+                          value={findClosestOptionIndex(
+                            BACKGROUND_BLUR_OPTIONS,
+                            draft.backgroundBlur,
+                          )}
+                          color={colors.accent.primary}
+                          onValueChange={(nextValue) => {
+                            const sliderIndex = Math.round(
+                              clamp(nextValue, 0, BACKGROUND_BLUR_OPTIONS.length - 1),
+                            );
+                            const backgroundBlur =
+                              BACKGROUND_BLUR_OPTIONS[sliderIndex] ?? draft.backgroundBlur;
+                            updateBackgroundBlur(backgroundBlur, false);
+                          }}
+                        />
+                      </>
+                    ) : null}
+
+                    <expoSwiftUI.Picker
+                      label="Spin direction"
+                      options={ROTATION_DIRECTION_OPTIONS.map((option) => option.label)}
+                      selectedIndex={Math.max(
+                        0,
+                        ROTATION_DIRECTION_OPTIONS.findIndex(
+                          (option) => option.value === draft.rotationDirection,
+                        ),
+                      )}
+                      variant="segmented"
+                      onOptionSelected={(event) => {
+                        updateRotationDirection(
+                          ROTATION_DIRECTION_OPTIONS[event.nativeEvent.index]?.value ?? "cw",
+                        );
+                      }}
+                    />
+                  </expoSwiftUI.Section>
+
+                  <expoSwiftUI.Section>
+                    <expoSwiftUI.DisclosureGroup
+                      label="Background"
+                      isExpanded={isNativeBackgroundExpanded}
+                      onStateChange={setIsNativeBackgroundExpanded}
+                    >
+                      <expoSwiftUI.Picker
+                        label="Preset"
+                        options={backgroundOptionsLabels}
+                        selectedIndex={selectedBackgroundOptionIndex}
+                        variant="menu"
+                        onOptionSelected={(event) => {
+                          handleNativeBackgroundPresetSelect(event.nativeEvent.index);
+                        }}
+                      />
+                      <expoSwiftUI.ColorPicker
+                        label="Custom color"
+                        selection={draft.stageBackgroundColor ?? customColor}
+                        supportsOpacity={false}
+                        onValueChanged={handleNativeBackgroundColorChange}
+                      />
+                      <expoSwiftUI.LabeledContent label="Photo background">
+                        <expoSwiftUI.Text>
+                          {draft.stageBackgroundImageUri ? "Selected" : "None"}
+                        </expoSwiftUI.Text>
+                      </expoSwiftUI.LabeledContent>
+                      <expoSwiftUI.Button
+                        systemImage="photo.badge.plus"
+                        disabled={isBackgroundPhotoLoading}
+                        onPress={() => {
+                          void handlePickBackgroundPhoto();
+                        }}
+                      >
+                        {isBackgroundPhotoLoading
+                          ? "Loading photo..."
+                          : "Choose background photo"}
+                      </expoSwiftUI.Button>
+                      {draft.stageBackgroundImageUri ? (
+                        <expoSwiftUI.Button
+                          systemImage="xmark.circle"
+                          onPress={() => {
+                            setBackgroundPhoto(null);
+                          }}
+                        >
+                          Remove background photo
+                        </expoSwiftUI.Button>
+                      ) : null}
+                    </expoSwiftUI.DisclosureGroup>
+                  </expoSwiftUI.Section>
+
+                  <expoSwiftUI.Section>
+                    <expoSwiftUI.DisclosureGroup
+                      label="Advanced Motion"
+                      isExpanded={isNativeAdvancedExpanded}
+                      onStateChange={setIsNativeAdvancedExpanded}
+                    >
+                      <expoSwiftUI.LabeledContent label="Spin start angle">
+                        <expoSwiftUI.Text>
+                          {formatRotationStart(draft.rotationStartDeg)}
+                        </expoSwiftUI.Text>
+                      </expoSwiftUI.LabeledContent>
+                      <expoSwiftUI.Slider
+                        min={0}
+                        max={ROTATION_START_OPTIONS.length - 1}
+                        steps={ROTATION_START_OPTIONS.length - 1}
+                        value={findClosestOptionIndex(
+                          ROTATION_START_OPTIONS,
+                          draft.rotationStartDeg,
+                        )}
+                        color={colors.accent.primary}
+                        onValueChange={(nextValue) => {
+                          const sliderIndex = Math.round(
+                            clamp(nextValue, 0, ROTATION_START_OPTIONS.length - 1),
+                          );
+                          const rotationStartDeg =
+                            ROTATION_START_OPTIONS[sliderIndex] ?? draft.rotationStartDeg;
+                          updateRotationStartDeg(rotationStartDeg, false);
+                        }}
+                      />
+                    </expoSwiftUI.DisclosureGroup>
+                  </expoSwiftUI.Section>
+                </expoSwiftUI.Form>
+              </expoSwiftUI.Host>
+            </View>
+          ) : (
+            <ScrollView
+              style={styles.controlsScroll}
+              contentContainerStyle={styles.content}
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.controlSection}>
+              <View style={styles.controlHeader}>
+                <Text style={styles.controlLabel}>Background</Text>
+              </View>
+              <ScrollView
+                horizontal
+                nestedScrollEnabled
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.backgroundRow}
               >
-                <View
+                {backgroundOptions.map((option) => {
+                  const selected = option.color === draft.stageBackgroundColor;
+                  return (
+                    <Pressable
+                      key={option.id}
+                      onPress={() => {
+                        setIsCustomColorEnabled(false);
+                        setLastPresetBackgroundColor(option.color);
+                        updateBackground(option.color);
+                      }}
+                      style={[
+                        styles.backgroundSwatchWrap,
+                        selected && styles.backgroundSwatchWrapSelected,
+                      ]}
+                      accessibilityLabel={`Background ${option.label}`}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected }}
+                    >
+                      <View
+                        style={[
+                          styles.backgroundSwatch,
+                          { backgroundColor: option.swatch },
+                        ]}
+                      />
+                    </Pressable>
+                  );
+                })}
+                <Pressable
+                  onPress={() => toggleCustomColorEnabled(!isCustomColorEnabled)}
                   style={[
-                    styles.backgroundSwatch,
-                    styles.customBackgroundToggleInner,
-                    { backgroundColor: customColor },
+                    styles.backgroundSwatchWrap,
+                    styles.customBackgroundToggleWrap,
+                    isCustomColorEnabled && styles.backgroundSwatchWrapSelected,
                   ]}
-                />
-                <Ionicons
-                  name="color-palette"
-                  size={11}
-                  color="#ffffff"
-                  style={styles.customBackgroundToggleIcon}
-                />
-              </Pressable>
-              <Pressable
-                onPress={handlePickBackgroundPhoto}
-                style={[
-                  styles.backgroundSwatchWrap,
-                  styles.photoBackgroundToggleWrap,
-                  isBackgroundPhotoSelected && styles.backgroundSwatchWrapSelected,
-                ]}
-                accessibilityLabel="Add photo background"
-                accessibilityRole="button"
-                accessibilityState={{ selected: isBackgroundPhotoSelected }}
-              >
-                {isBackgroundPhotoLoading ? (
-                  <ActivityIndicator size="small" color={colors.dark.text} />
-                ) : draft.stageBackgroundImageUri ? (
-                  <RNImage
-                    source={{ uri: draft.stageBackgroundImageUri }}
-                    style={[styles.backgroundSwatch, styles.photoBackgroundThumb]}
-                    resizeMode="cover"
-                  />
-                ) : (
+                  accessibilityLabel="Toggle custom background color"
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: isCustomColorEnabled }}
+                >
                   <View
                     style={[
                       styles.backgroundSwatch,
-                      styles.photoBackgroundPlaceholder,
-                    ]}
-                  >
-                    <Ionicons
-                      name="image-outline"
-                      size={14}
-                      color={colors.dark.textSecondary}
-                    />
-                  </View>
-                )}
-              </Pressable>
-            </ScrollView>
-            {isCustomColorEnabled ? (
-              <View style={styles.customColorCard}>
-                <View style={styles.customColorHeader}>
-                  <Text style={styles.customColorTitle}>Custom Color</Text>
-                  <View
-                    style={[
-                      styles.customColorSwatch,
+                      styles.customBackgroundToggleInner,
                       { backgroundColor: customColor },
                     ]}
                   />
-                </View>
-
-                <View style={styles.customHueHeader}>
-                  <Text style={styles.customHueLabel}>Palette</Text>
-                </View>
-                <PaletteStrip
-                  hue={customHue}
-                  saturation={customSaturation}
-                  lightness={customLightness}
-                  disabled={!isCustomColorEnabled}
-                  onSelect={handleCustomPaletteSelect}
-                />
-
-                {showToneOptions ? (
-                  <>
-                    <View style={styles.customHueHeader}>
-                      <Text style={styles.customHueLabel}>Tone</Text>
-                    </View>
-                    <ScrollView
-                      horizontal
-                      nestedScrollEnabled
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={styles.customToneRow}
+                  <Ionicons
+                    name="color-palette"
+                    size={11}
+                    color="#ffffff"
+                    style={styles.customBackgroundToggleIcon}
+                  />
+                </Pressable>
+                <Pressable
+                  onPress={handlePickBackgroundPhoto}
+                  style={[
+                    styles.backgroundSwatchWrap,
+                    styles.photoBackgroundToggleWrap,
+                    isBackgroundPhotoSelected && styles.backgroundSwatchWrapSelected,
+                  ]}
+                  accessibilityLabel="Add photo background"
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: isBackgroundPhotoSelected }}
+                >
+                  {isBackgroundPhotoLoading ? (
+                    <ActivityIndicator size="small" color={colors.dark.text} />
+                  ) : draft.stageBackgroundImageUri ? (
+                    <RNImage
+                      source={{ uri: draft.stageBackgroundImageUri }}
+                      style={[styles.backgroundSwatch, styles.photoBackgroundThumb]}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View
+                      style={[
+                        styles.backgroundSwatch,
+                        styles.photoBackgroundPlaceholder,
+                      ]}
                     >
-                      {CUSTOM_TONE_OPTIONS.map((tone, toneIndex) => {
-                        const selected = tone === customLightness;
-                        const toneColor = hslToHex(customHue, customSaturation, tone);
-                        const toneLabel = CUSTOM_TONE_LABELS[toneIndex] ?? "Tone";
-                        return (
-                          <Pressable
-                            key={`tone-${tone}`}
-                            onPress={() => handleCustomToneSelect(tone)}
-                            style={[
-                              styles.customToneSwatchWrap,
-                              selected && styles.customToneSwatchWrapSelected,
-                            ]}
-                            accessibilityLabel={`Color tone ${toneLabel}`}
-                            accessibilityRole="button"
-                            accessibilityState={{ selected }}
-                          >
-                            <View
+                      <Ionicons
+                        name="image-outline"
+                        size={14}
+                        color={colors.dark.textSecondary}
+                      />
+                    </View>
+                  )}
+                </Pressable>
+              </ScrollView>
+              {isCustomColorEnabled ? (
+                <View style={styles.customColorCard}>
+                  <View style={styles.customColorHeader}>
+                    <Text style={styles.customColorTitle}>Custom Color</Text>
+                    <View
+                      style={[
+                        styles.customColorSwatch,
+                        { backgroundColor: customColor },
+                      ]}
+                    />
+                  </View>
+
+                  <View style={styles.customHueHeader}>
+                    <Text style={styles.customHueLabel}>Palette</Text>
+                  </View>
+                  <PaletteStrip
+                    hue={customHue}
+                    saturation={customSaturation}
+                    lightness={customLightness}
+                    disabled={!isCustomColorEnabled}
+                    onSelect={handleCustomPaletteSelect}
+                  />
+
+                  {showToneOptions ? (
+                    <>
+                      <View style={styles.customHueHeader}>
+                        <Text style={styles.customHueLabel}>Tone</Text>
+                      </View>
+                      <ScrollView
+                        horizontal
+                        nestedScrollEnabled
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={styles.customToneRow}
+                      >
+                        {CUSTOM_TONE_OPTIONS.map((tone, toneIndex) => {
+                          const selected = tone === customLightness;
+                          const toneColor = hslToHex(customHue, customSaturation, tone);
+                          const toneLabel = CUSTOM_TONE_LABELS[toneIndex] ?? "Tone";
+                          return (
+                            <Pressable
+                              key={`tone-${tone}`}
+                              onPress={() => handleCustomToneSelect(tone)}
                               style={[
-                                styles.customToneSwatch,
-                                { backgroundColor: toneColor },
+                                styles.customToneSwatchWrap,
+                                selected && styles.customToneSwatchWrapSelected,
                               ]}
-                            />
-                          </Pressable>
-                        );
-                      })}
-                    </ScrollView>
-                  </>
-                ) : null}
+                              accessibilityLabel={`Color tone ${toneLabel}`}
+                              accessibilityRole="button"
+                              accessibilityState={{ selected }}
+                            >
+                              <View
+                                style={[
+                                  styles.customToneSwatch,
+                                  { backgroundColor: toneColor },
+                                ]}
+                              />
+                            </Pressable>
+                          );
+                        })}
+                      </ScrollView>
+                    </>
+                  ) : null}
+                </View>
+              ) : null}
+            </View>
+
+            {isBackgroundPhotoSelected ? (
+              <View style={styles.controlSection}>
+                <View style={styles.controlHeader}>
+                  <Text style={styles.controlLabel}>Background Blur</Text>
+                  <Text style={styles.controlValue}>
+                    {formatBlur(draft.backgroundBlur)}
+                  </Text>
+                </View>
+                <ScrollView
+                  horizontal
+                  nestedScrollEnabled
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.optionRow}
+                >
+                  {BACKGROUND_BLUR_OPTIONS.map((option) => {
+                    const selected = option === draft.backgroundBlur;
+                    return (
+                      <Pressable
+                        key={`blur-${option}`}
+                        onPress={() => updateBackgroundBlur(option)}
+                        style={[styles.optionPill, selected && styles.optionPillSelected]}
+                        accessibilityLabel={`Background blur ${formatBlur(option)}`}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected }}
+                      >
+                        <Text
+                          style={[
+                            styles.optionPillText,
+                            selected && styles.optionPillTextSelected,
+                          ]}
+                        >
+                          {formatBlur(option)}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
               </View>
             ) : null}
-          </View>
 
-          {isBackgroundPhotoSelected ? (
             <View style={styles.controlSection}>
               <View style={styles.controlHeader}>
-                <Text style={styles.controlLabel}>Background Blur</Text>
-                <Text style={styles.controlValue}>
-                  {formatBlur(draft.backgroundBlur)}
-                </Text>
+                <Text style={styles.controlLabel}>Spin Speed</Text>
+                <Text style={styles.controlValue}>{formatSpeed(draft.spinSpeed)}</Text>
               </View>
               <ScrollView
                 horizontal
@@ -982,14 +1507,14 @@ export function TemplateCustomizeModal({
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.optionRow}
               >
-                {BACKGROUND_BLUR_OPTIONS.map((option) => {
-                  const selected = option === draft.backgroundBlur;
+                {SPIN_SPEED_OPTIONS.map((option) => {
+                  const selected = option === draft.spinSpeed;
                   return (
                     <Pressable
-                      key={`blur-${option}`}
-                      onPress={() => updateBackgroundBlur(option)}
+                      key={String(option)}
+                      onPress={() => updateSpinSpeed(option)}
                       style={[styles.optionPill, selected && styles.optionPillSelected]}
-                      accessibilityLabel={`Background blur ${formatBlur(option)}`}
+                      accessibilityLabel={`Spin speed ${formatSpeed(option)}`}
                       accessibilityRole="button"
                       accessibilityState={{ selected }}
                     >
@@ -999,164 +1524,128 @@ export function TemplateCustomizeModal({
                           selected && styles.optionPillTextSelected,
                         ]}
                       >
-                        {formatBlur(option)}
+                        {formatSpeed(option)}
                       </Text>
                     </Pressable>
                   );
                 })}
               </ScrollView>
             </View>
-          ) : null}
 
-          <View style={styles.controlSection}>
-            <View style={styles.controlHeader}>
-              <Text style={styles.controlLabel}>Spin Speed</Text>
-              <Text style={styles.controlValue}>{formatSpeed(draft.spinSpeed)}</Text>
-            </View>
-            <ScrollView
-              horizontal
-              nestedScrollEnabled
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.optionRow}
-            >
-              {SPIN_SPEED_OPTIONS.map((option) => {
-                const selected = option === draft.spinSpeed;
-                return (
-                  <Pressable
-                    key={String(option)}
-                    onPress={() => updateSpinSpeed(option)}
-                    style={[styles.optionPill, selected && styles.optionPillSelected]}
-                    accessibilityLabel={`Spin speed ${formatSpeed(option)}`}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected }}
-                  >
-                    <Text
-                      style={[
-                        styles.optionPillText,
-                        selected && styles.optionPillTextSelected,
-                      ]}
+            <View style={styles.controlSection}>
+              <View style={styles.controlHeader}>
+                <Text style={styles.controlLabel}>Record Transparency</Text>
+                <Text style={styles.controlValue}>
+                  {formatTransparency(draft.recordTransparency)}
+                </Text>
+              </View>
+              <ScrollView
+                horizontal
+                nestedScrollEnabled
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.optionRow}
+              >
+                {RECORD_TRANSPARENCY_OPTIONS.map((option) => {
+                  const selected = option === draft.recordTransparency;
+                  return (
+                    <Pressable
+                      key={String(option)}
+                      onPress={() => updateRecordTransparency(option)}
+                      style={[styles.optionPill, selected && styles.optionPillSelected]}
+                      accessibilityLabel={`Record transparency ${Math.round(option * 100)}%`}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected }}
                     >
-                      {formatSpeed(option)}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          </View>
-
-          <View style={styles.controlSection}>
-            <View style={styles.controlHeader}>
-              <Text style={styles.controlLabel}>Record Transparency</Text>
-              <Text style={styles.controlValue}>
-                {formatTransparency(draft.recordTransparency)}
-              </Text>
+                      <Text
+                        style={[
+                          styles.optionPillText,
+                          selected && styles.optionPillTextSelected,
+                        ]}
+                      >
+                        {`${Math.round(option * 100)}%`}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
             </View>
-            <ScrollView
-              horizontal
-              nestedScrollEnabled
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.optionRow}
-            >
-              {RECORD_TRANSPARENCY_OPTIONS.map((option) => {
-                const selected = option === draft.recordTransparency;
-                return (
-                  <Pressable
-                    key={String(option)}
-                    onPress={() => updateRecordTransparency(option)}
-                    style={[styles.optionPill, selected && styles.optionPillSelected]}
-                    accessibilityLabel={`Record transparency ${Math.round(option * 100)}%`}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected }}
-                  >
-                    <Text
-                      style={[
-                        styles.optionPillText,
-                        selected && styles.optionPillTextSelected,
-                      ]}
-                    >
-                      {`${Math.round(option * 100)}%`}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          </View>
 
-          <View style={styles.controlSection}>
-            <View style={styles.controlHeader}>
-              <Text style={styles.controlLabel}>Spin Start Angle</Text>
-              <Text style={styles.controlValue}>
-                {formatRotationStart(draft.rotationStartDeg)}
-              </Text>
+            <View style={styles.controlSection}>
+              <View style={styles.controlHeader}>
+                <Text style={styles.controlLabel}>Spin Start Angle</Text>
+                <Text style={styles.controlValue}>
+                  {formatRotationStart(draft.rotationStartDeg)}
+                </Text>
+              </View>
+              <ScrollView
+                horizontal
+                nestedScrollEnabled
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.optionRow}
+              >
+                {ROTATION_START_OPTIONS.map((option) => {
+                  const selected = option === draft.rotationStartDeg;
+                  return (
+                    <Pressable
+                      key={`start-angle-${option}`}
+                      onPress={() => updateRotationStartDeg(option)}
+                      style={[styles.optionPill, selected && styles.optionPillSelected]}
+                      accessibilityLabel={`Spin start angle ${formatRotationStart(option)}`}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected }}
+                    >
+                      <Text
+                        style={[
+                          styles.optionPillText,
+                          selected && styles.optionPillTextSelected,
+                        ]}
+                      >
+                        {formatRotationStart(option)}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
             </View>
-            <ScrollView
-              horizontal
-              nestedScrollEnabled
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.optionRow}
-            >
-              {ROTATION_START_OPTIONS.map((option) => {
-                const selected = option === draft.rotationStartDeg;
-                return (
-                  <Pressable
-                    key={`start-angle-${option}`}
-                    onPress={() => updateRotationStartDeg(option)}
-                    style={[styles.optionPill, selected && styles.optionPillSelected]}
-                    accessibilityLabel={`Spin start angle ${formatRotationStart(option)}`}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected }}
-                  >
-                    <Text
-                      style={[
-                        styles.optionPillText,
-                        selected && styles.optionPillTextSelected,
-                      ]}
-                    >
-                      {formatRotationStart(option)}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          </View>
 
-          <View style={styles.controlSection}>
-            <View style={styles.controlHeader}>
-              <Text style={styles.controlLabel}>Spin Direction</Text>
-              <Text style={styles.controlValue}>{selectedRotationDirectionLabel}</Text>
+            <View style={styles.controlSection}>
+              <View style={styles.controlHeader}>
+                <Text style={styles.controlLabel}>Spin Direction</Text>
+                <Text style={styles.controlValue}>{selectedRotationDirectionLabel}</Text>
+              </View>
+              <ScrollView
+                horizontal
+                nestedScrollEnabled
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.optionRow}
+              >
+                {ROTATION_DIRECTION_OPTIONS.map((option) => {
+                  const selected = option.value === draft.rotationDirection;
+                  return (
+                    <Pressable
+                      key={option.value}
+                      onPress={() => updateRotationDirection(option.value)}
+                      style={[styles.optionPill, selected && styles.optionPillSelected]}
+                      accessibilityLabel={`Spin direction ${option.label}`}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected }}
+                    >
+                      <Text
+                        style={[
+                          styles.optionPillText,
+                          selected && styles.optionPillTextSelected,
+                        ]}
+                      >
+                        {option.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
             </View>
-            <ScrollView
-              horizontal
-              nestedScrollEnabled
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.optionRow}
-            >
-              {ROTATION_DIRECTION_OPTIONS.map((option) => {
-                const selected = option.value === draft.rotationDirection;
-                return (
-                  <Pressable
-                    key={option.value}
-                    onPress={() => updateRotationDirection(option.value)}
-                    style={[styles.optionPill, selected && styles.optionPillSelected]}
-                    accessibilityLabel={`Spin direction ${option.label}`}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected }}
-                  >
-                    <Text
-                      style={[
-                        styles.optionPillText,
-                        selected && styles.optionPillTextSelected,
-                      ]}
-                    >
-                      {option.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          </View>
 
-        </ScrollView>
+          </ScrollView>
+          )}
 
         <View style={styles.footer}>
           <Pressable
@@ -1168,19 +1657,47 @@ export function TemplateCustomizeModal({
             <Text style={styles.applyButtonText}>Apply Changes</Text>
           </Pressable>
         </View>
-      </SafeAreaView>
+          </SafeAreaView>
+        </Animated.View>
+      </View>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  modalRoot: {
+    flex: 1,
+    backgroundColor: "transparent",
+  },
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "#000000",
+  },
+  sheetAnimatedLayer: {
+    flex: 1,
+    backgroundColor: colors.dark.background,
+  },
   root: {
     flex: 1,
     backgroundColor: colors.dark.background,
   },
+  topGestureZone: {
+    backgroundColor: colors.dark.background,
+  },
+  headerGestureArea: {
+    height: 34,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dragHandle: {
+    width: 38,
+    height: 4,
+    borderRadius: radius.full,
+    backgroundColor: "rgba(255,255,255,0.22)",
+  },
   header: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
+    paddingTop: spacing.xs,
     paddingBottom: spacing.md,
     alignItems: "center",
     justifyContent: "center",
@@ -1190,23 +1707,23 @@ const styles = StyleSheet.create({
     color: colors.dark.text,
     fontWeight: "700",
   },
-  headerClose: {
-    position: "absolute",
-    right: spacing.lg,
-    top: spacing.sm,
-    width: 32,
-    height: 32,
-    borderRadius: radius.full,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.08)",
-  },
   previewContainer: {
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.sm,
   },
   controlsScroll: {
     flex: 1,
+  },
+  nativeControlsWrap: {
+    flex: 1,
+    paddingHorizontal: spacing.sm,
+    paddingBottom: spacing.sm,
+  },
+  nativeControlsHost: {
+    flex: 1,
+    backgroundColor: colors.dark.background,
+    borderRadius: radius.md,
+    overflow: "hidden",
   },
   content: {
     paddingHorizontal: spacing.lg,

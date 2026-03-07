@@ -16,6 +16,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { StatusBar } from "expo-status-bar";
 import { useIsFocused } from "@react-navigation/native";
 import { useConvexAuth, useQuery } from "convex/react";
+import * as ExpoSwiftUI from "@expo/ui/swift-ui";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import { usePostHog } from "posthog-react-native";
@@ -37,6 +38,10 @@ import {
   resolveTemplateId,
   serializeTemplateTweaksParam,
 } from "@/lib/templates";
+import {
+  getIOSNativeUIPhase5Availability,
+  type ExpoSwiftUIModule,
+} from "@/lib/iosNativeUi";
 
 type Tab = "photo" | "audio";
 type LoadingTarget = Tab | null;
@@ -146,6 +151,26 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
   const preferredAspectRatio = useLocalDefaults
     ? localPreferences.defaultAspectRatio
     : currentUser?.preferences?.defaultAspectRatio ?? "9:16";
+  const nativePickerAvailability = getIOSNativeUIPhase5Availability({
+    minIOSVersion: 16,
+  });
+  const nativePickerEnabledByContract = nativePickerAvailability.enabled;
+  const expoSwiftUI = nativePickerEnabledByContract
+    ? (ExpoSwiftUI as ExpoSwiftUIModule)
+    : null;
+  const expoSwiftUIAny = expoSwiftUI as Record<string, unknown> | null;
+  const hasNativePickerSummaryComponents = Boolean(
+    expoSwiftUIAny &&
+      "Host" in expoSwiftUIAny &&
+      "Form" in expoSwiftUIAny &&
+      "Section" in expoSwiftUIAny &&
+      "LabeledContent" in expoSwiftUIAny &&
+      "Text" in expoSwiftUIAny,
+  );
+  const canUseNativePickerSummary =
+    nativePickerEnabledByContract &&
+    expoSwiftUI !== null &&
+    hasNativePickerSummaryComponents;
 
   const track = useCallback(
     (event: EventName, props?: Record<string, string>) => {
@@ -448,6 +473,31 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
         </Pressable>
       </View>
 
+      {canUseNativePickerSummary && expoSwiftUI ? (
+        <View style={styles.nativeSummaryWrap}>
+          <expoSwiftUI.Host style={styles.nativeSummaryHost} colorScheme="light">
+            <expoSwiftUI.Form>
+              <expoSwiftUI.Section title="Selection">
+                <expoSwiftUI.LabeledContent label="Audio">
+                  <expoSwiftUI.Text>
+                    {media.audioUri
+                      ? (media.audioName ?? "Audio selected")
+                      : "Not selected"}
+                  </expoSwiftUI.Text>
+                </expoSwiftUI.LabeledContent>
+                <expoSwiftUI.LabeledContent label="Photo">
+                  <expoSwiftUI.Text>
+                    {media.photoUri
+                      ? (media.photoName ?? "Photo selected")
+                      : "Not selected"}
+                  </expoSwiftUI.Text>
+                </expoSwiftUI.LabeledContent>
+              </expoSwiftUI.Section>
+            </expoSwiftUI.Form>
+          </expoSwiftUI.Host>
+        </View>
+      ) : null}
+
       <View
         style={[
           styles.content,
@@ -668,6 +718,14 @@ const styles = StyleSheet.create({
   },
   addTextDisabled: {
     opacity: 0.35,
+  },
+  nativeSummaryWrap: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.xs,
+  },
+  nativeSummaryHost: {
+    borderRadius: radius.lg,
+    overflow: "hidden",
   },
   content: {
     flex: 1,

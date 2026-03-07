@@ -248,7 +248,7 @@ export default function TabsLayout() {
     return (
       <NativeTabs
         blurEffect="systemThinMaterialLight"
-        backgroundColor={colors.light.background}
+        backgroundColor="rgba(245,250,255,0.62)"
         shadowColor="transparent"
         iconColor={{
           default: colors.light.textSecondary,
@@ -295,7 +295,7 @@ export default function TabsLayout() {
           left: 14,
           right: 14,
           bottom: 0,
-          height: 82,
+          height: 84,
           borderTopWidth: 0,
           backgroundColor: "transparent",
           borderTopLeftRadius: 28,
@@ -308,8 +308,8 @@ export default function TabsLayout() {
           ...Platform.select({
             ios: {
               shadowColor: "#102440",
-              shadowOpacity: 0.18,
-              shadowRadius: 14,
+              shadowOpacity: 0.16,
+              shadowRadius: 16,
               shadowOffset: { width: 0, height: 2 },
             },
             android: {
@@ -374,15 +374,15 @@ const styles = StyleSheet.create({
   },
   glassTint: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(245,250,255,0.74)",
+    backgroundColor: "rgba(245,250,255,0.78)",
   },
   glassTopSheen: {
     position: "absolute",
     top: 0,
     left: 0,
     right: 0,
-    height: StyleSheet.hairlineWidth + 1,
-    backgroundColor: "rgba(255,255,255,0.42)",
+    height: StyleSheet.hairlineWidth + 1.5,
+    backgroundColor: "rgba(255,255,255,0.5)",
   },
   glassInnerStroke: {
     ...StyleSheet.absoluteFillObject,
@@ -391,7 +391,7 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 0,
     borderBottomRightRadius: 0,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.72)",
+    borderColor: "rgba(255,255,255,0.78)",
   },
   gateContainer: {
     flex: 1,

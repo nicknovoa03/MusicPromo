@@ -159,19 +159,35 @@ export function TemplateSwitcher({
   }, []);
 
   const selectIndex = useCallback(
-    (index: number, animated = true) => {
+    (
+      index: number,
+      behavior: { animated?: boolean; shouldScroll?: boolean } = {},
+    ) => {
+      const { animated = true, shouldScroll = true } = behavior;
       if (!options.length) return;
       const clamped = clampIndex(index, options.length - 1);
-      const option = options[clamped];
-      if (!option) return;
-      setActiveTemplateId(option.id);
-      if (option.id !== value) {
-        triggerSelectionHaptic(option.id);
-        onChange(option.id);
+      const nextOption = options[clamped];
+      if (!nextOption) return;
+
+      if (nextOption.id !== activeTemplateId) {
+        setActiveTemplateId(nextOption.id);
       }
-      scrollToIndex(clamped, animated);
+      if (nextOption.id !== value) {
+        triggerSelectionHaptic(nextOption.id);
+        onChange(nextOption.id);
+      }
+      if (shouldScroll) {
+        scrollToIndex(clamped, animated);
+      }
     },
-    [onChange, options, scrollToIndex, triggerSelectionHaptic, value],
+    [
+      activeTemplateId,
+      onChange,
+      options,
+      scrollToIndex,
+      triggerSelectionHaptic,
+      value,
+    ],
   );
 
   const settleFromOffset = useCallback(
@@ -181,7 +197,7 @@ export function TemplateSwitcher({
         Math.round(offsetX / snapInterval),
         options.length - 1,
       );
-      selectIndex(nextIndex, false);
+      selectIndex(nextIndex, { animated: false, shouldScroll: false });
     },
     [options.length, selectIndex, snapInterval],
   );
@@ -341,7 +357,7 @@ const styles = StyleSheet.create({
   },
   railWrap: {
     borderRadius: radius.full,
-    backgroundColor: "transparent",
+    backgroundColor: "rgba(255,255,255,0.03)",
   },
   activeLabelPill: {
     alignSelf: "center",
@@ -349,9 +365,9 @@ const styles = StyleSheet.create({
     minWidth: 88,
     borderRadius: radius.full,
     paddingHorizontal: spacing.sm,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.13)",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderWidth: 0,
+    borderColor: "transparent",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -374,12 +390,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radius.md,
-    backgroundColor: "rgba(255,255,255,0.08)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.16)",
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderWidth: 0,
+    borderColor: "transparent",
   },
   optionSelected: {
     backgroundColor: colors.accent.primary,
+    borderWidth: 1,
     borderColor: colors.accent.primary,
     shadowColor: colors.accent.primary,
     shadowOffset: { width: 0, height: 0 },

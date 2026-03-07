@@ -11,6 +11,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { useRouter, useLocalSearchParams } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { usePostHog } from "posthog-react-native";
+import * as ExpoSwiftUI from "@expo/ui/swift-ui";
 import { useConvexAuth, useMutation } from "convex/react";
 import { ConvexError } from "convex/values";
 import Constants from "expo-constants";
@@ -35,6 +36,10 @@ import {
   resolveTemplateId,
   serializeTemplateTweaksParam,
 } from "@/lib/templates";
+import {
+  getIOSNativeUIPhase5Availability,
+  type ExpoSwiftUIModule,
+} from "@/lib/iosNativeUi";
 
 function isExpoGo(): boolean {
   return Constants.appOwnership === "expo";
@@ -158,6 +163,23 @@ export default function RenderingScreen() {
   );
   const stageWidth = Math.min(maxStageWidth, maxStageHeight * stageWidthRatio);
   const stageHeight = stageWidth / stageWidthRatio;
+  const nativeRenderingAvailability = getIOSNativeUIPhase5Availability({
+    minIOSVersion: 16,
+  });
+  const nativeRenderingEnabledByContract = nativeRenderingAvailability.enabled;
+  const expoSwiftUI = nativeRenderingEnabledByContract
+    ? (ExpoSwiftUI as ExpoSwiftUIModule)
+    : null;
+  const expoSwiftUIAny = expoSwiftUI as Record<string, unknown> | null;
+  const hasNativeRenderingProgress = Boolean(
+    expoSwiftUIAny &&
+      "Host" in expoSwiftUIAny &&
+      "CircularProgress" in expoSwiftUIAny,
+  );
+  const canUseNativeRenderingProgress =
+    nativeRenderingEnabledByContract &&
+    expoSwiftUI !== null &&
+    hasNativeRenderingProgress;
 
   const [progress, setProgress] = useState(0);
   const [renderState, setRenderState] = useState<RenderState>("rendering");
@@ -391,6 +413,7 @@ export default function RenderingScreen() {
     hasStarted.current = false;
     startRender();
   }, [startRender]);
+  const nativeProgressRatio = Math.max(0, Math.min(progress / 100, 1));
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
@@ -436,6 +459,16 @@ export default function RenderingScreen() {
           <>
             <Text style={styles.progressLabel}>Exporting</Text>
             <Text style={styles.percentageText}>{progress}%</Text>
+            {canUseNativeRenderingProgress && expoSwiftUI ? (
+              <View style={styles.nativeProgressWrap}>
+                <expoSwiftUI.Host style={styles.nativeProgressHost} colorScheme="dark">
+                  <expoSwiftUI.CircularProgress
+                    progress={nativeProgressRatio}
+                    color={colors.accent.primary}
+                  />
+                </expoSwiftUI.Host>
+              </View>
+            ) : null}
 
             <View style={styles.stageWrap}>
               <View style={[styles.stageFrame, { width: stageWidth, height: stageHeight }]}>
@@ -515,6 +548,18 @@ const styles = StyleSheet.create({
     color: colors.dark.text,
     fontVariant: ["tabular-nums"],
     marginBottom: spacing.md,
+  },
+  nativeProgressWrap: {
+    width: "100%",
+    alignItems: "center",
+    marginTop: -spacing.xs,
+    marginBottom: spacing.md,
+  },
+  nativeProgressHost: {
+    width: 46,
+    height: 46,
+    alignItems: "center",
+    justifyContent: "center",
   },
   stageWrap: {
     width: "100%",

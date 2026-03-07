@@ -18,6 +18,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { usePostHog } from "posthog-react-native";
+import * as ExpoSwiftUI from "@expo/ui/swift-ui";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { ConvexError } from "convex/values";
 import * as FileSystem from "expo-file-system/legacy";
@@ -50,6 +51,10 @@ import {
   serializeTemplateTweaksParam,
   type TemplateTweaks,
 } from "@/lib/templates";
+import {
+  getIOSNativeUIPhase5Availability,
+  type ExpoSwiftUIModule,
+} from "@/lib/iosNativeUi";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const SCREEN_HEIGHT = Dimensions.get("window").height;
@@ -57,6 +62,7 @@ const STAGE_HORIZONTAL_PADDING = spacing.xs * 2;
 const FALLBACK_AUDIO_DURATION = 180;
 const DEFAULT_TRIM_DURATION = 5;
 const DEFAULT_PROJECT_TITLE = "New Project";
+const NATIVE_ASPECT_RATIO_OPTIONS: AspectRatio[] = ["9:16", "1:1"];
 
 type MissingFilesState = {
   photo: boolean;
@@ -435,6 +441,25 @@ export default function EditorScreen() {
 
   const templateDefinitions = listTemplateDefinitions();
   const TemplateStageComponent = getTemplateDefinition(templateId).StageComponent;
+  const nativeEditorAvailability = getIOSNativeUIPhase5Availability({
+    minIOSVersion: 16,
+  });
+  const nativeEditorEnabledByContract = nativeEditorAvailability.enabled;
+  const expoSwiftUI = nativeEditorEnabledByContract
+    ? (ExpoSwiftUI as ExpoSwiftUIModule)
+    : null;
+  const expoSwiftUIAny = expoSwiftUI as Record<string, unknown> | null;
+  const hasNativeEditorControls = Boolean(
+    expoSwiftUIAny &&
+      "Host" in expoSwiftUIAny &&
+      "HStack" in expoSwiftUIAny &&
+      "Picker" in expoSwiftUIAny &&
+      "Switch" in expoSwiftUIAny,
+  );
+  const canUseNativeEditorControls =
+    nativeEditorEnabledByContract &&
+    expoSwiftUI !== null &&
+    hasNativeEditorControls;
 
   const createDraftProject = useCallback(async () => {
     if (currentProjectId) return currentProjectId;
@@ -1379,25 +1404,53 @@ export default function EditorScreen() {
     setIsTemplateCustomizeVisible(true);
   }, [track]);
 
-  const handleToggleTemplateInfo = useCallback(() => {
-    setShowTemplateInfo((prev) => {
-      const next = !prev;
-      track("editor_controls_opened", {
-        surface: next ? "template_info_on" : "template_info_off",
+  const handleSetTemplateInfoVisibility = useCallback(
+    (nextValue: boolean) => {
+      setShowTemplateInfo((prev) => {
+        if (prev === nextValue) return prev;
+        track("editor_controls_opened", {
+          surface: nextValue ? "template_info_on" : "template_info_off",
+        });
+        return nextValue;
       });
-      return next;
-    });
-  }, [track]);
+    },
+    [track],
+  );
+
+  const handleToggleTemplateInfo = useCallback(() => {
+    handleSetTemplateInfoVisibility(!showTemplateInfo);
+  }, [handleSetTemplateInfoVisibility, showTemplateInfo]);
+
+  const handleSetAspectRatio = useCallback(
+    (nextValue: AspectRatio) => {
+      setAspectRatio((prev) => {
+        if (prev === nextValue) return prev;
+        track("editor_controls_opened", {
+          surface: nextValue === "9:16" ? "aspect_ratio_9x16" : "aspect_ratio_1x1",
+        });
+        return nextValue;
+      });
+    },
+    [track],
+  );
 
   const handleToggleAspectRatio = useCallback(() => {
-    setAspectRatio((prev) => {
-      const next = prev === "9:16" ? "1:1" : "9:16";
-      track("editor_controls_opened", {
-        surface: next === "9:16" ? "aspect_ratio_9x16" : "aspect_ratio_1x1",
-      });
-      return next;
-    });
-  }, [track]);
+    handleSetAspectRatio(aspectRatio === "9:16" ? "1:1" : "9:16");
+  }, [aspectRatio, handleSetAspectRatio]);
+
+  const handleNativeAspectRatioSelect = useCallback(
+    (index: number) => {
+      handleSetAspectRatio(NATIVE_ASPECT_RATIO_OPTIONS[index] ?? "9:16");
+    },
+    [handleSetAspectRatio],
+  );
+
+  const handleNativeTemplateInfoChange = useCallback(
+    (nextValue: boolean) => {
+      handleSetTemplateInfoVisibility(nextValue);
+    },
+    [handleSetTemplateInfoVisibility],
+  );
 
   const handleCloseTemplateCustomize = useCallback(() => {
     setIsTemplateCustomizeVisible(false);
@@ -1643,27 +1696,29 @@ export default function EditorScreen() {
             >
               <Ionicons name="settings-outline" size={18} color={colors.dark.text} />
             </Pressable>
-            <Pressable
-              onPress={handleToggleTemplateInfo}
-              style={({ pressed }) => [
-                styles.previewInfoToggleButton,
-                showTemplateInfo && styles.previewInfoToggleButtonActive,
-                pressed && styles.previewTemplateButtonPressed,
-              ]}
-              accessibilityLabel={
-                showTemplateInfo
-                  ? "Hide template information"
-                  : "Show template information"
-              }
-              accessibilityRole="button"
-              accessibilityState={{ selected: showTemplateInfo }}
-            >
-              <Ionicons
-                name="information-circle-outline"
-                size={18}
-                color={showTemplateInfo ? colors.dark.background : colors.dark.text}
-              />
-            </Pressable>
+            {!canUseNativeEditorControls ? (
+              <Pressable
+                onPress={handleToggleTemplateInfo}
+                style={({ pressed }) => [
+                  styles.previewInfoToggleButton,
+                  showTemplateInfo && styles.previewInfoToggleButtonActive,
+                  pressed && styles.previewTemplateButtonPressed,
+                ]}
+                accessibilityLabel={
+                  showTemplateInfo
+                    ? "Hide template information"
+                    : "Show template information"
+                }
+                accessibilityRole="button"
+                accessibilityState={{ selected: showTemplateInfo }}
+              >
+                <Ionicons
+                  name="information-circle-outline"
+                  size={18}
+                  color={showTemplateInfo ? colors.dark.background : colors.dark.text}
+                />
+              </Pressable>
+            ) : null}
             <Pressable
               onPress={handleOpenEditMedia}
               style={({ pressed }) => [
@@ -1699,6 +1754,33 @@ export default function EditorScreen() {
           ) : null}
         </View>
       </View>
+
+      {canUseNativeEditorControls && expoSwiftUI ? (
+        <View style={styles.nativeEditorControlsWrap}>
+          <expoSwiftUI.Host style={styles.nativeEditorControlsHost} colorScheme="dark">
+            <expoSwiftUI.HStack spacing={10}>
+              <expoSwiftUI.Picker
+                label="Aspect ratio"
+                options={NATIVE_ASPECT_RATIO_OPTIONS}
+                selectedIndex={Math.max(
+                  0,
+                  NATIVE_ASPECT_RATIO_OPTIONS.indexOf(aspectRatio),
+                )}
+                variant="segmented"
+                onOptionSelected={(event) => {
+                  handleNativeAspectRatioSelect(event.nativeEvent.index);
+                }}
+              />
+              <expoSwiftUI.Switch
+                label="Template info"
+                value={showTemplateInfo}
+                variant="button"
+                onValueChange={handleNativeTemplateInfoChange}
+              />
+            </expoSwiftUI.HStack>
+          </expoSwiftUI.Host>
+        </View>
+      ) : null}
 
       <View style={styles.trimmerSection}>
         <Text style={styles.sectionLabel}>Trim Audio</Text>
@@ -2010,6 +2092,15 @@ const styles = StyleSheet.create({
     top: spacing.sm,
     left: spacing.sm,
     right: spacing.sm,
+  },
+  nativeEditorControlsWrap: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xs,
+  },
+  nativeEditorControlsHost: {
+    borderRadius: radius.md,
+    overflow: "hidden",
+    backgroundColor: colors.dark.surface,
   },
   trimmerSection: {
     paddingHorizontal: spacing.lg,

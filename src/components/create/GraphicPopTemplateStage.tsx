@@ -41,6 +41,7 @@ export function GraphicPopTemplateStage({
     Math.max(1 - (templateTweaks?.recordTransparency ?? 0), 0.35),
     1,
   );
+  const hasBackgroundImage = Boolean(templateTweaks?.stageBackgroundImageUri);
 
   return (
     <View
@@ -51,6 +52,8 @@ export function GraphicPopTemplateStage({
           height,
           backgroundColor:
             templateTweaks?.stageBackgroundColor ?? GRAPHIC_POP_STAGE_BACKGROUND_HEX,
+          borderWidth: hasBackgroundImage ? 0 : StyleSheet.hairlineWidth,
+          borderColor: hasBackgroundImage ? "transparent" : "rgba(255,255,255,0.12)",
         },
       ]}
       accessibilityLabel={`${playbackLabel}. ${trackTitle}. ${subtitle}`}

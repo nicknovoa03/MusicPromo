@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Animated,
+  Easing,
   Modal,
   PanResponder,
   Platform,
   Pressable,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -59,16 +61,50 @@ export function EditMediaModal({
   photoLabel,
   audioLabel,
 }: EditMediaModalProps) {
+  const { height: windowHeight } = useWindowDimensions();
   const [draftAspectRatio, setDraftAspectRatio] = useState<AspectRatio>(aspectRatio);
   const [draftTemplateId, setDraftTemplateId] = useState(templateId);
+  const draftTemplateIdRef = useRef(templateId);
   const sheetTranslateY = useRef(new Animated.Value(0)).current;
+  const dragStartOffsetRef = useRef(0);
+  const isClosingFromSwipeRef = useRef(false);
+  const closeRequestedRef = useRef(false);
+  const closeAnimationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!visible) return;
     setDraftAspectRatio(aspectRatio);
     setDraftTemplateId(templateId);
-    sheetTranslateY.setValue(0);
-  }, [aspectRatio, templateId, visible, sheetTranslateY]);
+    draftTemplateIdRef.current = templateId;
+    isClosingFromSwipeRef.current = false;
+    closeRequestedRef.current = false;
+    if (closeAnimationTimerRef.current) {
+      clearTimeout(closeAnimationTimerRef.current);
+      closeAnimationTimerRef.current = null;
+    }
+    dragStartOffsetRef.current = 0;
+    sheetTranslateY.setValue(windowHeight);
+    Animated.timing(sheetTranslateY, {
+      toValue: 0,
+      duration: 240,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [aspectRatio, templateId, visible, sheetTranslateY, windowHeight]);
+
+  useEffect(
+    () => () => {
+      if (closeAnimationTimerRef.current) {
+        clearTimeout(closeAnimationTimerRef.current);
+        closeAnimationTimerRef.current = null;
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    draftTemplateIdRef.current = draftTemplateId;
+  }, [draftTemplateId]);
 
   const selectedTemplate = useMemo(
     () =>
@@ -88,186 +124,255 @@ export function EditMediaModal({
 
   const handleTemplateSelect = useCallback(
     (nextTemplateId: string) => {
-      if (nextTemplateId === draftTemplateId) return;
+      if (nextTemplateId === draftTemplateIdRef.current) return;
+      draftTemplateIdRef.current = nextTemplateId;
       setDraftTemplateId(nextTemplateId);
       onTemplateSelectionChanged?.(nextTemplateId);
     },
-    [draftTemplateId, onTemplateSelectionChanged],
+    [onTemplateSelectionChanged],
   );
 
-  const sheetPanResponder = useMemo(
+  const animateSheetBackToRest = useCallback(() => {
+    Animated.timing(sheetTranslateY, {
+      toValue: 0,
+      duration: 150,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [sheetTranslateY]);
+
+  const requestCloseOnce = useCallback(() => {
+    if (closeRequestedRef.current) return;
+    closeRequestedRef.current = true;
+    isClosingFromSwipeRef.current = false;
+    dragStartOffsetRef.current = 0;
+    if (closeAnimationTimerRef.current) {
+      clearTimeout(closeAnimationTimerRef.current);
+      closeAnimationTimerRef.current = null;
+    }
+    onClose();
+  }, [onClose]);
+
+  const closeFromSwipe = useCallback(() => {
+    if (isClosingFromSwipeRef.current || closeRequestedRef.current) return;
+    isClosingFromSwipeRef.current = true;
+    dragStartOffsetRef.current = 0;
+    sheetTranslateY.stopAnimation();
+    if (closeAnimationTimerRef.current) {
+      clearTimeout(closeAnimationTimerRef.current);
+    }
+    closeAnimationTimerRef.current = setTimeout(() => {
+      requestCloseOnce();
+    }, 220);
+    Animated.timing(sheetTranslateY, {
+      toValue: windowHeight + 56,
+      duration: 200,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start(() => {
+      requestCloseOnce();
+    });
+  }, [requestCloseOnce, sheetTranslateY, windowHeight]);
+
+  const headerPanResponder = useMemo(
     () =>
       PanResponder.create({
+        onStartShouldSetPanResponder: () =>
+          !isClosingFromSwipeRef.current && !closeRequestedRef.current,
+        onStartShouldSetPanResponderCapture: () => false,
+        onMoveShouldSetPanResponder: (_, gestureState) =>
+          !isClosingFromSwipeRef.current &&
+          gestureState.dy > 0 &&
+          Math.abs(gestureState.dy) >= Math.abs(gestureState.dx),
         onMoveShouldSetPanResponderCapture: (_, gestureState) =>
-          gestureState.dy > 3 &&
-          Math.abs(gestureState.dy) > Math.abs(gestureState.dx),
+          !isClosingFromSwipeRef.current &&
+          gestureState.dy > 0 &&
+          Math.abs(gestureState.dy) >= Math.abs(gestureState.dx),
+        onPanResponderGrant: () => {
+          if (isClosingFromSwipeRef.current || closeRequestedRef.current) return;
+          sheetTranslateY.stopAnimation((currentValue) => {
+            dragStartOffsetRef.current = Number.isFinite(currentValue)
+              ? Math.max(0, currentValue)
+              : 0;
+          });
+        },
         onPanResponderMove: (_, gestureState) => {
-          if (gestureState.dy <= 0) return;
-          sheetTranslateY.setValue(gestureState.dy);
+          if (isClosingFromSwipeRef.current || closeRequestedRef.current) return;
+          if (gestureState.dy <= 0 && dragStartOffsetRef.current <= 0) return;
+          const nextOffset = Math.max(
+            0,
+            Math.min(windowHeight, dragStartOffsetRef.current + gestureState.dy),
+          );
+          sheetTranslateY.setValue(nextOffset);
         },
         onPanResponderRelease: (_, gestureState) => {
-          const shouldDismiss = gestureState.dy > 72 || gestureState.vy > 0.9;
+          if (isClosingFromSwipeRef.current || closeRequestedRef.current) return;
+          const draggedDistance = dragStartOffsetRef.current + gestureState.dy;
+          const shouldDismiss = draggedDistance > 12 || gestureState.vy > 0.12;
+          dragStartOffsetRef.current = 0;
           if (shouldDismiss) {
-            onClose();
+            closeFromSwipe();
             return;
           }
-          Animated.spring(sheetTranslateY, {
-            toValue: 0,
-            useNativeDriver: true,
-            bounciness: 0,
-            speed: 20,
-          }).start();
+          animateSheetBackToRest();
         },
         onPanResponderTerminate: () => {
-          Animated.spring(sheetTranslateY, {
-            toValue: 0,
-            useNativeDriver: true,
-            bounciness: 0,
-            speed: 20,
-          }).start();
+          if (isClosingFromSwipeRef.current || closeRequestedRef.current) return;
+          sheetTranslateY.stopAnimation((currentValue) => {
+            dragStartOffsetRef.current = 0;
+            if (currentValue > 2) {
+              closeFromSwipe();
+              return;
+            }
+            animateSheetBackToRest();
+          });
         },
         onPanResponderTerminationRequest: () => false,
       }),
-    [onClose, sheetTranslateY],
+    [animateSheetBackToRest, closeFromSwipe, sheetTranslateY, windowHeight],
   );
 
   return (
     <Modal
       visible={visible}
-      animationType="slide"
+      animationType="none"
       transparent
-      onRequestClose={onClose}
+      onRequestClose={closeFromSwipe}
     >
       <View style={styles.root}>
         <Pressable
           style={styles.backdrop}
-          onPress={onClose}
+          onPress={closeFromSwipe}
           accessibilityLabel="Close edit template"
           accessibilityRole="button"
         />
 
         <Animated.View
           style={[
-            styles.sheet,
+            styles.sheetMask,
             {
               transform: [{ translateY: sheetTranslateY }],
             },
           ]}
-          {...sheetPanResponder.panHandlers}
         >
-          <View style={styles.dragHandleWrap}>
-            <View style={styles.dragHandle} />
-          </View>
+          <View style={styles.sheet}>
+            <View style={styles.topChrome} {...headerPanResponder.panHandlers}>
+              <View style={styles.headerGlassBand} pointerEvents="none" />
+              <View style={styles.dragHandleWrap}>
+                <View style={styles.dragHandle} />
+              </View>
 
-          <View style={styles.header}>
-            <Text style={styles.headerTitle}>Edit Template</Text>
-          </View>
+              <View style={styles.header}>
+                <Text style={styles.headerTitle}>Edit Template</Text>
+              </View>
+            </View>
 
-          <View style={styles.content}>
-            <View style={styles.section}>
-            <Text style={styles.sectionLabel}>Aspect Ratio</Text>
-            <View style={styles.aspectRow}>
-              {ASPECT_OPTIONS.map((option) => {
-                const selected = option === draftAspectRatio;
-                return (
-                  <Pressable
-                    key={option}
-                    onPress={() => handleAspectRatioSelect(option)}
-                    style={[styles.optionPill, selected && styles.optionPillSelected]}
-                    accessibilityLabel={`Aspect ratio ${option}`}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected }}
-                  >
-                    <Ionicons
-                      name="crop"
-                      size={14}
-                      color={selected ? colors.dark.text : colors.dark.textSecondary}
-                    />
-                    <Text
-                      style={[
-                        styles.optionPillText,
-                        selected && styles.optionPillTextSelected,
-                      ]}
+            <View style={styles.content}>
+              <View style={styles.section}>
+              <Text style={styles.sectionLabel}>Aspect Ratio</Text>
+              <View style={styles.aspectRow}>
+                {ASPECT_OPTIONS.map((option) => {
+                  const selected = option === draftAspectRatio;
+                  return (
+                    <Pressable
+                      key={option}
+                      onPress={() => handleAspectRatioSelect(option)}
+                      style={[styles.optionPill, selected && styles.optionPillSelected]}
+                      accessibilityLabel={`Aspect ratio ${option}`}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected }}
                     >
-                      {option}
+                      <Ionicons
+                        name="crop"
+                        size={14}
+                        color={selected ? colors.dark.text : colors.dark.textSecondary}
+                      />
+                      <Text
+                        style={[
+                          styles.optionPillText,
+                          selected && styles.optionPillTextSelected,
+                        ]}
+                      >
+                        {option}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              </View>
+
+              <View style={styles.section}>
+              <View style={styles.templateHeader}>
+                <Text style={styles.sectionLabel}>Template</Text>
+                <Text style={styles.templateMeta}>
+                  {selectedTemplate?.name ?? "Template"}
+                </Text>
+              </View>
+              <TemplateSwitcher
+                options={templateDefinitions}
+                value={draftTemplateId}
+                onChange={handleTemplateSelect}
+              />
+              </View>
+
+              <View style={styles.section}>
+              <Text style={styles.sectionLabel}>Audio & Video</Text>
+              <Pressable
+                onPress={onSwapAudio}
+                style={styles.actionRow}
+                accessibilityLabel="Change audio"
+                accessibilityRole="button"
+              >
+                <View style={styles.actionLeft}>
+                  <Ionicons
+                    name="musical-notes-outline"
+                    size={18}
+                    color={colors.accent.primary}
+                  />
+                  <View style={styles.actionTextWrap}>
+                    <Text style={styles.actionTitle}>Change Audio Track</Text>
+                    <Text style={styles.actionMeta} numberOfLines={1}>
+                      {audioLabel || "Current audio"}
                     </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-            </View>
-
-            <View style={styles.section}>
-            <View style={styles.templateHeader}>
-              <Text style={styles.sectionLabel}>Template</Text>
-              <Text style={styles.templateMeta}>
-                {selectedTemplate?.name ?? "Template"}
-              </Text>
-            </View>
-            <TemplateSwitcher
-              options={templateDefinitions}
-              value={draftTemplateId}
-              onChange={handleTemplateSelect}
-            />
-            </View>
-
-            <View style={styles.section}>
-            <Text style={styles.sectionLabel}>Audio & Video</Text>
-            <Pressable
-              onPress={onSwapAudio}
-              style={styles.actionRow}
-              accessibilityLabel="Change audio"
-              accessibilityRole="button"
-            >
-              <View style={styles.actionLeft}>
-                <Ionicons
-                  name="musical-notes-outline"
-                  size={18}
-                  color={colors.accent.primary}
-                />
-                <View style={styles.actionTextWrap}>
-                  <Text style={styles.actionTitle}>Change Audio Track</Text>
-                  <Text style={styles.actionMeta} numberOfLines={1}>
-                    {audioLabel || "Current audio"}
-                  </Text>
+                  </View>
                 </View>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={colors.dark.textSecondary} />
-            </Pressable>
-            <Pressable
-              onPress={onSwapPhoto}
-              style={styles.actionRow}
-              accessibilityLabel="Change photo"
-              accessibilityRole="button"
-            >
-              <View style={styles.actionLeft}>
-                <Ionicons name="camera-outline" size={18} color={colors.accent.primary} />
-                <View style={styles.actionTextWrap}>
-                  <Text style={styles.actionTitle}>Change Photo</Text>
-                  <Text style={styles.actionMeta} numberOfLines={1}>
-                    {photoLabel || "Current image"}
-                  </Text>
+                <Ionicons name="chevron-forward" size={18} color={colors.dark.textSecondary} />
+              </Pressable>
+              <Pressable
+                onPress={onSwapPhoto}
+                style={styles.actionRow}
+                accessibilityLabel="Change photo"
+                accessibilityRole="button"
+              >
+                <View style={styles.actionLeft}>
+                  <Ionicons name="camera-outline" size={18} color={colors.accent.primary} />
+                  <View style={styles.actionTextWrap}>
+                    <Text style={styles.actionTitle}>Change Photo</Text>
+                    <Text style={styles.actionMeta} numberOfLines={1}>
+                      {photoLabel || "Current image"}
+                    </Text>
+                  </View>
                 </View>
+                <Ionicons name="chevron-forward" size={18} color={colors.dark.textSecondary} />
+              </Pressable>
               </View>
-              <Ionicons name="chevron-forward" size={18} color={colors.dark.textSecondary} />
-            </Pressable>
             </View>
-          </View>
 
-          <View style={styles.footer}>
-            <Pressable
-              onPress={() =>
-                onApply({
-                  aspectRatio: draftAspectRatio,
-                  templateId: draftTemplateId,
-                })
-              }
-              style={styles.applyButton}
-              accessibilityLabel={`Apply template changes for ${selectedTemplate?.name ?? "template"}`}
-              accessibilityRole="button"
-            >
-              <Text style={styles.applyButtonText}>Apply Changes</Text>
-            </Pressable>
+            <View style={styles.footer}>
+              <Pressable
+                onPress={() =>
+                  onApply({
+                    aspectRatio: draftAspectRatio,
+                    templateId: draftTemplateId,
+                  })
+                }
+                style={styles.applyButton}
+                accessibilityLabel={`Apply template changes for ${selectedTemplate?.name ?? "template"}`}
+                accessibilityRole="button"
+              >
+                <Text style={styles.applyButtonText}>Apply Changes</Text>
+              </Pressable>
+            </View>
           </View>
         </Animated.View>
       </View>
@@ -284,33 +389,48 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "transparent",
   },
-  sheet: {
+  sheetMask: {
     maxHeight: "62%",
     minHeight: 360,
-    backgroundColor: colors.dark.background,
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
     overflow: "hidden",
+    backgroundColor: "#0B0D14",
+  },
+  sheet: {
+    backgroundColor: "#0B0D14",
+  },
+  topChrome: {
+    position: "relative",
+    backgroundColor: "#0B0D14",
+  },
+  headerGlassBand: {
+    ...StyleSheet.absoluteFillObject,
+    top: 0,
+    height: 62,
+    backgroundColor: "transparent",
+    borderBottomWidth: 0,
+    borderBottomColor: "transparent",
   },
   dragHandleWrap: {
-    height: 22,
+    height: 28,
     alignItems: "center",
     justifyContent: "center",
   },
   dragHandle: {
-    width: 40,
+    width: 42,
     height: 4,
     borderRadius: radius.full,
-    backgroundColor: "rgba(255,255,255,0.3)",
+    backgroundColor: "rgba(255,255,255,0.2)",
   },
   header: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xs,
+    paddingTop: 0,
     paddingBottom: spacing.md,
     alignItems: "center",
     justifyContent: "center",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(255,255,255,0.06)",
   },
   headerTitle: {
     ...typography.body,
@@ -330,7 +450,7 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
+    paddingTop: spacing.md,
     paddingBottom: spacing.lg,
     gap: spacing.md,
   },
@@ -362,9 +482,9 @@ const styles = StyleSheet.create({
     minHeight: 34,
     minWidth: 74,
     borderRadius: radius.full,
-    backgroundColor: colors.dark.surface,
+    backgroundColor: "rgba(255,255,255,0.05)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.11)",
+    borderColor: "rgba(255,255,255,0.08)",
     paddingHorizontal: spacing.sm,
     flexDirection: "row",
     alignItems: "center",
