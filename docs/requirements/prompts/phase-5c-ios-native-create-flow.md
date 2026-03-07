@@ -14,6 +14,13 @@ Focus: Create flow native surface polish (Picker, Editor, Rendering, Share, Shel
 - Phase 5b profile migration is merged (or independently validated).
 - Existing create/export/share reliability baseline is green.
 
+## Lessons Applied From Phase 5a
+
+- Prefer static imports for `@expo/ui/swift-ui` in migrated screens. Avoid runtime `require`-based loading paths.
+- Before rendering native surfaces, validate runtime shape for required components on that screen and fallback immediately if unavailable.
+- Avoid attaching native menu/gesture surfaces to competing RN gesture chains. Keep interaction ownership clear per path.
+- Keep fallback controls visible and parity-tested until native path is verified on-device for each create surface.
+
 ## Goal
 
 Improve native iOS feel across Create flow surfaces without changing core rendering, media, or export correctness contracts.
@@ -102,4 +109,3 @@ Acceptance criteria:
 - No regressions to create/export/share core outcomes.
 - Android and fallback paths remain stable.
 ```
-

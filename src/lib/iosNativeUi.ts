@@ -21,7 +21,6 @@ export type IOSNativeUIPhase5Availability = {
 };
 
 let cachedExpoUINativeModuleAvailable: boolean | undefined;
-let cachedExpoSwiftUI: ExpoSwiftUIModule | null | undefined;
 
 function getIOSVersionMajor() {
   if (Platform.OS !== "ios") return null;
@@ -78,34 +77,4 @@ export function canUseIOSNativeUIPhase5(
   options: IOSNativeUIPhase5AvailabilityOptions = {},
 ) {
   return getIOSNativeUIPhase5Availability(options).enabled;
-}
-
-function getRuntimeRequire() {
-  return (globalThis as { require?: (moduleId: string) => unknown }).require;
-}
-
-export function loadExpoSwiftUIModule() {
-  if (cachedExpoSwiftUI !== undefined) {
-    return cachedExpoSwiftUI;
-  }
-
-  if (!isExpoUINativeModuleAvailable()) {
-    cachedExpoSwiftUI = null;
-    return cachedExpoSwiftUI;
-  }
-
-  const runtimeRequire = getRuntimeRequire();
-  if (typeof runtimeRequire !== "function") {
-    cachedExpoSwiftUI = null;
-    return cachedExpoSwiftUI;
-  }
-
-  try {
-    cachedExpoSwiftUI = runtimeRequire("@expo/ui/swift-ui") as ExpoSwiftUIModule;
-  } catch (error) {
-    console.warn("Failed to load @expo/ui/swift-ui. Falling back to React Native UI.", error);
-    cachedExpoSwiftUI = null;
-  }
-
-  return cachedExpoSwiftUI;
 }
