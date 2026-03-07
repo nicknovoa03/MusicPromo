@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -18,10 +18,21 @@ import { useConvex, useMutation, useQuery } from "convex/react";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import * as Haptics from "expo-haptics";
 import { usePostHog } from "posthog-react-native";
+import * as ExpoSwiftUI from "@expo/ui/swift-ui";
+import {
+  accessibilityLabel as swiftUIAccessibilityLabel,
+  onTapGesture as swiftUIOnTapGesture,
+  opacity as swiftUIOpacity,
+} from "@expo/ui/swift-ui/modifiers";
 import { api } from "../../convex/_generated/api";
 import type { Doc } from "../../convex/_generated/dataModel";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
 import type { EventName } from "@/lib/analytics";
+import {
+  canUseIOSNativeUIPhase5,
+  getIOSNativeUIPhase5Availability,
+  type ExpoSwiftUIModule,
+} from "@/lib/iosNativeUi";
 import { normalizeMediaUri } from "@/lib/mediaUri";
 import { getLocalArtistProfile } from "@/lib/localProfile";
 import { encodeUriParam } from "@/lib/uri";
@@ -31,9 +42,55 @@ import {
   removeLocalProject,
   type LocalProject,
 } from "@/lib/localProjects";
-import { resolveTemplateId } from "@/lib/templates";
+import {
+  getTemplateDefinition,
+  parseTemplateTweaksParam,
+  resolveTemplateId,
+} from "@/lib/templates";
 
 type Project = Doc<"projects"> | LocalProject;
+type ProjectAction = "rename" | "duplicate" | "delete";
+type ProjectThumbnailProps = {
+  project: Project;
+  title: string;
+};
+
+type NativeProjectContextMenuItemsProps = {
+  expoSwiftUI: ExpoSwiftUIModule;
+  isDeleting: boolean;
+  onAction: (action: ProjectAction) => void;
+};
+
+function NativeProjectContextMenuItems({
+  expoSwiftUI,
+  isDeleting,
+  onAction,
+}: NativeProjectContextMenuItemsProps) {
+  return (
+    <expoSwiftUI.ContextMenu.Items>
+      <expoSwiftUI.Button
+        systemImage="pencil"
+        onPress={() => onAction("rename")}
+      >
+        Rename
+      </expoSwiftUI.Button>
+      <expoSwiftUI.Button
+        systemImage="square.on.square"
+        onPress={() => onAction("duplicate")}
+      >
+        Duplicate
+      </expoSwiftUI.Button>
+      <expoSwiftUI.Button
+        systemImage="trash"
+        role="destructive"
+        disabled={isDeleting}
+        onPress={() => onAction("delete")}
+      >
+        Delete
+      </expoSwiftUI.Button>
+    </expoSwiftUI.ContextMenu.Items>
+  );
+}
 
 function isLocalProject(project: Project): project is LocalProject {
   return "id" in project;
@@ -57,11 +114,62 @@ function normalizeAvatarUri(value: string | null | undefined): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function ProjectThumbnail({ project, title }: ProjectThumbnailProps) {
+  const [thumbnailSize, setThumbnailSize] = useState(0);
+  const photoUri = normalizeMediaUri(project.photoUri);
+  const fallbackPreviewUri = normalizeMediaUri(project.exportedVideoUri);
+  const templateId = resolveTemplateId(project.templateId);
+  const templateTweaks = useMemo(
+    () => parseTemplateTweaksParam(project.templateTweaks),
+    [project.templateTweaks],
+  );
+  const templateDefinition = useMemo(
+    () => getTemplateDefinition(templateId),
+    [templateId],
+  );
+  const TemplateStageComponent = templateDefinition.StageComponent;
+  const canRenderTemplateThumbnail = thumbnailSize > 0;
+
+  return (
+    <View
+      style={styles.thumbnail}
+      onLayout={(event) => {
+        const nextSize = Math.round(event.nativeEvent.layout.width);
+        setThumbnailSize((current) => (current === nextSize ? current : nextSize));
+      }}
+    >
+      {canRenderTemplateThumbnail ? (
+        <TemplateStageComponent
+          width={thumbnailSize}
+          height={thumbnailSize}
+          aspectRatio={project.aspectRatio}
+          photoUri={photoUri}
+          isPlaying={false}
+          playbackLabel="Project thumbnail"
+          trackTitle={title}
+          subtitle={templateDefinition.name}
+          templateTweaks={templateTweaks ?? undefined}
+        />
+      ) : fallbackPreviewUri ? (
+        <Image
+          source={{ uri: fallbackPreviewUri }}
+          style={styles.thumbnailImage}
+          resizeMode="cover"
+        />
+      ) : (
+        <Ionicons
+          name="image-outline"
+          size={30}
+          color={colors.light.textSecondary}
+        />
+      )}
+    </View>
+  );
+}
+
 let hasWarnedHapticsUnavailable = false;
 
-async function triggerSelectionHaptic(
-  type: "enter" | "toggle-on" | "toggle-off",
-) {
+async function triggerSelectionHaptic(type: "enter" | "toggle-on" | "toggle-off") {
   const hapticsCompat = Haptics as unknown as {
     performAndroidHapticsAsync?: (
       hapticType: Haptics.AndroidHaptics,
@@ -157,7 +265,6 @@ export default function HomeScreen() {
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
-  const longPressProjectIdRef = useRef<string | null>(null);
 
   const track = useCallback(
     (event: EventName, props?: Record<string, string>) => {
@@ -165,6 +272,34 @@ export default function HomeScreen() {
     },
     [posthog],
   );
+  const nativeProjectActionsAvailability = getIOSNativeUIPhase5Availability({
+    minIOSVersion: 14,
+  });
+  const nativeProjectActionsEnabledByContract = nativeProjectActionsAvailability.enabled;
+  const nativeEmptyStateEnabledByContract = canUseIOSNativeUIPhase5({
+    minIOSVersion: 17,
+  });
+  const shouldLoadExpoSwiftUI =
+    nativeProjectActionsEnabledByContract || nativeEmptyStateEnabledByContract;
+  const expoSwiftUI = shouldLoadExpoSwiftUI
+    ? (ExpoSwiftUI as ExpoSwiftUIModule)
+    : null;
+  const expoSwiftUIAny = expoSwiftUI as Record<string, unknown> | null;
+  const contextMenuAny = expoSwiftUIAny?.ContextMenu as Record<string, unknown> | undefined;
+  const hasNativeContextMenuComponents = Boolean(
+    contextMenuAny &&
+      "Trigger" in contextMenuAny &&
+      "Items" in contextMenuAny &&
+      expoSwiftUIAny &&
+      "RoundedRectangle" in expoSwiftUIAny,
+  );
+
+  const canUseNativeProjectActions =
+    nativeProjectActionsEnabledByContract &&
+    expoSwiftUI !== null &&
+    hasNativeContextMenuComponents;
+  const canUseNativeEmptyState =
+    nativeEmptyStateEnabledByContract && expoSwiftUI !== null;
 
   const refreshLocalProjects = useCallback(async () => {
     const projects = await listLocalProjects();
@@ -217,10 +352,6 @@ export default function HomeScreen() {
   const openProject = useCallback(
     (project: Project) => {
       const projectKey = getProjectId(project);
-      if (longPressProjectIdRef.current === projectKey) {
-        longPressProjectIdRef.current = null;
-        return;
-      }
       if (isSelectionMode) {
         const wasSelected = selectedProjectIds.includes(projectKey);
         void triggerSelectionHaptic(wasSelected ? "toggle-off" : "toggle-on");
@@ -293,16 +424,6 @@ export default function HomeScreen() {
     });
   }, [closeProjectActions]);
 
-  const toggleProjectSelection = useCallback((projectKey: string) => {
-    const wasSelected = selectedProjectIds.includes(projectKey);
-    void triggerSelectionHaptic(wasSelected ? "toggle-off" : "toggle-on");
-    setSelectedProjectIds((prev) =>
-      prev.includes(projectKey)
-        ? prev.filter((id) => id !== projectKey)
-        : [...prev, projectKey],
-    );
-  }, [selectedProjectIds]);
-
   const openProjectActions = useCallback(
     (project: Project) => {
       if (isSelectionMode) return;
@@ -337,12 +458,8 @@ export default function HomeScreen() {
   );
 
   const handleProjectAction = useCallback(
-    (action: "rename" | "duplicate" | "delete") => {
-      const project = actionProject;
-      if (!project) return;
-
+    (project: Project, action: ProjectAction) => {
       if (action === "delete") {
-        closeProjectActions();
         track("project_delete_started", { projectId: getProjectId(project) });
         Alert.alert(
           "Delete project?",
@@ -367,7 +484,18 @@ export default function HomeScreen() {
         "This action is part of the next project-management pass.",
       );
     },
-    [actionProject, closeProjectActions, runDeleteProject, track],
+    [closeProjectActions, runDeleteProject, track],
+  );
+
+  const handleModalProjectAction = useCallback(
+    (action: ProjectAction) => {
+      const project = actionProject;
+      if (!project) return;
+
+      closeProjectActions();
+      handleProjectAction(project, action);
+    },
+    [actionProject, closeProjectActions, handleProjectAction],
   );
 
   const stableProjects = useMemo(() => {
@@ -445,105 +573,127 @@ export default function HomeScreen() {
   const renderProjectCard = useCallback(
     ({ item }: { item: Project }) => {
       const projectKey = getProjectId(item);
-      const previewUri = normalizeMediaUri(item.photoUri ?? item.exportedVideoUri);
       const isDeleting = deletingProjectId === projectKey;
       const isSelected = selectedProjectIds.includes(projectKey);
+      const title = item.title?.trim() ? item.title : "Untitled Project";
+      const canRenderNativeProjectActions =
+        canUseNativeProjectActions && expoSwiftUI && !isSelectionMode && !isDeleting;
+      const cardContent = (
+        <View style={styles.cardContent}>
+          <ProjectThumbnail project={item} title={title} />
+          <View style={styles.cardBody}>
+            <Text numberOfLines={1} style={styles.cardTitle}>
+              {title}
+            </Text>
+            <Text style={styles.cardDate}>{formatDate(item.createdAt)}</Text>
+          </View>
+        </View>
+      );
+      const cardSurface = canRenderNativeProjectActions ? (
+        cardContent
+      ) : (
+        <Pressable
+          style={({ pressed }) => [
+            styles.cardPressable,
+            pressed && styles.cardPressed,
+          ]}
+          onPress={() => openProject(item)}
+          onLongPress={isSelectionMode ? undefined : () => openProjectActions(item)}
+          delayLongPress={220}
+          disabled={isDeleting}
+          accessibilityLabel={
+            isSelectionMode
+              ? `${isSelected ? "Deselect" : "Select"} ${title}`
+              : `Open ${title}`
+          }
+          accessibilityRole="button"
+          accessibilityState={{ disabled: isDeleting }}
+        >
+          {cardContent}
+        </Pressable>
+      );
 
       return (
         <View style={[styles.card, isSelectionMode && isSelected && styles.cardSelected]}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.cardPressable,
-              pressed && styles.cardPressed,
-            ]}
-            onPress={() => openProject(item)}
-            onLongPress={() => {
-              longPressProjectIdRef.current = projectKey;
-              if (isSelectionMode) {
-                toggleProjectSelection(projectKey);
-                return;
-              }
-              void triggerSelectionHaptic("enter");
-              setIsSelectionMode(true);
-              setSelectedProjectIds([projectKey]);
-            }}
-            delayLongPress={220}
-            disabled={isDeleting}
-            accessibilityLabel={
-              isSelectionMode
-                ? `${isSelected ? "Deselect" : "Select"} ${item.title ?? "Untitled Project"}`
-                : `Open ${item.title ?? "Untitled Project"}`
-            }
-            accessibilityRole="button"
-            accessibilityState={{ disabled: isDeleting }}
-          >
-            {isSelectionMode ? (
-              <View
-                style={[
-                  styles.cardSelectBadge,
-                  isSelected && styles.cardSelectBadgeSelected,
-                ]}
-              >
-                <Ionicons
-                  name={isSelected ? "checkmark" : "ellipse-outline"}
-                  size={14}
-                  color={isSelected ? colors.light.background : colors.light.textSecondary}
-                />
-              </View>
-            ) : null}
-            <View style={styles.thumbnail}>
-              {previewUri ? (
-                <Image
-                  source={{ uri: previewUri }}
-                  style={styles.thumbnailImage}
-                  resizeMode="cover"
-                />
-              ) : (
-                <Ionicons
-                  name="image-outline"
-                  size={30}
-                  color={colors.light.textSecondary}
-                />
-              )}
+          {isSelectionMode ? (
+            <View
+              style={[
+                styles.cardSelectBadge,
+                isSelected && styles.cardSelectBadgeSelected,
+              ]}
+            >
+              <Ionicons
+                name={isSelected ? "checkmark" : "ellipse-outline"}
+                size={14}
+                color={isSelected ? colors.light.background : colors.light.textSecondary}
+              />
             </View>
-            <View style={styles.cardBody}>
-              <Text numberOfLines={1} style={styles.cardTitle}>
-                {item.title?.trim() ? item.title : "Untitled Project"}
-              </Text>
-              <Text style={styles.cardDate}>{formatDate(item.createdAt)}</Text>
-            </View>
-          </Pressable>
+          ) : null}
+
+          {cardSurface}
+
+          {canRenderNativeProjectActions && expoSwiftUI ? (
+            <expoSwiftUI.Host style={styles.nativeCardContextMenuOverlay}>
+              <expoSwiftUI.ContextMenu activationMethod="longPress">
+                <NativeProjectContextMenuItems
+                  expoSwiftUI={expoSwiftUI}
+                  isDeleting={isDeleting}
+                  onAction={(action) => {
+                    track("project_actions_opened", { projectId: projectKey });
+                    handleProjectAction(item, action);
+                  }}
+                />
+                <expoSwiftUI.ContextMenu.Trigger>
+                  <expoSwiftUI.RoundedRectangle
+                    cornerRadius={radius.md}
+                    modifiers={[
+                      swiftUIOpacity(0.015),
+                      swiftUIOnTapGesture(() => openProject(item)),
+                      swiftUIAccessibilityLabel(
+                        `Open ${title}. Long press for project actions.`,
+                      ),
+                    ]}
+                  />
+                </expoSwiftUI.ContextMenu.Trigger>
+              </expoSwiftUI.ContextMenu>
+            </expoSwiftUI.Host>
+          ) : null}
 
           {!isSelectionMode ? (
-            <Pressable
-              style={styles.cardMenuButton}
-              onPress={() => openProjectActions(item)}
-              disabled={isDeleting}
-              accessibilityLabel={`Project actions for ${item.title ?? "Untitled Project"}`}
-              accessibilityRole="button"
-              accessibilityState={{ disabled: isDeleting }}
-            >
-              {isDeleting ? (
-                <ActivityIndicator size="small" color={colors.light.textSecondary} />
-              ) : (
-                <Ionicons
-                  name="ellipsis-horizontal"
-                  size={16}
-                  color={colors.light.text}
-                />
-              )}
-            </Pressable>
+            canRenderNativeProjectActions ? null : (
+              <Pressable
+                style={styles.cardMenuButton}
+                onPress={() => openProjectActions(item)}
+                disabled={isDeleting}
+                accessibilityLabel={`Project actions for ${title}`}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: isDeleting }}
+              >
+                {isDeleting ? (
+                  <ActivityIndicator size="small" color={colors.light.textSecondary} />
+                ) : (
+                  <Ionicons
+                    name="ellipsis-horizontal"
+                    size={16}
+                    color={colors.light.text}
+                  />
+                )}
+              </Pressable>
+            )
           ) : null}
         </View>
       );
     },
     [
+      canUseNativeProjectActions,
       deletingProjectId,
+      expoSwiftUI,
+      handleProjectAction,
       isSelectionMode,
       openProject,
       openProjectActions,
       selectedProjectIds,
-      toggleProjectSelection,
+      track,
     ],
   );
 
@@ -613,17 +763,30 @@ export default function HomeScreen() {
         }
         ListEmptyComponent={
           isLoading ? null : (
-            <View style={styles.emptyState}>
-              <View style={styles.emptyIcon}>
-                <Ionicons
-                  name="film-outline"
-                  size={48}
-                  color={colors.light.textSecondary}
+            canUseNativeEmptyState && expoSwiftUI ? (
+              <expoSwiftUI.Host
+                style={styles.nativeEmptyStateHost}
+                useViewportSizeMeasurement
+              >
+                <expoSwiftUI.ContentUnavailableView
+                  title="Create your first promo"
+                  description="Tap + to get started"
+                  systemImage="film.stack"
                 />
+              </expoSwiftUI.Host>
+            ) : (
+              <View style={styles.emptyState}>
+                <View style={styles.emptyIcon}>
+                  <Ionicons
+                    name="film-outline"
+                    size={48}
+                    color={colors.light.textSecondary}
+                  />
+                </View>
+                <Text style={styles.emptyTitle}>Create your first promo</Text>
+                <Text style={styles.emptySubtitle}>Tap + to get started</Text>
               </View>
-              <Text style={styles.emptyTitle}>Create your first promo</Text>
-              <Text style={styles.emptySubtitle}>Tap + to get started</Text>
-            </View>
+            )
           )
         }
       />
@@ -656,7 +819,7 @@ export default function HomeScreen() {
                     styles.actionsRow,
                     pressed && styles.actionsRowPressed,
                   ]}
-                  onPress={() => handleProjectAction("rename")}
+                  onPress={() => handleModalProjectAction("rename")}
                   accessibilityLabel="Rename project"
                   accessibilityRole="button"
                 >
@@ -673,7 +836,7 @@ export default function HomeScreen() {
                     styles.actionsRow,
                     pressed && styles.actionsRowPressed,
                   ]}
-                  onPress={() => handleProjectAction("duplicate")}
+                  onPress={() => handleModalProjectAction("duplicate")}
                   accessibilityLabel="Duplicate project"
                   accessibilityRole="button"
                 >
@@ -690,7 +853,7 @@ export default function HomeScreen() {
                     styles.actionsRow,
                     pressed && styles.actionsRowPressed,
                   ]}
-                  onPress={() => handleProjectAction("delete")}
+                  onPress={() => handleModalProjectAction("delete")}
                   disabled={isDeletingSelectedProject}
                   accessibilityLabel="Delete project"
                   accessibilityRole="button"
@@ -806,6 +969,10 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
   },
+  nativeEmptyStateHost: {
+    flex: 1,
+    minHeight: 320,
+  },
   emptyState: {
     flex: 1,
     alignItems: "center",
@@ -858,9 +1025,16 @@ const styles = StyleSheet.create({
   cardPressable: {
     flex: 1,
   },
+  cardContent: {
+    flex: 1,
+  },
   cardPressed: {
     opacity: 0.88,
     transform: [{ scale: 0.98 }],
+  },
+  nativeCardContextMenuOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 4,
   },
   cardMenuButton: {
     position: "absolute",

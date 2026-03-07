@@ -7,6 +7,10 @@ import { StatusBar } from "expo-status-bar";
 import { tokenCache } from "@/lib/clerk";
 import { convex } from "@/lib/convex";
 import {
+  getIOSNativeUIPhase5Availability,
+  IOS_NATIVE_UI_PHASE5_FLAG_NAME,
+} from "@/lib/iosNativeUi";
+import {
   LocalSessionProvider,
   useLocalSession,
 } from "@/providers/localSession";
@@ -59,11 +63,41 @@ function AppStatusBar() {
   return <StatusBar style={isDarkSurface || isProfileSurface ? "light" : "dark"} />;
 }
 
+function IOSNativeUIPhase5Bootstrap() {
+  useEffect(() => {
+    const availability = getIOSNativeUIPhase5Availability({ minIOSVersion: 14 });
+
+    if (!availability.isIOS) {
+      return;
+    }
+
+    if (
+      availability.flagValue !== undefined &&
+      availability.flagValue !== "0" &&
+      availability.flagValue !== "1"
+    ) {
+      console.warn(
+        `${IOS_NATIVE_UI_PHASE5_FLAG_NAME} must be set to "1" to enable the Phase 5 iOS-native UI path.`,
+      );
+      return;
+    }
+
+    if (availability.flagEnabled && !availability.runtimeAvailable) {
+      console.info(
+        "Phase 5 iOS-native UI flag is enabled, but Expo UI is unavailable in this runtime. Falling back to React Native surfaces.",
+      );
+    }
+  }, []);
+
+  return null;
+}
+
 function AppWithProviders() {
   return (
     <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
       <AuthGate />
       <AppStatusBar />
+      <IOSNativeUIPhase5Bootstrap />
     </ConvexProviderWithClerk>
   );
 }

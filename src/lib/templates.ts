@@ -179,7 +179,7 @@ export interface TemplateDefinition {
   };
 }
 
-export const DEFAULT_TEMPLATE_ID = "simple-spin";
+export const DEFAULT_TEMPLATE_ID = "graphic-pop";
 
 const TEMPLATE_DEFINITIONS: Record<string, TemplateDefinition> = {
   "simple-spin": {
