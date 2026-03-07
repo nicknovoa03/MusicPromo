@@ -598,8 +598,6 @@ export default function HomeScreen() {
             pressed && styles.cardPressed,
           ]}
           onPress={() => openProject(item)}
-          onLongPress={isSelectionMode ? undefined : () => openProjectActions(item)}
-          delayLongPress={220}
           disabled={isDeleting}
           accessibilityLabel={
             isSelectionMode
