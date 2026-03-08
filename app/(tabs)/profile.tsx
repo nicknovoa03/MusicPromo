@@ -184,6 +184,7 @@ export default function ProfileScreen() {
   const [isProfileSettingsOpen, setIsProfileSettingsOpen] = useState(false);
   const [isClosingProfileSettings, setIsClosingProfileSettings] = useState(false);
   const profileSettingsTranslateX = useRef(new Animated.Value(windowWidth)).current;
+  const profileScrollY = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     let isActive = true;
@@ -825,6 +826,28 @@ export default function ProfileScreen() {
     240,
     Math.min(Math.round(windowWidth * 0.72), Math.round(heroHeight * 0.76)),
   );
+  const heroPullDistance = profileScrollY.interpolate({
+    inputRange: [-1, 0],
+    outputRange: [1, 0],
+    extrapolateLeft: "extend",
+    extrapolateRight: "clamp",
+  });
+  const heroBannerAnimatedHeight = profileScrollY.interpolate({
+    inputRange: [-1, 0],
+    outputRange: [heroBannerHeight + 1, heroBannerHeight],
+    extrapolateLeft: "extend",
+    extrapolateRight: "clamp",
+  });
+  const heroBannerPullScale = profileScrollY.interpolate({
+    inputRange: [-120, 0],
+    outputRange: [1.24, 1.16],
+    extrapolate: "clamp",
+  });
+  const heroBannerPullTranslateY = profileScrollY.interpolate({
+    inputRange: [-120, 0],
+    outputRange: [-8, 18],
+    extrapolate: "clamp",
+  });
   const heroArtistName = artistNameDraft.trim() || "Tap to add artist name";
   const primaryEmail = clerkUser?.primaryEmailAddress?.emailAddress ?? null;
   const actionsDisabled = isSigningOut || isDeleting;
@@ -838,7 +861,7 @@ export default function ProfileScreen() {
     isPickingHero;
   const profileSettingsDisabled = profileInputsDisabled;
   const modalTopInset = Platform.OS === "ios" ? (insets.top > 0 ? insets.top : 44) : 0;
-  const heroTopInsetOffset = Platform.OS === "ios" ? -insets.top : 0;
+  const heroTopInsetOffset = 0;
   const shouldUseRNSettingsGesture = !canUseNativeProfileSettings;
 
   const handleOpenProfileSettings = useCallback(() => {
@@ -1265,30 +1288,57 @@ export default function ProfileScreen() {
           </SafeAreaProvider>
         </Modal>
       ) : null}
-        <ScrollView
+        <Animated.ScrollView
           contentInsetAdjustmentBehavior="never"
           automaticallyAdjustContentInsets={false}
           automaticallyAdjustsScrollIndicatorInsets={false}
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
+          scrollEventThrottle={16}
+          onScroll={Animated.event(
+            [{ nativeEvent: { contentOffset: { y: profileScrollY } } }],
+            { useNativeDriver: false },
+          )}
         >
-        <View
+        <Animated.View
           style={[
             styles.heroShell,
-            { minHeight: heroHeight, marginTop: heroTopInsetOffset },
+            {
+              minHeight: heroHeight,
+              marginTop: heroTopInsetOffset,
+              transform: [{ translateY: Animated.multiply(heroPullDistance, -1) }],
+            },
           ]}
         >
-          <View style={[styles.heroBanner, { height: heroBannerHeight }]}>
+          <Animated.View style={[styles.heroBanner, { height: heroBannerAnimatedHeight }]}>
             {heroImageUrlDraft ? (
-              <Image
+              <Animated.Image
                 source={{ uri: heroImageUrlDraft }}
-                style={styles.heroBannerImage}
+                style={[
+                  styles.heroBannerImage,
+                  {
+                    transform: [
+                      { scale: heroBannerPullScale },
+                      { translateY: heroBannerPullTranslateY },
+                    ],
+                  },
+                ]}
                 resizeMode="cover"
               />
             ) : (
-              <View style={styles.heroBannerFallback} />
+              <Animated.View
+                style={[
+                  styles.heroBannerFallback,
+                  {
+                    transform: [
+                      { scale: heroBannerPullScale },
+                      { translateY: heroBannerPullTranslateY },
+                    ],
+                  },
+                ]}
+              />
             )}
-          </View>
+          </Animated.View>
 
           <View style={styles.heroIdentityBlock}>
             <Pressable
@@ -1356,9 +1406,14 @@ export default function ProfileScreen() {
               </Text>
             </View>
           </View>
-        </View>
+        </Animated.View>
 
-        <View style={styles.mainContent}>
+        <Animated.View
+          style={[
+            styles.mainContent,
+            { transform: [{ translateY: Animated.multiply(heroPullDistance, -1) }] },
+          ]}
+        >
           {errorText ? (
             <View style={styles.errorPanel}>
               <Ionicons name="alert-circle-outline" size={16} color={colors.accent.error} />
@@ -1429,8 +1484,8 @@ export default function ProfileScreen() {
               </>
             ) : null}
           </View>
-        </View>
-      </ScrollView>
+        </Animated.View>
+      </Animated.ScrollView>
     </SafeAreaView>
   );
 }

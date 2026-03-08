@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -21,6 +21,7 @@ import { usePostHog } from "posthog-react-native";
 import * as ExpoSwiftUI from "@expo/ui/swift-ui";
 import {
   accessibilityLabel as swiftUIAccessibilityLabel,
+  onLongPressGesture as swiftUIOnLongPressGesture,
   onTapGesture as swiftUIOnTapGesture,
   opacity as swiftUIOpacity,
 } from "@expo/ui/swift-ui/modifiers";
@@ -54,43 +55,6 @@ type ProjectThumbnailProps = {
   project: Project;
   title: string;
 };
-
-type NativeProjectContextMenuItemsProps = {
-  expoSwiftUI: ExpoSwiftUIModule;
-  isDeleting: boolean;
-  onAction: (action: ProjectAction) => void;
-};
-
-function NativeProjectContextMenuItems({
-  expoSwiftUI,
-  isDeleting,
-  onAction,
-}: NativeProjectContextMenuItemsProps) {
-  return (
-    <expoSwiftUI.ContextMenu.Items>
-      <expoSwiftUI.Button
-        systemImage="pencil"
-        onPress={() => onAction("rename")}
-      >
-        Rename
-      </expoSwiftUI.Button>
-      <expoSwiftUI.Button
-        systemImage="square.on.square"
-        onPress={() => onAction("duplicate")}
-      >
-        Duplicate
-      </expoSwiftUI.Button>
-      <expoSwiftUI.Button
-        systemImage="trash"
-        role="destructive"
-        disabled={isDeleting}
-        onPress={() => onAction("delete")}
-      >
-        Delete
-      </expoSwiftUI.Button>
-    </expoSwiftUI.ContextMenu.Items>
-  );
-}
 
 function isLocalProject(project: Project): project is LocalProject {
   return "id" in project;
@@ -265,6 +229,7 @@ export default function HomeScreen() {
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const longPressProjectIdRef = useRef<string | null>(null);
 
   const track = useCallback(
     (event: EventName, props?: Record<string, string>) => {
@@ -285,19 +250,14 @@ export default function HomeScreen() {
     ? (ExpoSwiftUI as ExpoSwiftUIModule)
     : null;
   const expoSwiftUIAny = expoSwiftUI as Record<string, unknown> | null;
-  const contextMenuAny = expoSwiftUIAny?.ContextMenu as Record<string, unknown> | undefined;
-  const hasNativeContextMenuComponents = Boolean(
-    contextMenuAny &&
-      "Trigger" in contextMenuAny &&
-      "Items" in contextMenuAny &&
-      expoSwiftUIAny &&
-      "RoundedRectangle" in expoSwiftUIAny,
+  const hasNativeProjectGestureComponents = Boolean(
+    expoSwiftUIAny && "RoundedRectangle" in expoSwiftUIAny,
   );
 
-  const canUseNativeProjectActions =
+  const canUseNativeProjectGestures =
     nativeProjectActionsEnabledByContract &&
     expoSwiftUI !== null &&
-    hasNativeContextMenuComponents;
+    hasNativeProjectGestureComponents;
   const canUseNativeEmptyState =
     nativeEmptyStateEnabledByContract && expoSwiftUI !== null;
 
@@ -352,6 +312,10 @@ export default function HomeScreen() {
   const openProject = useCallback(
     (project: Project) => {
       const projectKey = getProjectId(project);
+      if (longPressProjectIdRef.current === projectKey) {
+        longPressProjectIdRef.current = null;
+        return;
+      }
       if (isSelectionMode) {
         const wasSelected = selectedProjectIds.includes(projectKey);
         void triggerSelectionHaptic(wasSelected ? "toggle-off" : "toggle-on");
@@ -431,6 +395,41 @@ export default function HomeScreen() {
       track("project_actions_opened", { projectId: getProjectId(project) });
     },
     [isSelectionMode, track],
+  );
+
+  const handleProjectLongPress = useCallback(
+    (project: Project) => {
+      const projectKey = getProjectId(project);
+      if (deletingProjectId === projectKey) return;
+      longPressProjectIdRef.current = projectKey;
+      setTimeout(() => {
+        if (longPressProjectIdRef.current === projectKey) {
+          longPressProjectIdRef.current = null;
+        }
+      }, 350);
+
+      if (isSelectionMode) {
+        const wasSelected = selectedProjectIds.includes(projectKey);
+        void triggerSelectionHaptic(wasSelected ? "toggle-off" : "toggle-on");
+        setSelectedProjectIds((prev) =>
+          prev.includes(projectKey)
+            ? prev.filter((id) => id !== projectKey)
+            : [...prev, projectKey],
+        );
+        return;
+      }
+
+      closeProjectActions();
+      setIsSelectionMode(true);
+      setSelectedProjectIds([projectKey]);
+      void triggerSelectionHaptic("enter");
+    },
+    [
+      closeProjectActions,
+      deletingProjectId,
+      isSelectionMode,
+      selectedProjectIds,
+    ],
   );
 
   const runDeleteProject = useCallback(
@@ -576,8 +575,9 @@ export default function HomeScreen() {
       const isDeleting = deletingProjectId === projectKey;
       const isSelected = selectedProjectIds.includes(projectKey);
       const title = item.title?.trim() ? item.title : "Untitled Project";
-      const canRenderNativeProjectActions =
-        canUseNativeProjectActions && expoSwiftUI && !isSelectionMode && !isDeleting;
+      const canRenderNativeProjectGestures =
+        canUseNativeProjectGestures && expoSwiftUI && !isSelectionMode && !isDeleting;
+      const isRNCardGestureOwner = !canRenderNativeProjectGestures;
       const cardContent = (
         <View style={styles.cardContent}>
           <ProjectThumbnail project={item} title={title} />
@@ -588,27 +588,6 @@ export default function HomeScreen() {
             <Text style={styles.cardDate}>{formatDate(item.createdAt)}</Text>
           </View>
         </View>
-      );
-      const cardSurface = canRenderNativeProjectActions ? (
-        cardContent
-      ) : (
-        <Pressable
-          style={({ pressed }) => [
-            styles.cardPressable,
-            pressed && styles.cardPressed,
-          ]}
-          onPress={() => openProject(item)}
-          disabled={isDeleting}
-          accessibilityLabel={
-            isSelectionMode
-              ? `${isSelected ? "Deselect" : "Select"} ${title}`
-              : `Open ${title}`
-          }
-          accessibilityRole="button"
-          accessibilityState={{ disabled: isDeleting }}
-        >
-          {cardContent}
-        </Pressable>
       );
 
       return (
@@ -628,70 +607,75 @@ export default function HomeScreen() {
             </View>
           ) : null}
 
-          {cardSurface}
+          <Pressable
+            style={({ pressed }) => [
+              styles.cardPressable,
+              isRNCardGestureOwner && pressed && styles.cardPressed,
+            ]}
+            onPress={isRNCardGestureOwner ? () => openProject(item) : undefined}
+            onLongPress={isRNCardGestureOwner ? () => handleProjectLongPress(item) : undefined}
+            delayLongPress={220}
+            disabled={isDeleting}
+            pointerEvents={isRNCardGestureOwner ? "auto" : "none"}
+            accessibilityLabel={
+              isRNCardGestureOwner
+                ? isSelectionMode
+                  ? `${isSelected ? "Deselect" : "Select"} ${title}`
+                  : `Open ${title}`
+                : undefined
+            }
+            accessibilityRole={isRNCardGestureOwner ? "button" : undefined}
+            accessibilityState={isRNCardGestureOwner ? { disabled: isDeleting } : undefined}
+          >
+            {cardContent}
+          </Pressable>
 
-          {canRenderNativeProjectActions && expoSwiftUI ? (
+          {canRenderNativeProjectGestures && expoSwiftUI ? (
             <expoSwiftUI.Host style={styles.nativeCardContextMenuOverlay}>
-              <expoSwiftUI.ContextMenu activationMethod="longPress">
-                <NativeProjectContextMenuItems
-                  expoSwiftUI={expoSwiftUI}
-                  isDeleting={isDeleting}
-                  onAction={(action) => {
-                    track("project_actions_opened", { projectId: projectKey });
-                    handleProjectAction(item, action);
-                  }}
-                />
-                <expoSwiftUI.ContextMenu.Trigger>
-                  <expoSwiftUI.RoundedRectangle
-                    cornerRadius={radius.md}
-                    modifiers={[
-                      swiftUIOpacity(0.015),
-                      swiftUIOnTapGesture(() => openProject(item)),
-                      swiftUIAccessibilityLabel(
-                        `Open ${title}. Long press for project actions.`,
-                      ),
-                    ]}
-                  />
-                </expoSwiftUI.ContextMenu.Trigger>
-              </expoSwiftUI.ContextMenu>
+              <expoSwiftUI.RoundedRectangle
+                cornerRadius={radius.md}
+                modifiers={[
+                  swiftUIOpacity(0.015),
+                  swiftUIOnTapGesture(() => openProject(item)),
+                  swiftUIOnLongPressGesture(() => handleProjectLongPress(item), 0.22),
+                  swiftUIAccessibilityLabel(`Open ${title}. Long press to multi-select.`),
+                ]}
+              />
             </expoSwiftUI.Host>
           ) : null}
 
           {!isSelectionMode ? (
-            canRenderNativeProjectActions ? null : (
-              <Pressable
-                style={styles.cardMenuButton}
-                onPress={() => openProjectActions(item)}
-                disabled={isDeleting}
-                accessibilityLabel={`Project actions for ${title}`}
-                accessibilityRole="button"
-                accessibilityState={{ disabled: isDeleting }}
-              >
-                {isDeleting ? (
-                  <ActivityIndicator size="small" color={colors.light.textSecondary} />
-                ) : (
-                  <Ionicons
-                    name="ellipsis-horizontal"
-                    size={16}
-                    color={colors.light.text}
-                  />
-                )}
-              </Pressable>
-            )
+            <Pressable
+              style={styles.cardMenuButton}
+              onPress={() => openProjectActions(item)}
+              disabled={isDeleting}
+              accessibilityLabel={`Project actions for ${title}`}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: isDeleting }}
+            >
+              {isDeleting ? (
+                <ActivityIndicator size="small" color={colors.light.textSecondary} />
+              ) : (
+                <Ionicons
+                  name="ellipsis-horizontal"
+                  size={16}
+                  color={colors.light.text}
+                />
+              )}
+            </Pressable>
           ) : null}
         </View>
       );
     },
     [
-      canUseNativeProjectActions,
+      canUseNativeProjectGestures,
       deletingProjectId,
       expoSwiftUI,
-      handleProjectAction,
+      handleProjectLongPress,
       isSelectionMode,
       openProject,
       openProjectActions,
       selectedProjectIds,
-      track,
     ],
   );
 
@@ -1038,6 +1022,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: spacing.xs,
     right: spacing.xs,
+    zIndex: 5,
     width: 28,
     height: 28,
     borderRadius: radius.full,
