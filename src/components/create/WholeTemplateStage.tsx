@@ -1,23 +1,18 @@
 import { useMemo } from "react";
 import { Image, Pressable, StyleSheet, View } from "react-native";
 import { radius } from "@/constants/tokens";
-import { VinylPreview } from "@/components/create/VinylPreview";
+import { CircularMediaPreview } from "@/components/create/CircularMediaPreview";
 import type { TemplateStageProps } from "@/lib/templates";
 import {
-  GRAPHIC_POP_AMBIENT_GLOW_ALPHA_BYTE,
-  GRAPHIC_POP_AMBIENT_GLOW_HEX,
-  GRAPHIC_POP_GLOW_ALPHA_BYTE,
-  GRAPHIC_POP_GLOW_HEX,
   GRAPHIC_POP_STAGE_BACKGROUND_HEX,
   getGraphicPopTemplateLayout,
 } from "@/lib/graphicPopTemplateSpec";
-import { toRgba } from "@/lib/vinylTemplateSpec";
 
 const MAX_BACKGROUND_BLUR = 24;
 const MIN_RECORD_SIZE = 0.75;
 const MAX_RECORD_SIZE = 1.3;
 
-export function GraphicPopTemplateStage({
+export function WholeTemplateStage({
   width,
   height,
   aspectRatio,
@@ -40,17 +35,13 @@ export function GraphicPopTemplateStage({
   );
   const normalizedRotationDirection =
     templateTweaks?.rotationDirection === "ccw" ? "ccw" : "cw";
-  const normalizedRecordOpacity = Math.min(
+  const normalizedOpacity = Math.min(
     Math.max(1 - (templateTweaks?.recordTransparency ?? 0), 0.35),
     1,
   );
   const normalizedRecordSize = Math.min(
     Math.max(templateTweaks?.recordSize ?? 1, MIN_RECORD_SIZE),
     MAX_RECORD_SIZE,
-  );
-  const normalizedArtworkScale = Math.min(
-    Math.max(templateTweaks?.artworkScale ?? 1, 1),
-    1.5,
   );
   const discSize = Math.max(
     96,
@@ -92,44 +83,6 @@ export function GraphicPopTemplateStage({
         />
       ) : null}
 
-      {GRAPHIC_POP_AMBIENT_GLOW_ALPHA_BYTE > 0 ? (
-        <View
-          style={[
-            styles.ambientGlow,
-            {
-              left: layout.ambientGlowX,
-              top: layout.ambientGlowY,
-              width: layout.ambientGlowSize,
-              height: layout.ambientGlowSize,
-              borderRadius: layout.ambientGlowRadius,
-              backgroundColor: toRgba(
-                GRAPHIC_POP_AMBIENT_GLOW_HEX,
-                GRAPHIC_POP_AMBIENT_GLOW_ALPHA_BYTE,
-              ),
-            },
-          ]}
-        />
-      ) : null}
-
-      {GRAPHIC_POP_GLOW_ALPHA_BYTE > 0 ? (
-        <View
-          style={[
-            styles.glow,
-            {
-              left: layout.glowX,
-              top: layout.glowY,
-              width: layout.glowSize,
-              height: layout.glowSize,
-              borderRadius: layout.glowRadius,
-              backgroundColor: toRgba(
-                GRAPHIC_POP_GLOW_HEX,
-                GRAPHIC_POP_GLOW_ALPHA_BYTE,
-              ),
-            },
-          ]}
-        />
-      ) : null}
-
       <View
         style={[
           styles.discWrap,
@@ -139,16 +92,14 @@ export function GraphicPopTemplateStage({
           },
         ]}
       >
-        <VinylPreview
+        <CircularMediaPreview
           imageUri={photoUri ?? null}
           size={discSize}
           spinning={isPlaying}
           spinSpeed={templateTweaks?.spinSpeed ?? 1}
-          discOpacity={normalizedRecordOpacity}
-          artworkScale={normalizedArtworkScale}
+          opacity={normalizedOpacity}
           rotationStartDeg={normalizedRotationStartDeg}
           rotationDirection={normalizedRotationDirection}
-          tone="graphic-pop"
         />
       </View>
 
@@ -184,12 +135,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.4,
     shadowRadius: 30,
     elevation: 14,
-  },
-  glow: {
-    position: "absolute",
-  },
-  ambientGlow: {
-    position: "absolute",
   },
   backgroundImage: {
     ...StyleSheet.absoluteFillObject,

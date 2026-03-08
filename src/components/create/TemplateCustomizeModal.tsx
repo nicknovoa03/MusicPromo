@@ -65,6 +65,7 @@ function isPresetBackgroundColor(
 
 const SPIN_SPEED_OPTIONS = [0.6, 0.8, 1, 1.25, 1.5];
 const RECORD_SIZE_OPTIONS = [0.8, 0.9, 1, 1.1, 1.2];
+const ARTWORK_SCALE_OPTIONS = [1, 1.15, 1.3, 1.5];
 const RECORD_TRANSPARENCY_OPTIONS = [0, 0.15, 0.3, 0.45, 0.6];
 const BACKGROUND_BLUR_OPTIONS = [0, 2, 4, 8, 12, 18];
 const ROTATION_START_OPTIONS = [0, 90, 180, -90];
@@ -102,6 +103,15 @@ function formatTransparency(value: number): string {
 
 function formatRecordSize(value: number): string {
   return `${Math.round(clamp(value, 0.75, 1.3) * 100)}%`;
+}
+
+function formatArtworkScale(value: number): string {
+  const level = findClosestOptionIndex(ARTWORK_SCALE_OPTIONS, value) + 1;
+  return `${level}x`;
+}
+
+function formatArtworkScalePercent(value: number): string {
+  return `${Math.round(clamp(value, 1, 1.5) * 100)}%`;
 }
 
 function formatBlur(value: number): string {
@@ -726,7 +736,14 @@ export function TemplateCustomizeModal({
   }, [value, visible]);
 
   const isBackgroundPhotoSelected = Boolean(draft.stageBackgroundImageUri);
-  const TemplateStageComponent = getTemplateDefinition(templateId).StageComponent;
+  const templateDefinition = getTemplateDefinition(templateId);
+  const TemplateStageComponent = templateDefinition.StageComponent;
+  const isVinylTemplate = templateDefinition.parity.vinylTone === "simple-spin";
+  const usesGenericSizeLabel =
+    templateDefinition.id === "whole" || templateDefinition.id === "cd";
+  const recordSizeControlLabel = usesGenericSizeLabel ? "Size" : "Record Size";
+  const recordSizeNativeLabel = usesGenericSizeLabel ? "Size" : "Record size";
+  const recordSizeAccessibilityPrefix = usesGenericSizeLabel ? "Size" : "Record size";
   const stageViewportWidth = visible ? windowWidthRef.current : windowWidth;
   const stageViewportHeight = visible ? windowHeightRef.current : windowHeight;
   const previewStageSize = Math.min(
@@ -795,6 +812,14 @@ export function TemplateCustomizeModal({
       void triggerSelectionHaptic();
     }
   }, [draft.recordSize]);
+
+  const updateArtworkScale = useCallback((artworkScale: number, withHaptics = true) => {
+    if (artworkScale === draft.artworkScale) return;
+    setDraft((prev) => ({ ...prev, artworkScale }));
+    if (withHaptics) {
+      void triggerSelectionHaptic();
+    }
+  }, [draft.artworkScale]);
 
   const updateRecordTransparency = useCallback((
     recordTransparency: number,
@@ -1228,7 +1253,7 @@ export function TemplateCustomizeModal({
                     />
                     {activeControlTab === "quickTune" ? (
                       <>
-                        <expoSwiftUI.LabeledContent label="Record size">
+                        <expoSwiftUI.LabeledContent label={recordSizeNativeLabel}>
                           <expoSwiftUI.Text>{formatRecordSize(draft.recordSize)}</expoSwiftUI.Text>
                         </expoSwiftUI.LabeledContent>
                         <expoSwiftUI.Slider
@@ -1246,7 +1271,31 @@ export function TemplateCustomizeModal({
                             updateRecordSize(recordSize, false);
                           }}
                         />
-                        <expoSwiftUI.LabeledContent label="Record transparency">
+                        {isVinylTemplate ? (
+                          <>
+                            <expoSwiftUI.LabeledContent label="Artwork size">
+                              <expoSwiftUI.Text>
+                                {`${formatArtworkScale(draft.artworkScale)} (${formatArtworkScalePercent(draft.artworkScale)})`}
+                              </expoSwiftUI.Text>
+                            </expoSwiftUI.LabeledContent>
+                            <expoSwiftUI.Slider
+                              min={0}
+                              max={ARTWORK_SCALE_OPTIONS.length - 1}
+                              steps={ARTWORK_SCALE_OPTIONS.length - 1}
+                              value={findClosestOptionIndex(ARTWORK_SCALE_OPTIONS, draft.artworkScale)}
+                              color={colors.accent.primary}
+                              onValueChange={(nextValue) => {
+                                const sliderIndex = Math.round(
+                                  clamp(nextValue, 0, ARTWORK_SCALE_OPTIONS.length - 1),
+                                );
+                                const artworkScale =
+                                  ARTWORK_SCALE_OPTIONS[sliderIndex] ?? draft.artworkScale;
+                                updateArtworkScale(artworkScale, false);
+                              }}
+                            />
+                          </>
+                        ) : null}
+                        <expoSwiftUI.LabeledContent label="Transparency">
                           <expoSwiftUI.Text>
                             {formatTransparency(draft.recordTransparency)}
                           </expoSwiftUI.Text>
@@ -1652,7 +1701,7 @@ export function TemplateCustomizeModal({
                 <>
                   <View style={styles.controlSection}>
                     <View style={styles.controlHeader}>
-                      <Text style={styles.controlLabel}>Record Size</Text>
+                      <Text style={styles.controlLabel}>{recordSizeControlLabel}</Text>
                     </View>
                     <ScrollView
                       horizontal
@@ -1667,7 +1716,7 @@ export function TemplateCustomizeModal({
                             key={`record-size-${option}`}
                             onPress={() => updateRecordSize(option)}
                             style={[styles.optionPill, selected && styles.optionPillSelected]}
-                            accessibilityLabel={`Record size ${formatRecordSize(option)}`}
+                            accessibilityLabel={`${recordSizeAccessibilityPrefix} ${formatRecordSize(option)}`}
                             accessibilityRole="button"
                             accessibilityState={{ selected }}
                           >
@@ -1687,7 +1736,7 @@ export function TemplateCustomizeModal({
 
                   <View style={styles.controlSection}>
                     <View style={styles.controlHeader}>
-                      <Text style={styles.controlLabel}>Record Transparency</Text>
+                      <Text style={styles.controlLabel}>Transparency</Text>
                     </View>
                     <ScrollView
                       horizontal
@@ -1702,7 +1751,7 @@ export function TemplateCustomizeModal({
                             key={String(option)}
                             onPress={() => updateRecordTransparency(option)}
                             style={[styles.optionPill, selected && styles.optionPillSelected]}
-                            accessibilityLabel={`Record transparency ${Math.round(option * 100)}%`}
+                            accessibilityLabel={`Transparency ${Math.round(option * 100)}%`}
                             accessibilityRole="button"
                             accessibilityState={{ selected }}
                           >
@@ -1717,8 +1766,44 @@ export function TemplateCustomizeModal({
                           </Pressable>
                         );
                       })}
-                    </ScrollView>
+                      </ScrollView>
                   </View>
+                  {isVinylTemplate ? (
+                    <View style={styles.controlSection}>
+                      <View style={styles.controlHeader}>
+                        <Text style={styles.controlLabel}>Artwork Size</Text>
+                      </View>
+                      <ScrollView
+                        horizontal
+                        nestedScrollEnabled
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={styles.optionRow}
+                      >
+                        {ARTWORK_SCALE_OPTIONS.map((option) => {
+                          const selected = option === draft.artworkScale;
+                          return (
+                            <Pressable
+                              key={`artwork-size-${option}`}
+                              onPress={() => updateArtworkScale(option)}
+                              style={[styles.optionPill, selected && styles.optionPillSelected]}
+                              accessibilityLabel={`Artwork size ${formatArtworkScale(option)} ${formatArtworkScalePercent(option)}`}
+                              accessibilityRole="button"
+                              accessibilityState={{ selected }}
+                            >
+                              <Text
+                                style={[
+                                  styles.optionPillText,
+                                  selected && styles.optionPillTextSelected,
+                                ]}
+                              >
+                                {formatArtworkScale(option)}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </ScrollView>
+                    </View>
+                  ) : null}
                 </>
               ) : null}
 

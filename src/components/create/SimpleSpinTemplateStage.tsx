@@ -48,6 +48,10 @@ export function SimpleSpinTemplateStage({
     Math.max(templateTweaks?.recordSize ?? 1, MIN_RECORD_SIZE),
     MAX_RECORD_SIZE,
   );
+  const normalizedArtworkScale = Math.min(
+    Math.max(templateTweaks?.artworkScale ?? 1, 1),
+    1.5,
+  );
   const discSize = Math.max(
     96,
     Math.round(layout.discSize * normalizedRecordSize),
@@ -141,6 +145,7 @@ export function SimpleSpinTemplateStage({
           spinning={isPlaying}
           spinSpeed={templateTweaks?.spinSpeed ?? 1}
           discOpacity={normalizedRecordOpacity}
+          artworkScale={normalizedArtworkScale}
           rotationStartDeg={normalizedRotationStartDeg}
           rotationDirection={normalizedRotationDirection}
           tone="simple-spin"

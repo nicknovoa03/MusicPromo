@@ -38,7 +38,7 @@ const VINYL_TONES: Record<VinylToneId, VinylToneSpec> = {
     labelAlphaByte: 118,
     holeHexColor: "#0a0e16",
     holeAlphaByte: 232,
-    showGroovesInPreview: false,
+    showGroovesInPreview: true,
     showSheenInPreview: false,
     showCenterTextureInPreview: false,
   },
@@ -59,7 +59,7 @@ const VINYL_TONES: Record<VinylToneId, VinylToneSpec> = {
 const VINYL_CENTER_RATIO_SPECS: Record<VinylToneId, VinylCenterRatioSpec> = {
   "simple-spin": {
     labelDiameterRatio: 0.36,
-    holeDiameterRatio: 0.13,
+    holeDiameterRatio: 0.02,
   },
   "graphic-pop": {
     labelDiameterRatio: 0.19,

@@ -110,6 +110,7 @@ export default function RenderingScreen() {
     templateTweaks?: string;
     spinSpeed?: string;
     recordSize?: string;
+    artworkScale?: string;
     recordTransparency?: string;
     stageBackgroundColor?: string;
     photoUri: string;
@@ -133,6 +134,7 @@ export default function RenderingScreen() {
   const templateTweaksParam = firstParam(params.templateTweaks);
   const spinSpeedParam = firstParam(params.spinSpeed);
   const recordSizeParam = firstParam(params.recordSize);
+  const artworkScaleParam = firstParam(params.artworkScale);
   const recordTransparencyParam = firstParam(params.recordTransparency);
   const stageBackgroundColorParam = firstParam(params.stageBackgroundColor);
   const photoUriParam = firstParam(params.photoUri);
@@ -152,6 +154,9 @@ export default function RenderingScreen() {
       recordSize: Number.isFinite(Number(recordSizeParam))
         ? Number(recordSizeParam)
         : undefined,
+      artworkScale: Number.isFinite(Number(artworkScaleParam))
+        ? Number(artworkScaleParam)
+        : undefined,
       recordTransparency: Number.isFinite(Number(recordTransparencyParam))
         ? Number(recordTransparencyParam)
         : undefined,
@@ -161,6 +166,7 @@ export default function RenderingScreen() {
     templateTweaksParam,
     spinSpeedParam,
     recordSizeParam,
+    artworkScaleParam,
     recordTransparencyParam,
     stageBackgroundColorParam,
   ]);
@@ -264,6 +270,9 @@ export default function RenderingScreen() {
           spinSpeed: Number(firstParam(params.spinSpeed)),
           recordSize: Number.isFinite(Number(firstParam(params.recordSize)))
             ? Number(firstParam(params.recordSize))
+            : undefined,
+          artworkScale: Number.isFinite(Number(firstParam(params.artworkScale)))
+            ? Number(firstParam(params.artworkScale))
             : undefined,
           recordTransparency: Number.isFinite(Number(firstParam(params.recordTransparency)))
             ? Number(firstParam(params.recordTransparency))

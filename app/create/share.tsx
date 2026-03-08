@@ -15,6 +15,7 @@ import * as Sharing from "expo-sharing";
 import * as MediaLibrary from "expo-media-library";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
 import { TemplateInfoBadge } from "@/components/create/TemplateInfoBadge";
+import { CircularMediaPreview } from "@/components/create/CircularMediaPreview";
 import { VinylPreview } from "@/components/create/VinylPreview";
 import type { EventName } from "@/lib/analytics";
 import { decodeUriParam } from "@/lib/uri";
@@ -54,6 +55,7 @@ export default function ShareScreen() {
   );
   const templateTweaks = parsedTemplateTweaks ?? normalizeTemplateTweaks();
   const previewTone = getTemplateDefinition(templateId).parity.vinylTone;
+  const isWholeTemplate = templateId === "whole" || templateId === "hybrid";
   const aspectRatio = firstParam(params.aspectRatio) === "1:1" ? "1:1" : "9:16";
   const showTemplateInfo = firstParam(params.showTemplateInfo) === "1";
   const nativeShareAvailability = getIOSNativeUIPhase5Availability({
@@ -201,16 +203,28 @@ export default function ShareScreen() {
         {/* Video preview */}
         <View style={styles.previewContainer}>
           {posterUri ? (
-            <VinylPreview
-              imageUri={posterUri}
-              size={184}
-              spinning={false}
-              tone={previewTone}
-              spinSpeed={templateTweaks.spinSpeed}
-              discOpacity={Math.min(Math.max(1 - templateTweaks.recordTransparency, 0.35), 1)}
-              rotationStartDeg={templateTweaks.rotationStartDeg}
-              rotationDirection={templateTweaks.rotationDirection}
-            />
+            isWholeTemplate ? (
+              <CircularMediaPreview
+                imageUri={posterUri}
+                size={184}
+                spinning={false}
+                spinSpeed={templateTweaks.spinSpeed}
+                opacity={Math.min(Math.max(1 - templateTweaks.recordTransparency, 0.35), 1)}
+                rotationStartDeg={templateTweaks.rotationStartDeg}
+                rotationDirection={templateTweaks.rotationDirection}
+              />
+            ) : (
+              <VinylPreview
+                imageUri={posterUri}
+                size={184}
+                spinning={false}
+                tone={previewTone}
+                spinSpeed={templateTweaks.spinSpeed}
+                discOpacity={Math.min(Math.max(1 - templateTweaks.recordTransparency, 0.35), 1)}
+                rotationStartDeg={templateTweaks.rotationStartDeg}
+                rotationDirection={templateTweaks.rotationDirection}
+              />
+            )
           ) : (
             <Ionicons
               name="videocam"

@@ -251,6 +251,7 @@ export default function EditorScreen() {
     trimEnd?: string;
     spinSpeed?: string;
     recordSize?: string;
+    artworkScale?: string;
     recordTransparency?: string;
     stageBackgroundColor?: string;
     showTemplateInfo?: string;
@@ -300,6 +301,10 @@ export default function EditorScreen() {
     params.recordSize,
     DEFAULT_TEMPLATE_TWEAKS.recordSize,
   );
+  const initialArtworkScale = parseNumberParam(
+    params.artworkScale,
+    DEFAULT_TEMPLATE_TWEAKS.artworkScale,
+  );
   const initialRecordTransparency = parseNumberParam(
     params.recordTransparency,
     DEFAULT_TEMPLATE_TWEAKS.recordTransparency,
@@ -313,6 +318,7 @@ export default function EditorScreen() {
     parsedTemplateTweaks ?? {
       spinSpeed: initialSpinSpeed,
       recordSize: initialRecordSize,
+      artworkScale: initialArtworkScale,
       recordTransparency: initialRecordTransparency,
       stageBackgroundColor: initialStageBackgroundColor,
     },
@@ -1475,6 +1481,9 @@ export default function EditorScreen() {
       }
       if (normalizedNext.recordSize !== templateTweaks.recordSize) {
         track("template_tweak_changed", { control: "record_size" });
+      }
+      if (normalizedNext.artworkScale !== templateTweaks.artworkScale) {
+        track("template_tweak_changed", { control: "artwork_size" });
       }
       if (normalizedNext.recordTransparency !== templateTweaks.recordTransparency) {
         track("template_tweak_changed", { control: "record_transparency" });

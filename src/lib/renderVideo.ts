@@ -45,6 +45,7 @@ export interface RenderOptions {
   templateTweaks?: {
     spinSpeed?: number;
     recordSize?: number;
+    artworkScale?: number;
     recordTransparency?: number;
     backgroundBlur?: number;
     rotationStartDeg?: number;
@@ -102,12 +103,15 @@ const MIN_SPIN_SPEED = 0.25;
 const MAX_SPIN_SPEED = 4;
 const MIN_RECORD_SIZE = 0.75;
 const MAX_RECORD_SIZE = 1.3;
+const MIN_ARTWORK_SCALE = 1;
+const MAX_ARTWORK_SCALE = 1.5;
 const MIN_RECORD_TRANSPARENCY = 0;
 const MAX_RECORD_TRANSPARENCY = 0.65;
 const MIN_BACKGROUND_BLUR = 0;
 const MAX_BACKGROUND_BLUR = 24;
 const MIN_ROTATION_START_DEG = -180;
 const MAX_ROTATION_START_DEG = 180;
+const VINYL_CENTER_ARTWORK_SCALE = 1.25;
 
 const RENDER_PATH_COLORS: Record<RenderPath, string> = {
   primary: "#38d17b",
@@ -121,15 +125,22 @@ const RENDER_PATH_BARS: Record<RenderPath, number> = {
   safe_fallback: 3,
 };
 
-type RenderVariantId = "simple-spin" | "graphic-pop";
+type RenderVariantId = "simple-spin" | "graphic-pop" | "whole";
 
 type RenderVariantConfig = {
   toneId: VinylToneId;
   stageBackgroundHex: string;
+  discBaseHex: string;
   glowHex: string;
   glowAlphaByte: number;
   ambientGlowHex: string;
   ambientGlowAlphaByte: number;
+  useCenterLabelArtwork: boolean;
+  includeVinylGrooves: boolean;
+  grooveLightHex: string;
+  grooveLightAlphaByte: number;
+  grooveDarkHex: string;
+  grooveDarkAlphaByte: number;
   includeCdSheen: boolean;
   includeCenterTexture: boolean;
   centerRingHex: string;
@@ -142,10 +153,17 @@ const RENDER_VARIANTS: Record<RenderVariantId, RenderVariantConfig> = {
   "simple-spin": {
     toneId: "simple-spin",
     stageBackgroundHex: SIMPLE_SPIN_STAGE_BACKGROUND_HEX,
+    discBaseHex: "#121318",
     glowHex: SIMPLE_SPIN_GLOW_HEX,
     glowAlphaByte: SIMPLE_SPIN_GLOW_ALPHA_BYTE,
     ambientGlowHex: SIMPLE_SPIN_AMBIENT_GLOW_HEX,
     ambientGlowAlphaByte: SIMPLE_SPIN_AMBIENT_GLOW_ALPHA_BYTE,
+    useCenterLabelArtwork: true,
+    includeVinylGrooves: true,
+    grooveLightHex: "#f3f7ff",
+    grooveLightAlphaByte: 26,
+    grooveDarkHex: "#000000",
+    grooveDarkAlphaByte: 42,
     includeCdSheen: false,
     includeCenterTexture: false,
     centerRingHex: "#ffffff",
@@ -156,16 +174,44 @@ const RENDER_VARIANTS: Record<RenderVariantId, RenderVariantConfig> = {
   "graphic-pop": {
     toneId: "graphic-pop",
     stageBackgroundHex: GRAPHIC_POP_STAGE_BACKGROUND_HEX,
+    discBaseHex: "#d4d9e0",
     glowHex: GRAPHIC_POP_GLOW_HEX,
     glowAlphaByte: GRAPHIC_POP_GLOW_ALPHA_BYTE,
     ambientGlowHex: GRAPHIC_POP_AMBIENT_GLOW_HEX,
     ambientGlowAlphaByte: GRAPHIC_POP_AMBIENT_GLOW_ALPHA_BYTE,
+    useCenterLabelArtwork: false,
+    includeVinylGrooves: false,
+    grooveLightHex: "#ffffff",
+    grooveLightAlphaByte: 0,
+    grooveDarkHex: "#000000",
+    grooveDarkAlphaByte: 0,
     includeCdSheen: false,
     includeCenterTexture: false,
     centerRingHex: GRAPHIC_POP_CENTER_RING_HEX,
     centerRingAlphaByte: GRAPHIC_POP_CENTER_RING_ALPHA_BYTE,
     centerShadowHex: GRAPHIC_POP_CENTER_SHADOW_HEX,
     centerShadowAlphaByte: GRAPHIC_POP_CENTER_SHADOW_ALPHA_BYTE,
+  },
+  whole: {
+    toneId: "graphic-pop",
+    stageBackgroundHex: GRAPHIC_POP_STAGE_BACKGROUND_HEX,
+    discBaseHex: "#d4d9e0",
+    glowHex: GRAPHIC_POP_GLOW_HEX,
+    glowAlphaByte: 0,
+    ambientGlowHex: GRAPHIC_POP_AMBIENT_GLOW_HEX,
+    ambientGlowAlphaByte: 0,
+    useCenterLabelArtwork: false,
+    includeVinylGrooves: false,
+    grooveLightHex: "#ffffff",
+    grooveLightAlphaByte: 0,
+    grooveDarkHex: "#000000",
+    grooveDarkAlphaByte: 0,
+    includeCdSheen: false,
+    includeCenterTexture: false,
+    centerRingHex: GRAPHIC_POP_CENTER_RING_HEX,
+    centerRingAlphaByte: 0,
+    centerShadowHex: GRAPHIC_POP_CENTER_SHADOW_HEX,
+    centerShadowAlphaByte: 0,
   },
 };
 
@@ -453,6 +499,10 @@ export async function renderGraphicPopVideo(options: RenderOptions): Promise<str
   return renderVinylVideoWithVariant(options, "graphic-pop");
 }
 
+export async function renderWholeVideo(options: RenderOptions): Promise<string> {
+  return renderVinylVideoWithVariant(options, "whole");
+}
+
 async function renderVinylVideoWithVariant(
   options: RenderOptions,
   variantId: RenderVariantId,
@@ -513,6 +563,12 @@ async function renderVinylVideoWithVariant(
     templateTweaks?.recordSize,
     MIN_RECORD_SIZE,
     MAX_RECORD_SIZE,
+    1,
+  );
+  const normalizedArtworkScale = clampNumber(
+    templateTweaks?.artworkScale,
+    MIN_ARTWORK_SCALE,
+    MAX_ARTWORK_SCALE,
     1,
   );
   const normalizedBackgroundBlur = clampNumber(
@@ -589,16 +645,53 @@ async function renderVinylVideoWithVariant(
   const holeRadius = centerGeometry.holeRadius;
   const shadeRgb = hexToRgb(vinylTone.shadeHexColor);
   const holeRgb = hexToRgb(vinylTone.holeHexColor);
+  const discBaseRgb = hexToRgb(variant.discBaseHex);
   const glowRgb = hexToRgb(variant.glowHex);
   const ambientGlowRgb = hexToRgb(variant.ambientGlowHex);
   const centerRingRgb = hexToRgb(variant.centerRingHex);
   const centerShadowRgb = hexToRgb(variant.centerShadowHex);
+  const grooveLightRgb = hexToRgb(variant.grooveLightHex);
+  const grooveDarkRgb = hexToRgb(variant.grooveDarkHex);
   const centerTexture = getCenterTextureSpec(discSize);
   const cdOuterRingRadius = Math.round(discRadius * 0.84);
   const cdMidRingRadius = Math.round(discRadius * 0.64);
   const cdInnerRingRadius = Math.round(discRadius * 0.42);
   const edgeSpec = getVinylEdgeSpec();
   const edgeGeometry = getVinylEdgeGeometry(discSize);
+  const centerArtworkBaseRadius = Math.max(
+    holeRadius * 2.2,
+    labelRadius - Math.max(discSize * 0.024, 7) / 2,
+  );
+  const centerArtworkRadiusMax = Math.min(
+    discSize * 0.34,
+    edgeGeometry.innerRimInnerRadius - Math.max(discSize * 0.02, 6),
+  );
+  const centerArtworkRadius = variant.useCenterLabelArtwork
+    ? Math.max(
+        holeRadius + 2,
+        Math.min(
+          Math.round(
+            centerArtworkBaseRadius *
+              VINYL_CENTER_ARTWORK_SCALE *
+              normalizedArtworkScale,
+          ),
+          Math.round(centerArtworkRadiusMax),
+        ),
+      )
+    : labelRadius;
+  const grooveInnerRadius = Math.max(
+    centerArtworkRadius + Math.max(Math.round(discSize * 0.02), 6),
+    holeRadius + 4,
+  );
+  const grooveOuterRadius = Math.max(
+    grooveInnerRadius + 4,
+    edgeGeometry.innerRimInnerRadius,
+  );
+  const grooveBandSize = Math.max(discSize * 0.0055, 1.2);
+  const grooveRadiusExpr = `sqrt(pow(X-${discRadius},2)+pow(Y-${discRadius},2))`;
+  const grooveBandOffset = grooveInnerRadius.toFixed(3);
+  const grooveBandSizeExpr = grooveBandSize.toFixed(3);
+  const grooveOuterRadiusExpr = grooveOuterRadius.toFixed(3);
   const outerRimRgb = hexToRgb(edgeSpec.outerRimHexColor);
   const innerRimRgb = hexToRgb(edgeSpec.innerRimHexColor);
 
@@ -646,7 +739,41 @@ async function renderVinylVideoWithVariant(
     }
     lines.push(
       `[0:v]${buildPhotoScaleCropFilter(discSize, discSize)}[disc_raw]`,
-      `[disc_raw]format=rgba,geq='r=r(X,Y):g=g(X,Y):b=b(X,Y):a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${discRadius},2)),255,0)'[disc_circle]`,
+      `[disc_raw]format=rgba,geq='r=r(X,Y):g=g(X,Y):b=b(X,Y):a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${discRadius},2)),255,0)'[disc_photo_circle]`,
+    );
+    if (variantId === "whole") {
+      lines.push(
+        `[disc_photo_circle]format=rgba,colorchannelmixer=aa=${normalizedDiscAlpha.toFixed(3)}[disc_alpha]`,
+        `[disc_alpha]rotate=${spinRotateExpression}:ow=iw:oh=ih:fillcolor=black@0[disc_rot]`,
+        `[bg][disc_rot]overlay=${discX}:${discY}:format=auto[scene_1]`,
+      );
+      lines.push(
+        ...buildRenderModeBadgeFilterGraph({
+          inputLabel: "[scene_1]",
+          width,
+          height,
+          mode,
+          enabled: debugRenderModeBadge,
+        }),
+      );
+      lines.push(
+        `[${audioInputIndex}:a]atrim=start=${audioTrimStartSec}:end=${audioTrimEndSec},asetpts=PTS-STARTPTS[audio_out]`,
+      );
+      return lines.join(";");
+    }
+
+    if (variant.useCenterLabelArtwork) {
+      lines.push(
+        `color=c=${toFfmpegColor(variant.discBaseHex, 255)}:s=${discSize}x${discSize}:d=${duration}[disc_base_raw]`,
+        `[disc_base_raw]format=rgba,geq='r=${discBaseRgb.r}:g=${discBaseRgb.g}:b=${discBaseRgb.b}:a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${discRadius},2)),255,0)'[disc_base]`,
+        `[disc_raw]format=rgba,geq='r=r(X,Y):g=g(X,Y):b=b(X,Y):a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${centerArtworkRadius},2)),255,0)'[label_artwork]`,
+        `[disc_base][label_artwork]overlay=0:0:format=auto[disc_circle]`,
+      );
+    } else {
+      lines.push("[disc_photo_circle]format=rgba[disc_circle]");
+    }
+
+    lines.push(
       `color=c=${toFfmpegColor(vinylTone.shadeHexColor, 255)}:s=${discSize}x${discSize}:d=${duration}[disc_shade_raw]`,
       `[disc_shade_raw]format=rgba,geq='r=${shadeRgb.r}:g=${shadeRgb.g}:b=${shadeRgb.b}:a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${discRadius},2)),${vinylTone.shadeAlphaByte},0)'[disc_shade]`,
       `[disc_circle][disc_shade]overlay=0:0:format=auto[disc_dark]`,
@@ -684,6 +811,20 @@ async function renderVinylVideoWithVariant(
       `[disc_with_outer_rim][inner_rim]overlay=0:0:format=auto[disc_with_rims]`,
     );
     discBaseLabel = "[disc_with_rims]";
+
+    if (variant.includeVinylGrooves) {
+      const grooveEvenAlphaExpr = `if(lte(${grooveRadiusExpr},${grooveOuterRadiusExpr})*gte(${grooveRadiusExpr},${grooveBandOffset}),if(lt(mod(floor((${grooveRadiusExpr}-${grooveBandOffset})/${grooveBandSizeExpr}),2),1),${variant.grooveLightAlphaByte},0),0)`;
+      const grooveOddAlphaExpr = `if(lte(${grooveRadiusExpr},${grooveOuterRadiusExpr})*gte(${grooveRadiusExpr},${grooveBandOffset}),if(gte(mod(floor((${grooveRadiusExpr}-${grooveBandOffset})/${grooveBandSizeExpr}),2),1),${variant.grooveDarkAlphaByte},0),0)`;
+      lines.push(
+        `color=c=${toFfmpegColor(variant.grooveLightHex, 255)}:s=${discSize}x${discSize}:d=${duration}[groove_light_raw]`,
+        `[groove_light_raw]format=rgba,geq='r=${grooveLightRgb.r}:g=${grooveLightRgb.g}:b=${grooveLightRgb.b}:a=${grooveEvenAlphaExpr}'[groove_light]`,
+        `${discBaseLabel}[groove_light]overlay=0:0:format=auto[disc_with_grooves_light]`,
+        `color=c=${toFfmpegColor(variant.grooveDarkHex, 255)}:s=${discSize}x${discSize}:d=${duration}[groove_dark_raw]`,
+        `[groove_dark_raw]format=rgba,geq='r=${grooveDarkRgb.r}:g=${grooveDarkRgb.g}:b=${grooveDarkRgb.b}:a=${grooveOddAlphaExpr}'[groove_dark]`,
+        `[disc_with_grooves_light][groove_dark]overlay=0:0:format=auto[disc_with_grooves]`,
+      );
+      discBaseLabel = "[disc_with_grooves]";
+    }
 
     lines.push(
       `color=c=${toFfmpegColor(vinylTone.labelHexColor, vinylTone.labelAlphaByte)}:s=${discSize}x${discSize}:d=${duration}[label_raw]`,
@@ -738,7 +879,37 @@ async function renderVinylVideoWithVariant(
     }
     lines.push(
       `[0:v]${buildPhotoScaleCropFilter(discSize, discSize)}[safe_disc_raw]`,
-      `[safe_disc_raw]format=rgba,geq='r=r(X,Y):g=g(X,Y):b=b(X,Y):a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${discRadius},2)),255,0)'[safe_disc]`,
+      `[safe_disc_raw]format=rgba,geq='r=r(X,Y):g=g(X,Y):b=b(X,Y):a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${discRadius},2)),255,0)'[safe_disc_photo]`,
+    );
+    if (variantId === "whole") {
+      lines.push(
+        `[safe_disc_photo]format=rgba,colorchannelmixer=aa=${normalizedDiscAlpha.toFixed(3)}[safe_disc_dim]`,
+        `[safe_disc_dim]rotate=${spinRotateExpression}:ow=iw:oh=ih:fillcolor=black@0[safe_disc_rot]`,
+        `[safe_bg][safe_disc_rot]overlay=${discX}:${discY}:format=auto[safe_scene]`,
+      );
+      lines.push(
+        ...buildRenderModeBadgeFilterGraph({
+          inputLabel: "[safe_scene]",
+          width,
+          height,
+          mode: "safe_fallback",
+          enabled: debugRenderModeBadge,
+        }),
+        `[${audioInputIndex}:a]atrim=start=${audioTrimStartSec}:end=${audioTrimEndSec},asetpts=PTS-STARTPTS[audio_out]`,
+      );
+      return lines.join(";");
+    }
+    if (variant.useCenterLabelArtwork) {
+      lines.push(
+        `color=c=${toFfmpegColor(variant.discBaseHex, 255)}:s=${discSize}x${discSize}:d=${duration}[safe_disc_base_raw]`,
+        `[safe_disc_base_raw]format=rgba,geq='r=${discBaseRgb.r}:g=${discBaseRgb.g}:b=${discBaseRgb.b}:a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${discRadius},2)),255,0)'[safe_disc_base]`,
+        `[safe_disc_raw]format=rgba,geq='r=r(X,Y):g=g(X,Y):b=b(X,Y):a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${centerArtworkRadius},2)),255,0)'[safe_label_artwork]`,
+        `[safe_disc_base][safe_label_artwork]overlay=0:0:format=auto[safe_disc]`,
+      );
+    } else {
+      lines.push("[safe_disc_photo]format=rgba[safe_disc]");
+    }
+    lines.push(
       `color=c=${toFfmpegColor(variant.ambientGlowHex, 255)}:s=${ambientGlowSize}x${ambientGlowSize}:d=${duration}[safe_ambient_glow_raw]`,
       `[safe_ambient_glow_raw]format=rgba,geq='r=${ambientGlowRgb.r}:g=${ambientGlowRgb.g}:b=${ambientGlowRgb.b}:a=if(lte(pow(X-${ambientGlowRadius},2)+pow(Y-${ambientGlowRadius},2),pow(${ambientGlowRadius},2)),${variant.ambientGlowAlphaByte},0)'[safe_ambient_glow]`,
       `[safe_bg][safe_ambient_glow]overlay=${ambientGlowX}:${ambientGlowY}:format=auto[safe_scene_0]`,

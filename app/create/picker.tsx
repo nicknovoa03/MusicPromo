@@ -84,6 +84,7 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
     trimEnd?: string;
     spinSpeed?: string;
     recordSize?: string;
+    artworkScale?: string;
     recordTransparency?: string;
     stageBackgroundColor?: string;
     showTemplateInfo?: string;
@@ -102,6 +103,7 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
   const trimEnd = firstParam(params.trimEnd);
   const spinSpeed = firstParam(params.spinSpeed);
   const recordSize = firstParam(params.recordSize);
+  const artworkScale = firstParam(params.artworkScale);
   const recordTransparency = firstParam(params.recordTransparency);
   const stageBackgroundColor = firstParam(params.stageBackgroundColor);
   const parsedTemplateTweaks = parseTemplateTweaksParam(templateTweaksParam);
@@ -110,6 +112,7 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
     : normalizeTemplateTweaks({
         spinSpeed: spinSpeed ? Number(spinSpeed) : undefined,
         recordSize: recordSize ? Number(recordSize) : undefined,
+        artworkScale: artworkScale ? Number(artworkScale) : undefined,
         recordTransparency: recordTransparency
           ? Number(recordTransparency)
           : undefined,
