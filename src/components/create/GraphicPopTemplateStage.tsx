@@ -4,6 +4,11 @@ import { radius } from "@/constants/tokens";
 import { VinylPreview } from "@/components/create/VinylPreview";
 import type { TemplateStageProps } from "@/lib/templates";
 import {
+  getVinylCenterGeometry,
+  toRgba,
+  type VinylToneId,
+} from "@/lib/vinylTemplateSpec";
+import {
   GRAPHIC_POP_AMBIENT_GLOW_ALPHA_BYTE,
   GRAPHIC_POP_AMBIENT_GLOW_HEX,
   GRAPHIC_POP_GLOW_ALPHA_BYTE,
@@ -11,7 +16,6 @@ import {
   GRAPHIC_POP_STAGE_BACKGROUND_HEX,
   getGraphicPopTemplateLayout,
 } from "@/lib/graphicPopTemplateSpec";
-import { toRgba } from "@/lib/vinylTemplateSpec";
 
 const MAX_BACKGROUND_BLUR = 24;
 const MIN_RECORD_SIZE = 0.75;
@@ -29,6 +33,7 @@ export function GraphicPopTemplateStage({
   templateTweaks,
   onTogglePlay,
 }: TemplateStageProps) {
+  const vinylToneId: VinylToneId = "graphic-pop";
   const layout = getGraphicPopTemplateLayout({ width, height, aspectRatio });
   const normalizedBackgroundBlur = Math.min(
     Math.max(templateTweaks?.backgroundBlur ?? 0, 0),
@@ -50,14 +55,20 @@ export function GraphicPopTemplateStage({
   );
   const normalizedArtworkScale = Math.min(
     Math.max(templateTweaks?.artworkScale ?? 1, 1),
-    1.5,
+    5,
   );
+  const stageBackgroundColor =
+    templateTweaks?.stageBackgroundColor ?? GRAPHIC_POP_STAGE_BACKGROUND_HEX;
   const discSize = Math.max(
     96,
     Math.round(layout.discSize * normalizedRecordSize),
   );
+  const centerGeometry = getVinylCenterGeometry(vinylToneId, discSize);
+  const holeSize = centerGeometry.holeDiameter;
   const discX = Math.round(layout.discX + (layout.discSize - discSize) / 2);
   const discY = Math.round(layout.discY + (layout.discSize - discSize) / 2);
+  const holeX = Math.round(discX + (discSize - holeSize) / 2);
+  const holeY = Math.round(discY + (discSize - holeSize) / 2);
   const hasBackgroundImage = Boolean(templateTweaks?.stageBackgroundImageUri);
   const backgroundSource = useMemo(
     () =>
@@ -74,8 +85,7 @@ export function GraphicPopTemplateStage({
         {
           width,
           height,
-          backgroundColor:
-            templateTweaks?.stageBackgroundColor ?? GRAPHIC_POP_STAGE_BACKGROUND_HEX,
+          backgroundColor: stageBackgroundColor,
           borderWidth: hasBackgroundImage ? 0 : StyleSheet.hairlineWidth,
           borderColor: hasBackgroundImage ? "transparent" : "rgba(255,255,255,0.12)",
         },
@@ -149,8 +159,40 @@ export function GraphicPopTemplateStage({
           rotationStartDeg={normalizedRotationStartDeg}
           rotationDirection={normalizedRotationDirection}
           tone="graphic-pop"
+          holeColor={stageBackgroundColor}
         />
       </View>
+      {backgroundSource ? (
+        <View
+          pointerEvents="none"
+          style={[
+            styles.holeOverlay,
+            {
+              left: holeX,
+              top: holeY,
+              width: holeSize,
+              height: holeSize,
+              borderRadius: holeSize / 2,
+            },
+          ]}
+        >
+          <Image
+            source={backgroundSource}
+            style={[
+              styles.holeOverlayImage,
+              {
+                width,
+                height,
+                left: -holeX,
+                top: -holeY,
+              },
+            ]}
+            blurRadius={Math.round(normalizedBackgroundBlur)}
+            resizeMode="cover"
+            accessibilityIgnoresInvertColors
+          />
+        </View>
+      ) : null}
 
       {onTogglePlay ? (
         <Pressable
@@ -200,5 +242,12 @@ const styles = StyleSheet.create({
   playTouch: {
     position: "absolute",
     backgroundColor: "transparent",
+  },
+  holeOverlay: {
+    position: "absolute",
+    overflow: "hidden",
+  },
+  holeOverlayImage: {
+    position: "absolute",
   },
 });

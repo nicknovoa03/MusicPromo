@@ -208,13 +208,13 @@ export default function SignInScreen() {
           accessibilityRole="button"
         >
           {loading === "apple" ? (
-            <ActivityIndicator color="#FFFFFF" />
+            <ActivityIndicator color={colors.accent.onPrimary} />
           ) : (
             <>
               <Ionicons
                 name="logo-apple"
                 size={20}
-                color="#FFFFFF"
+                color={colors.accent.onPrimary}
                 style={styles.buttonIcon}
               />
               <Text style={styles.appleButtonText}>Sign in with Apple</Text>
@@ -320,11 +320,11 @@ const styles = StyleSheet.create({
     marginRight: spacing.sm,
   },
   appleButton: {
-    backgroundColor: "#000000",
+    backgroundColor: colors.accent.primary,
   },
   appleButtonText: {
     ...typography.button,
-    color: "#FFFFFF",
+    color: colors.accent.onPrimary,
   },
   googleButton: {
     backgroundColor: colors.light.surface,

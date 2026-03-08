@@ -1,8 +1,10 @@
 import { Stack } from "expo-router";
-import { Platform } from "react-native";
+import { Platform, useColorScheme } from "react-native";
 import { colors } from "@/constants/tokens";
 
 export default function CreateLayout() {
+  const colorScheme = useColorScheme();
+  const isDarkMode = colorScheme === "dark";
   const defaultCreateAnimation = Platform.OS === "ios" ? "default" : "slide_from_right";
 
   return (
@@ -15,7 +17,9 @@ export default function CreateLayout() {
       <Stack.Screen
         name="picker"
         options={{
-          contentStyle: { backgroundColor: colors.light.background },
+          contentStyle: {
+            backgroundColor: isDarkMode ? colors.dark.background : colors.light.background,
+          },
         }}
       />
       <Stack.Screen

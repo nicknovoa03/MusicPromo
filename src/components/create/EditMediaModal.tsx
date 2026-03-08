@@ -837,9 +837,9 @@ const styles = StyleSheet.create({
     marginRight: TEMPLATE_CARD_GAP,
   },
   templateCardSelected: {
-    backgroundColor: "rgba(245,200,18,0.16)",
-    borderColor: "rgba(245,200,18,0.62)",
-    shadowColor: "#F5C812",
+    backgroundColor: "rgba(30,156,83,0.18)",
+    borderColor: "rgba(30,156,83,0.62)",
+    shadowColor: colors.accent.primary,
     shadowOpacity: 0.25,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 0 },
@@ -853,7 +853,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   templateCardIconWrapSelected: {
-    backgroundColor: "rgba(245,200,18,0.92)",
+    backgroundColor: colors.accent.primary,
   },
   templateCardText: {
     ...typography.caption,
@@ -863,7 +863,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
   templateCardTextSelected: {
-    color: "#F8F3D7",
+    color: colors.accent.onPrimary,
   },
   templateDotsRow: {
     alignSelf: "center",
@@ -881,7 +881,7 @@ const styles = StyleSheet.create({
   templateDotActive: {
     width: 16,
     borderRadius: 4,
-    backgroundColor: "#F5C812",
+    backgroundColor: colors.accent.primary,
   },
   aspectRow: {
     flexDirection: "row",

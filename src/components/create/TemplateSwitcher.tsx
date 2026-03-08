@@ -104,6 +104,8 @@ function TemplateGlyph({
   const visualId = getTemplateVisualId(templateId);
   const shellSize = Math.max(size + 2, 18);
   const shellRadius = shellSize / 2;
+  const vinylShellColor = selected ? "#0A101A" : "#121926";
+  const cdShellColor = selected ? "#E5EEF9" : "#D4DEEC";
 
   if (visualId === "vinyl") {
     return (
@@ -114,7 +116,7 @@ function TemplateGlyph({
             width: shellSize,
             height: shellSize,
             borderRadius: shellRadius,
-            backgroundColor: selected ? "#0A101A" : "#121926",
+            backgroundColor: vinylShellColor,
             borderColor: selected ? "rgba(255,255,255,0.44)" : "rgba(255,255,255,0.22)",
           },
         ]}
@@ -159,7 +161,7 @@ function TemplateGlyph({
               width: shellSize * 0.1,
               height: shellSize * 0.1,
               borderRadius: shellSize * 0.05,
-              backgroundColor: selected ? "#0D121A" : "#1A2333",
+              backgroundColor: vinylShellColor,
             },
           ]}
         />
@@ -176,7 +178,7 @@ function TemplateGlyph({
             width: shellSize,
             height: shellSize,
             borderRadius: shellRadius,
-            backgroundColor: selected ? "#E5EEF9" : "#D4DEEC",
+            backgroundColor: cdShellColor,
             borderColor: selected ? "rgba(16,24,38,0.4)" : "rgba(255,255,255,0.3)",
           },
         ]}
@@ -228,7 +230,7 @@ function TemplateGlyph({
               width: shellSize * 0.18,
               height: shellSize * 0.18,
               borderRadius: shellSize * 0.09,
-              backgroundColor: selected ? "#152034" : "#243550",
+              backgroundColor: cdShellColor,
             },
           ]}
         />

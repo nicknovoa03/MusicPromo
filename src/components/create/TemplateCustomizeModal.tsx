@@ -65,7 +65,7 @@ function isPresetBackgroundColor(
 
 const SPIN_SPEED_OPTIONS = [0.6, 0.8, 1, 1.25, 1.5];
 const RECORD_SIZE_OPTIONS = [0.8, 0.9, 1, 1.1, 1.2];
-const ARTWORK_SCALE_OPTIONS = [1, 1.15, 1.3, 1.5];
+const ARTWORK_SCALE_OPTIONS = [1, 2, 3, 4, 5];
 const RECORD_TRANSPARENCY_OPTIONS = [0, 0.15, 0.3, 0.45, 0.6];
 const BACKGROUND_BLUR_OPTIONS = [0, 2, 4, 8, 12, 18];
 const ROTATION_START_OPTIONS = [0, 90, 180, -90];
@@ -85,7 +85,8 @@ const CUSTOM_TONE_OPTIONS = [14, 32, 50, 68, 86];
 const CUSTOM_TONE_LABELS = ["Deep", "Dark", "Base", "Soft", "Glow"] as const;
 const STAGE_HORIZONTAL_PADDING = spacing.sm * 2;
 const SHEET_RESTING_OFFSET = 14;
-const DEFAULT_BACKGROUND_OPTIONS: BackgroundOption[] = [
+const PHOTO_BACKGROUND_SWATCH_COUNT = 5;
+const FALLBACK_BACKGROUND_OPTIONS: BackgroundOption[] = [
   { id: "default", label: "Default", color: null, swatch: "#080A12" },
   { id: "indigo", label: "Indigo", color: "#14142d", swatch: "#35357a" },
   { id: "midnight", label: "Midnight", color: "#0a0f1c", swatch: "#1d2f58" },
@@ -106,12 +107,16 @@ function formatRecordSize(value: number): string {
 }
 
 function formatArtworkScale(value: number): string {
-  const level = findClosestOptionIndex(ARTWORK_SCALE_OPTIONS, value) + 1;
-  return `${level}x`;
+  const normalized = clamp(value, 1, 5);
+  const rounded = Math.round(normalized);
+  if (Math.abs(normalized - rounded) < 0.05) {
+    return `${rounded}x`;
+  }
+  return `${normalized.toFixed(1)}x`;
 }
 
 function formatArtworkScalePercent(value: number): string {
-  return `${Math.round(clamp(value, 1, 1.5) * 100)}%`;
+  return `${Math.round(clamp(value, 1, 5) * 100)}%`;
 }
 
 function formatBlur(value: number): string {
@@ -119,9 +124,9 @@ function formatBlur(value: number): string {
 }
 
 function formatRotationStart(value: number): string {
-  if (value === 0) return "0deg";
+  if (value === 0) return "0°";
   const displayValue = value === -90 ? 270 : value;
-  return `${displayValue > 0 ? "+" : ""}${displayValue}deg`;
+  return `${displayValue}°`;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -321,102 +326,255 @@ function rgbToHsl(r: number, g: number, b: number): { h: number; s: number; l: n
   };
 }
 
+function rgbToHex(r: number, g: number, b: number): string {
+  const toHex = (value: number) =>
+    Math.round(clamp(value, 0, 255))
+      .toString(16)
+      .padStart(2, "0");
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+function thumbHashToApproximateAspectRatio(hash: Uint8Array): number {
+  const header = hash[3];
+  const hasAlpha = hash[2] & 0x80;
+  const isLandscape = hash[4] & 0x80;
+  const lx = isLandscape ? (hasAlpha ? 5 : 7) : header & 7;
+  const ly = isLandscape ? header & 7 : hasAlpha ? 5 : 7;
+  return lx / ly;
+}
+
+// Adapted from the ThumbHash reference decoder (MIT) to derive color clusters.
+function decodeThumbHashToRGBA(hash: Uint8Array) {
+  const { PI, min, max, cos, round } = Math;
+  const header24 = hash[0] | (hash[1] << 8) | (hash[2] << 16);
+  const header16 = hash[3] | (hash[4] << 8);
+  const lDc = (header24 & 63) / 63;
+  const pDc = ((header24 >> 6) & 63) / 31.5 - 1;
+  const qDc = ((header24 >> 12) & 63) / 31.5 - 1;
+  const lScale = ((header24 >> 18) & 31) / 31;
+  const hasAlpha = header24 >> 23;
+  const pScale = ((header16 >> 3) & 63) / 63;
+  const qScale = ((header16 >> 9) & 63) / 63;
+  const isLandscape = header16 >> 15;
+  const lx = max(3, isLandscape ? (hasAlpha ? 5 : 7) : header16 & 7);
+  const ly = max(3, isLandscape ? header16 & 7 : hasAlpha ? 5 : 7);
+  const aDc = hasAlpha ? (hash[5] & 15) / 15 : 1;
+  const aScale = (hash[5] >> 4) / 15;
+
+  const acStart = hasAlpha ? 6 : 5;
+  let acIndex = 0;
+  const decodeChannel = (nx: number, ny: number, scale: number) => {
+    const ac: number[] = [];
+    for (let cy = 0; cy < ny; cy += 1) {
+      for (let cx = cy ? 0 : 1; cx * ny < nx * (ny - cy); cx += 1) {
+        const hashByte = hash[acStart + (acIndex >> 1)] ?? 0;
+        const value = (hashByte >> ((acIndex++ & 1) << 2)) & 15;
+        ac.push((value / 7.5 - 1) * scale);
+      }
+    }
+    return ac;
+  };
+
+  const lAc = decodeChannel(lx, ly, lScale);
+  const pAc = decodeChannel(3, 3, pScale * 1.25);
+  const qAc = decodeChannel(3, 3, qScale * 1.25);
+  const aAc = hasAlpha ? decodeChannel(5, 5, aScale) : null;
+
+  const ratio = thumbHashToApproximateAspectRatio(hash);
+  const w = round(ratio > 1 ? 32 : 32 * ratio);
+  const h = round(ratio > 1 ? 32 / ratio : 32);
+  const rgba = new Uint8Array(w * h * 4);
+  const fx: number[] = [];
+  const fy: number[] = [];
+
+  for (let y = 0, i = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1, i += 4) {
+      let l = lDc;
+      let p = pDc;
+      let q = qDc;
+      let a = aDc;
+
+      for (let cx = 0, n = max(lx, hasAlpha ? 5 : 3); cx < n; cx += 1) {
+        fx[cx] = cos((PI / w) * (x + 0.5) * cx);
+      }
+      for (let cy = 0, n = max(ly, hasAlpha ? 5 : 3); cy < n; cy += 1) {
+        fy[cy] = cos((PI / h) * (y + 0.5) * cy);
+      }
+
+      for (let cy = 0, j = 0; cy < ly; cy += 1) {
+        for (
+          let cx = cy ? 0 : 1, fy2 = fy[cy] * 2;
+          cx * ly < lx * (ly - cy);
+          cx += 1, j += 1
+        ) {
+          l += lAc[j] * fx[cx] * fy2;
+        }
+      }
+
+      for (let cy = 0, j = 0; cy < 3; cy += 1) {
+        for (let cx = cy ? 0 : 1, fy2 = fy[cy] * 2; cx < 3 - cy; cx += 1, j += 1) {
+          const f = fx[cx] * fy2;
+          p += pAc[j] * f;
+          q += qAc[j] * f;
+        }
+      }
+
+      if (hasAlpha && aAc) {
+        for (let cy = 0, j = 0; cy < 5; cy += 1) {
+          for (let cx = cy ? 0 : 1, fy2 = fy[cy] * 2; cx < 5 - cy; cx += 1, j += 1) {
+            a += aAc[j] * fx[cx] * fy2;
+          }
+        }
+      }
+
+      const blue = l - (2 / 3) * p;
+      const red = (3 * l - blue + q) / 2;
+      const green = red - q;
+      rgba[i] = max(0, 255 * min(1, red));
+      rgba[i + 1] = max(0, 255 * min(1, green));
+      rgba[i + 2] = max(0, 255 * min(1, blue));
+      rgba[i + 3] = max(0, 255 * min(1, a));
+    }
+  }
+
+  return { rgba };
+}
+
+function colorDistanceSquared(
+  a: { r: number; g: number; b: number },
+  b: { r: number; g: number; b: number },
+): number {
+  const dr = a.r - b.r;
+  const dg = a.g - b.g;
+  const db = a.b - b.b;
+  return dr * dr + dg * dg + db * db;
+}
+
+function extractProminentPhotoHexes(hashBytes: Uint8Array, count: number): string[] {
+  const { rgba } = decodeThumbHashToRGBA(hashBytes);
+  const bins = new Map<
+    string,
+    { rSum: number; gSum: number; bSum: number; weight: number }
+  >();
+
+  for (let index = 0; index < rgba.length; index += 4) {
+    const alpha = rgba[index + 3] / 255;
+    if (alpha < 0.08) continue;
+
+    const r = rgba[index];
+    const g = rgba[index + 1];
+    const b = rgba[index + 2];
+    const maxChannel = Math.max(r, g, b);
+    const minChannel = Math.min(r, g, b);
+    const saturation = maxChannel <= 0 ? 0 : (maxChannel - minChannel) / maxChannel;
+    const weight = alpha * (0.55 + saturation * 0.8);
+    const key = `${r >> 4}-${g >> 4}-${b >> 4}`;
+    const existing = bins.get(key);
+    if (existing) {
+      existing.rSum += r * weight;
+      existing.gSum += g * weight;
+      existing.bSum += b * weight;
+      existing.weight += weight;
+    } else {
+      bins.set(key, {
+        rSum: r * weight,
+        gSum: g * weight,
+        bSum: b * weight,
+        weight,
+      });
+    }
+  }
+
+  const sortedBins = Array.from(bins.values())
+    .filter((bin) => bin.weight > 0)
+    .map((bin) => ({
+      r: Math.round(bin.rSum / bin.weight),
+      g: Math.round(bin.gSum / bin.weight),
+      b: Math.round(bin.bSum / bin.weight),
+      weight: bin.weight,
+    }))
+    .sort((a, b) => b.weight - a.weight);
+
+  const prominent: Array<{ r: number; g: number; b: number }> = [];
+  const MIN_DISTANCE = 40 * 40;
+  for (const candidate of sortedBins) {
+    const isDistinct = prominent.every(
+      (entry) => colorDistanceSquared(entry, candidate) >= MIN_DISTANCE,
+    );
+    if (!isDistinct) continue;
+    prominent.push(candidate);
+    if (prominent.length >= count) break;
+  }
+
+  for (const candidate of sortedBins) {
+    if (prominent.length >= count) break;
+    const alreadyPresent = prominent.some(
+      (entry) => colorDistanceSquared(entry, candidate) < 16 * 16,
+    );
+    if (alreadyPresent) continue;
+    prominent.push(candidate);
+  }
+
+  const result = prominent.slice(0, count).map((entry) => rgbToHex(entry.r, entry.g, entry.b));
+  if (result.length === 0) return result;
+
+  const fallbackBase = hexToHsl(result[0]) ?? { h: 220, s: 40, l: 50 };
+  while (result.length < count) {
+    const index = result.length;
+    const hue = (fallbackBase.h + index * 47) % 360;
+    const saturation = clamp(
+      fallbackBase.s + (index % 2 === 0 ? 10 : -6),
+      24,
+      88,
+    );
+    const lightness = clamp(
+      fallbackBase.l + (index % 2 === 0 ? 12 : -10),
+      22,
+      74,
+    );
+    result.push(hslToHex(hue, saturation, lightness));
+  }
+
+  return result.slice(0, count);
+}
+
 async function buildPhotoMatchedBackgroundOptions(photoUri: string) {
   try {
     const thumbhash = await ExpoImage.generateThumbhashAsync(photoUri);
     if (!thumbhash) return null;
 
-    const hashBytes = toByteArray(thumbhash.replace(/\\/g, "/"));
-    if (hashBytes.length < 6) return null;
+    const normalizedThumbhash = thumbhash.replace(/\\/g, "/");
+    const thumbhashRemainder = normalizedThumbhash.length % 4;
+    const paddedThumbhash =
+      thumbhashRemainder === 0
+        ? normalizedThumbhash
+        : normalizedThumbhash.padEnd(
+            normalizedThumbhash.length + (4 - thumbhashRemainder),
+            "=",
+          );
+    const hashBytes = toByteArray(paddedThumbhash);
+    if (hashBytes.length < 5) return null;
 
-    // Thumbhash header contains the average LPQ color; decode it into average RGBA.
-    const header = hashBytes[0] | (hashBytes[1] << 8) | (hashBytes[2] << 16);
-    const lChannel = (header & 63) / 63;
-    const pChannel = ((header >> 6) & 63) / 31.5 - 1;
-    const qChannel = ((header >> 12) & 63) / 31.5 - 1;
-    const hasAlpha = header >> 23;
-    const alpha = hasAlpha ? (hashBytes[5] & 15) / 15 : 1;
-    const bChannel = lChannel - (2 / 3) * pChannel;
-    const rChannel = (3 * lChannel - bChannel + qChannel) / 2;
-    const gChannel = rChannel - qChannel;
-    const avgRgb = {
-      r: Math.round(clamp(rChannel, 0, 1) * 255),
-      g: Math.round(clamp(gChannel, 0, 1) * 255),
-      b: Math.round(clamp(bChannel, 0, 1) * 255),
-      a: clamp(alpha, 0, 1),
-    };
-    if (avgRgb.a <= 0) return null;
-
-    const { h: baseHue, s: averageSaturation, l: averageLightness } = rgbToHsl(
-      avgRgb.r,
-      avgRgb.g,
-      avgRgb.b,
+    const prominentHexes = extractProminentPhotoHexes(
+      hashBytes,
+      PHOTO_BACKGROUND_SWATCH_COUNT,
     );
+    if (prominentHexes.length === 0) return null;
 
-    if (averageSaturation < 16) {
-      const baseline = clamp(averageLightness, 30, 64);
-      const grayscaleStops = [baseline - 28, baseline - 16, baseline - 8, baseline + 2].map(
-        (stop) => clamp(stop, 6, 44),
-      );
-      return [
-        DEFAULT_BACKGROUND_OPTIONS[0],
-        ...grayscaleStops.map((stop, index) => ({
-          ...DEFAULT_BACKGROUND_OPTIONS[index + 1],
-          color: hslToHex(0, 0, stop),
-          swatch: hslToHex(0, 0, clamp(stop + 20, 22, 76)),
-        })),
-      ];
-    }
+    return prominentHexes.map((hex, index) => {
+      const parsed = hexToHsl(hex) ?? { h: (index * 72) % 360, s: 56, l: 48 };
+      const backgroundSaturation = clamp(parsed.s * 0.9 + 20, 30, 96);
+      const backgroundLightness = clamp(14 + parsed.l * 0.32, 10, 48);
+      const swatchSaturation = clamp(parsed.s * 1.08 + 14, 40, 100);
+      const swatchLightness = clamp(30 + parsed.l * 0.66, 30, 88);
 
-    const livelySaturation = clamp(averageSaturation * 1.22 + 18, 34, 98);
-    const primary = {
-      h: baseHue,
-      s: livelySaturation,
-      l: clamp(averageLightness, 18, 78),
-    };
-    const secondary = {
-      h: (baseHue + 22) % 360,
-      s: clamp(livelySaturation * 0.9, 30, 88),
-      l: clamp(averageLightness + 5, 20, 80),
-    };
-    const tertiary = {
-      h: (baseHue + 46) % 360,
-      s: clamp(livelySaturation * 0.8, 26, 82),
-      l: clamp(averageLightness + 2, 18, 78),
-    };
-    const neutral = {
-      h: baseHue,
-      s: clamp(averageSaturation * 0.55 + 14, 18, 56),
-      l: clamp(averageLightness - 4, 20, 72),
-    };
-    const seeds = [primary, secondary, tertiary, neutral];
-    const backgroundLightnessStops = [12, 18, 24, 30];
-    const saturationScales = [0.9, 0.86, 0.82, 0.7];
-
-    return [
-      DEFAULT_BACKGROUND_OPTIONS[0],
-      ...seeds.map((seed, index) => {
-        const backgroundSaturation = clamp(
-          seed.s * saturationScales[index] + 10,
-          28,
-          92,
-        );
-        const backgroundLightness = clamp(
-          backgroundLightnessStops[index] + (seed.l - 50) * 0.12,
-          8,
-          42,
-        );
-        return {
-          ...DEFAULT_BACKGROUND_OPTIONS[index + 1],
-          color: hslToHex(seed.h, backgroundSaturation, backgroundLightness),
-          swatch: hslToHex(
-            seed.h,
-            clamp(backgroundSaturation + 14, 40, 98),
-            clamp(backgroundLightness + 22, 24, 74),
-          ),
-        };
-      }),
-    ];
+      return {
+        id: `photo-${index}`,
+        label: `Photo ${index + 1}`,
+        color: hslToHex(parsed.h, backgroundSaturation, backgroundLightness),
+        swatch: hslToHex(parsed.h, swatchSaturation, swatchLightness),
+      };
+    });
   } catch {
     return null;
   }
@@ -631,7 +789,7 @@ export function TemplateCustomizeModal({
     string | null
   >(null);
   const [backgroundOptions, setBackgroundOptions] = useState<BackgroundOption[]>(
-    DEFAULT_BACKGROUND_OPTIONS,
+    FALLBACK_BACKGROUND_OPTIONS,
   );
   const customColor = useMemo(
     () => hslToHex(customHue, customSaturation, customLightness),
@@ -692,14 +850,14 @@ export function TemplateCustomizeModal({
   useEffect(() => {
     const nextPhotoUri = photoUri?.trim();
     if (!nextPhotoUri) {
-      setBackgroundOptions(DEFAULT_BACKGROUND_OPTIONS);
+      setBackgroundOptions(FALLBACK_BACKGROUND_OPTIONS);
       return;
     }
 
     let isActive = true;
     void buildPhotoMatchedBackgroundOptions(nextPhotoUri).then((matchedOptions) => {
       if (!isActive) return;
-      setBackgroundOptions(matchedOptions ?? DEFAULT_BACKGROUND_OPTIONS);
+      setBackgroundOptions(matchedOptions ?? FALLBACK_BACKGROUND_OPTIONS);
     });
     return () => {
       isActive = false;
@@ -1780,7 +1938,14 @@ export function TemplateCustomizeModal({
                         contentContainerStyle={styles.optionRow}
                       >
                         {ARTWORK_SCALE_OPTIONS.map((option) => {
-                          const selected = option === draft.artworkScale;
+                          const selected =
+                            option ===
+                            (ARTWORK_SCALE_OPTIONS[
+                              findClosestOptionIndex(
+                                ARTWORK_SCALE_OPTIONS,
+                                draft.artworkScale,
+                              )
+                            ] ?? draft.artworkScale);
                           return (
                             <Pressable
                               key={`artwork-size-${option}`}

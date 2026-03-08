@@ -23,6 +23,7 @@ interface VinylPreviewProps {
   size: number;
   spinning?: boolean;
   tone?: VinylToneId;
+  holeColor?: string;
   spinSpeed?: number;
   discOpacity?: number;
   artworkScale?: number;
@@ -39,9 +40,8 @@ const CD_RING_COLORS = [
 ];
 const SPIN_DURATION_MS = 4200;
 const GROOVE_RING_COUNT = 18;
-const VINYL_CENTER_ARTWORK_SCALE = 1.25;
 const MIN_ARTWORK_SCALE = 1;
-const MAX_ARTWORK_SCALE = 1.5;
+const MAX_ARTWORK_SCALE = 5;
 
 function buildGrooveScales(size: number, labelSize: number): number[] {
   const safeSize = Math.max(size, 1);
@@ -60,6 +60,7 @@ export function VinylPreview({
   size,
   spinning = true,
   tone = "simple-spin",
+  holeColor,
   spinSpeed = 1,
   discOpacity = 1,
   artworkScale = 1,
@@ -88,6 +89,9 @@ export function VinylPreview({
     Math.max(artworkScale, MIN_ARTWORK_SCALE),
     MAX_ARTWORK_SCALE,
   );
+  const artworkScaleProgress =
+    (normalizedArtworkScale - MIN_ARTWORK_SCALE) /
+    (MAX_ARTWORK_SCALE - MIN_ARTWORK_SCALE);
 
   useEffect(() => {
     if (!spinning) {
@@ -129,14 +133,14 @@ export function VinylPreview({
     holeSize * 2.2,
     Math.round(labelSize - Math.max(size * 0.024, 7)),
   );
+  const centerArtworkSizeMax = Math.max(
+    baseCenterArtworkSize,
+    Math.round(size * 0.68),
+  );
   const centerArtworkSize = usesCenterLabelArtwork
-    ? Math.min(
-        Math.round(
-          baseCenterArtworkSize *
-            VINYL_CENTER_ARTWORK_SCALE *
-            normalizedArtworkScale,
-        ),
-        Math.round(size * 0.68),
+    ? Math.round(
+        baseCenterArtworkSize +
+          (centerArtworkSizeMax - baseCenterArtworkSize) * artworkScaleProgress,
       )
     : baseCenterArtworkSize;
   const grooveScales = useMemo(
@@ -401,10 +405,9 @@ export function VinylPreview({
               width: holeSize,
               height: holeSize,
               borderRadius: holeSize / 2,
-              backgroundColor: toRgba(
-                toneSpec.holeHexColor,
-                toneSpec.holeAlphaByte,
-              ),
+              backgroundColor:
+                holeColor ??
+                toRgba(toneSpec.holeHexColor, toneSpec.holeAlphaByte),
             },
           ]}
         />

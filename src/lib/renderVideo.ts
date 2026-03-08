@@ -104,14 +104,13 @@ const MAX_SPIN_SPEED = 4;
 const MIN_RECORD_SIZE = 0.75;
 const MAX_RECORD_SIZE = 1.3;
 const MIN_ARTWORK_SCALE = 1;
-const MAX_ARTWORK_SCALE = 1.5;
+const MAX_ARTWORK_SCALE = 5;
 const MIN_RECORD_TRANSPARENCY = 0;
 const MAX_RECORD_TRANSPARENCY = 0.65;
 const MIN_BACKGROUND_BLUR = 0;
 const MAX_BACKGROUND_BLUR = 24;
 const MIN_ROTATION_START_DEG = -180;
 const MAX_ROTATION_START_DEG = 180;
-const VINYL_CENTER_ARTWORK_SCALE = 1.25;
 
 const RENDER_PATH_COLORS: Record<RenderPath, string> = {
   primary: "#38d17b",
@@ -571,6 +570,9 @@ async function renderVinylVideoWithVariant(
     MAX_ARTWORK_SCALE,
     1,
   );
+  const artworkScaleProgress =
+    (normalizedArtworkScale - MIN_ARTWORK_SCALE) /
+    (MAX_ARTWORK_SCALE - MIN_ARTWORK_SCALE);
   const normalizedBackgroundBlur = clampNumber(
     templateTweaks?.backgroundBlur,
     MIN_BACKGROUND_BLUR,
@@ -644,7 +646,6 @@ async function renderVinylVideoWithVariant(
   const labelRadius = centerGeometry.labelRadius;
   const holeRadius = centerGeometry.holeRadius;
   const shadeRgb = hexToRgb(vinylTone.shadeHexColor);
-  const holeRgb = hexToRgb(vinylTone.holeHexColor);
   const discBaseRgb = hexToRgb(variant.discBaseHex);
   const glowRgb = hexToRgb(variant.glowHex);
   const ambientGlowRgb = hexToRgb(variant.ambientGlowHex);
@@ -666,16 +667,17 @@ async function renderVinylVideoWithVariant(
     discSize * 0.34,
     edgeGeometry.innerRimInnerRadius - Math.max(discSize * 0.02, 6),
   );
+  const centerArtworkRadiusRangeMax = Math.max(
+    centerArtworkBaseRadius,
+    centerArtworkRadiusMax,
+  );
   const centerArtworkRadius = variant.useCenterLabelArtwork
     ? Math.max(
         holeRadius + 2,
-        Math.min(
-          Math.round(
-            centerArtworkBaseRadius *
-              VINYL_CENTER_ARTWORK_SCALE *
-              normalizedArtworkScale,
-          ),
-          Math.round(centerArtworkRadiusMax),
+        Math.round(
+          centerArtworkBaseRadius +
+            (centerArtworkRadiusRangeMax - centerArtworkBaseRadius) *
+              artworkScaleProgress,
         ),
       )
     : labelRadius;
@@ -737,10 +739,19 @@ async function renderVinylVideoWithVariant(
         `color=c=${toFfmpegColor(stageBackgroundHex, 255)}:s=${width}x${height}:d=${duration}[bg]`,
       );
     }
-    lines.push(
-      `[0:v]${buildPhotoScaleCropFilter(discSize, discSize)}[disc_raw]`,
-      `[disc_raw]format=rgba,geq='r=r(X,Y):g=g(X,Y):b=b(X,Y):a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${discRadius},2)),255,0)'[disc_photo_circle]`,
-    );
+    const useSplitDiscSource = variantId !== "whole" && variant.useCenterLabelArtwork;
+    if (useSplitDiscSource) {
+      lines.push(
+        `[0:v]${buildPhotoScaleCropFilter(discSize, discSize)}[disc_raw_seed]`,
+        `[disc_raw_seed]split=2[disc_raw][label_artwork_raw]`,
+        `[disc_raw]format=rgba,geq='r=r(X,Y):g=g(X,Y):b=b(X,Y):a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${discRadius},2)),255,0)'[disc_photo_circle]`,
+      );
+    } else {
+      lines.push(
+        `[0:v]${buildPhotoScaleCropFilter(discSize, discSize)}[disc_raw]`,
+        `[disc_raw]format=rgba,geq='r=r(X,Y):g=g(X,Y):b=b(X,Y):a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${discRadius},2)),255,0)'[disc_photo_circle]`,
+      );
+    }
     if (variantId === "whole") {
       lines.push(
         `[disc_photo_circle]format=rgba,colorchannelmixer=aa=${normalizedDiscAlpha.toFixed(3)}[disc_alpha]`,
@@ -766,7 +777,7 @@ async function renderVinylVideoWithVariant(
       lines.push(
         `color=c=${toFfmpegColor(variant.discBaseHex, 255)}:s=${discSize}x${discSize}:d=${duration}[disc_base_raw]`,
         `[disc_base_raw]format=rgba,geq='r=${discBaseRgb.r}:g=${discBaseRgb.g}:b=${discBaseRgb.b}:a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${discRadius},2)),255,0)'[disc_base]`,
-        `[disc_raw]format=rgba,geq='r=r(X,Y):g=g(X,Y):b=b(X,Y):a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${centerArtworkRadius},2)),255,0)'[label_artwork]`,
+        `[label_artwork_raw]format=rgba,geq='r=r(X,Y):g=g(X,Y):b=b(X,Y):a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${centerArtworkRadius},2)),255,0)'[label_artwork]`,
         `[disc_base][label_artwork]overlay=0:0:format=auto[disc_circle]`,
       );
     } else {
@@ -830,9 +841,7 @@ async function renderVinylVideoWithVariant(
       `color=c=${toFfmpegColor(vinylTone.labelHexColor, vinylTone.labelAlphaByte)}:s=${discSize}x${discSize}:d=${duration}[label_raw]`,
       `[label_raw]format=rgba,geq='r=r(X,Y):g=g(X,Y):b=b(X,Y):a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${labelRadius},2)),${vinylTone.labelAlphaByte},0)'[label]`,
       `${discBaseLabel}[label]overlay=0:0:format=auto[disc_labeled]`,
-      `color=c=${toFfmpegColor(vinylTone.holeHexColor, vinylTone.holeAlphaByte)}:s=${discSize}x${discSize}:d=${duration}[hole_raw]`,
-      `[hole_raw]format=rgba,geq='r=${holeRgb.r}:g=${holeRgb.g}:b=${holeRgb.b}:a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${holeRadius},2)),${vinylTone.holeAlphaByte},0)'[hole]`,
-      `[disc_labeled][hole]overlay=0:0:format=auto[disc_with_hole]`,
+      `[disc_labeled]format=rgba,geq='r=r(X,Y):g=g(X,Y):b=b(X,Y):a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${holeRadius},2)),0,if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${discRadius},2)),255,0))'[disc_with_hole]`,
       `[disc_with_hole]format=rgba,colorchannelmixer=aa=${normalizedDiscAlpha.toFixed(3)}[disc_alpha]`,
       `[disc_alpha]rotate=${spinRotateExpression}:ow=iw:oh=ih:fillcolor=black@0[disc_rot]`,
       `color=c=${toFfmpegColor(variant.ambientGlowHex, 255)}:s=${ambientGlowSize}x${ambientGlowSize}:d=${duration}[ambient_glow_raw]`,
@@ -877,10 +886,20 @@ async function renderVinylVideoWithVariant(
         `color=c=${toFfmpegColor(stageBackgroundHex, 255)}:s=${width}x${height}:d=${duration}[safe_bg]`,
       );
     }
-    lines.push(
-      `[0:v]${buildPhotoScaleCropFilter(discSize, discSize)}[safe_disc_raw]`,
-      `[safe_disc_raw]format=rgba,geq='r=r(X,Y):g=g(X,Y):b=b(X,Y):a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${discRadius},2)),255,0)'[safe_disc_photo]`,
-    );
+    const useSafeSplitDiscSource =
+      variantId !== "whole" && variant.useCenterLabelArtwork;
+    if (useSafeSplitDiscSource) {
+      lines.push(
+        `[0:v]${buildPhotoScaleCropFilter(discSize, discSize)}[safe_disc_raw_seed]`,
+        `[safe_disc_raw_seed]split=2[safe_disc_raw][safe_label_artwork_raw]`,
+        `[safe_disc_raw]format=rgba,geq='r=r(X,Y):g=g(X,Y):b=b(X,Y):a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${discRadius},2)),255,0)'[safe_disc_photo]`,
+      );
+    } else {
+      lines.push(
+        `[0:v]${buildPhotoScaleCropFilter(discSize, discSize)}[safe_disc_raw]`,
+        `[safe_disc_raw]format=rgba,geq='r=r(X,Y):g=g(X,Y):b=b(X,Y):a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${discRadius},2)),255,0)'[safe_disc_photo]`,
+      );
+    }
     if (variantId === "whole") {
       lines.push(
         `[safe_disc_photo]format=rgba,colorchannelmixer=aa=${normalizedDiscAlpha.toFixed(3)}[safe_disc_dim]`,
@@ -903,7 +922,7 @@ async function renderVinylVideoWithVariant(
       lines.push(
         `color=c=${toFfmpegColor(variant.discBaseHex, 255)}:s=${discSize}x${discSize}:d=${duration}[safe_disc_base_raw]`,
         `[safe_disc_base_raw]format=rgba,geq='r=${discBaseRgb.r}:g=${discBaseRgb.g}:b=${discBaseRgb.b}:a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${discRadius},2)),255,0)'[safe_disc_base]`,
-        `[safe_disc_raw]format=rgba,geq='r=r(X,Y):g=g(X,Y):b=b(X,Y):a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${centerArtworkRadius},2)),255,0)'[safe_label_artwork]`,
+        `[safe_label_artwork_raw]format=rgba,geq='r=r(X,Y):g=g(X,Y):b=b(X,Y):a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${centerArtworkRadius},2)),255,0)'[safe_label_artwork]`,
         `[safe_disc_base][safe_label_artwork]overlay=0:0:format=auto[safe_disc]`,
       );
     } else {
@@ -913,7 +932,8 @@ async function renderVinylVideoWithVariant(
       `color=c=${toFfmpegColor(variant.ambientGlowHex, 255)}:s=${ambientGlowSize}x${ambientGlowSize}:d=${duration}[safe_ambient_glow_raw]`,
       `[safe_ambient_glow_raw]format=rgba,geq='r=${ambientGlowRgb.r}:g=${ambientGlowRgb.g}:b=${ambientGlowRgb.b}:a=if(lte(pow(X-${ambientGlowRadius},2)+pow(Y-${ambientGlowRadius},2),pow(${ambientGlowRadius},2)),${variant.ambientGlowAlphaByte},0)'[safe_ambient_glow]`,
       `[safe_bg][safe_ambient_glow]overlay=${ambientGlowX}:${ambientGlowY}:format=auto[safe_scene_0]`,
-      `[safe_disc]format=rgba,colorchannelmixer=aa=${normalizedDiscAlpha.toFixed(3)}[safe_disc_dim]`,
+      `[safe_disc]format=rgba,geq='r=r(X,Y):g=g(X,Y):b=b(X,Y):a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${holeRadius},2)),0,if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${discRadius},2)),255,0))'[safe_disc_with_hole]`,
+      `[safe_disc_with_hole]format=rgba,colorchannelmixer=aa=${normalizedDiscAlpha.toFixed(3)}[safe_disc_dim]`,
       `[safe_scene_0][safe_disc_dim]overlay=${discX}:${discY}:format=auto[safe_scene]`,
     );
     lines.push(

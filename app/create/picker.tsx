@@ -8,6 +8,7 @@ import {
   Alert,
   ActivityIndicator,
   Platform,
+  useColorScheme,
   useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -67,6 +68,7 @@ interface PickerScreenProps {
 
 export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps) {
   const { width: windowWidth } = useWindowDimensions();
+  const colorScheme = useColorScheme();
   const isFocused = useIsFocused();
   const router = useRouter();
   const params = useLocalSearchParams<{
@@ -428,6 +430,27 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
   const showArtworkQuickFill = !media.photoUri && !!media.audioArtworkUri;
   const isPickingPhoto = loadingTarget === "photo";
   const isPickingAudio = loadingTarget === "audio";
+  const isDarkMode = colorScheme === "dark";
+  const pickerBackgroundColor = isDarkMode ? colors.dark.background : colors.light.background;
+  const pickerSurfaceColor = isDarkMode ? colors.dark.surface : colors.light.surface;
+  const pickerSurfaceMutedColor = isDarkMode
+    ? colors.dark.surfaceMuted
+    : colors.light.surfaceMuted;
+  const pickerTextColor = isDarkMode ? colors.dark.text : colors.light.text;
+  const pickerTextSecondaryColor = isDarkMode
+    ? colors.dark.textSecondary
+    : colors.light.textSecondary;
+  const pickerBorderColor = isDarkMode ? colors.dark.border : colors.light.border;
+  const selectionActionBackgroundColor = isDarkMode
+    ? "rgba(30,156,83,0.22)"
+    : colors.accent.primaryMuted;
+  const quickFillBackgroundColor = isDarkMode
+    ? "rgba(30,156,83,0.2)"
+    : colors.brand.tintSoft;
+  const quickFillBorderColor = isDarkMode
+    ? "rgba(30,156,83,0.4)"
+    : colors.brand.tintStrong;
+  const statusBarStyle = isDarkMode ? "light" : "dark";
   const activeAspectRatio = aspectRatio ?? preferredAspectRatio;
   const dockOverlayCompensation = tabEmbedded ? 82 : 0;
   const contentSidePadding = spacing.md;
@@ -451,9 +474,9 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
       : styles.squareCardPending;
 
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
-      {isFocused ? <StatusBar style="dark" /> : null}
-      <View style={styles.header}>
+    <SafeAreaView style={[styles.container, { backgroundColor: pickerBackgroundColor }]} edges={["top"]}>
+      {isFocused ? <StatusBar style={statusBarStyle} /> : null}
+      <View style={[styles.header, { borderBottomColor: pickerBorderColor }]}>
         <Pressable
           onPress={handleCancel}
           style={styles.headerAction}
@@ -463,7 +486,7 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
           <Text style={styles.cancelText}>Cancel</Text>
         </Pressable>
 
-        <Text style={styles.headerTitle}>Select Media</Text>
+        <Text style={[styles.headerTitle, { color: pickerTextColor }]}>Select Media</Text>
 
         <Pressable
           onPress={handleAdd}
@@ -481,7 +504,10 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
 
       {canUseNativePickerSummary && expoSwiftUI ? (
         <View style={styles.nativeSummaryWrap}>
-          <expoSwiftUI.Host style={styles.nativeSummaryHost} colorScheme="light">
+          <expoSwiftUI.Host
+            style={styles.nativeSummaryHost}
+            colorScheme={isDarkMode ? "dark" : "light"}
+          >
             <expoSwiftUI.Form>
               <expoSwiftUI.Section title="Selection">
                 <expoSwiftUI.LabeledContent label="Audio">
@@ -519,10 +545,17 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
           }
         }}
       >
-        <View style={[styles.pickerCard, mediaCardStyle, styles.photoCard]}>
+        <View
+          style={[
+            styles.pickerCard,
+            mediaCardStyle,
+            styles.photoCard,
+            { borderColor: pickerBorderColor, backgroundColor: pickerSurfaceColor },
+          ]}
+        >
           {media.audioUri ? (
-            <View style={styles.selectionWrap}>
-              <View style={styles.audioThumb}>
+            <View style={[styles.selectionWrap, { backgroundColor: pickerBackgroundColor, borderColor: pickerBorderColor }]}>
+              <View style={[styles.audioThumb, { backgroundColor: pickerSurfaceMutedColor }]}>
                 {media.audioArtworkUri ? (
                   <Image
                     source={{ uri: media.audioArtworkUri }}
@@ -539,14 +572,16 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
               </View>
               <View style={styles.selectionInfoRow}>
                 <View style={styles.selectionTitleWrap}>
-                  <Text style={styles.selectionLabel}>Selected Audio</Text>
-                  <Text style={styles.selectionName} numberOfLines={1}>
+                  <Text style={[styles.selectionLabel, { color: pickerTextSecondaryColor }]}>
+                    Selected Audio
+                  </Text>
+                  <Text style={[styles.selectionName, { color: pickerTextColor }]} numberOfLines={1}>
                     {media.audioName ?? "Audio"}
                   </Text>
                 </View>
                 <Pressable
                   onPress={pickAudio}
-                  style={styles.selectionAction}
+                  style={[styles.selectionAction, { backgroundColor: selectionActionBackgroundColor }]}
                   disabled={isPickingPhoto || isPickingAudio}
                   accessibilityLabel="Change audio"
                   accessibilityRole="button"
@@ -578,8 +613,10 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
                       color={colors.accent.primary}
                     />
                   </View>
-                  <Text style={styles.pickTitle}>Select Audio</Text>
-                  <Text style={styles.pickHint}>MP3, WAV, or M4A files</Text>
+                  <Text style={[styles.pickTitle, { color: pickerTextColor }]}>Select Audio</Text>
+                  <Text style={[styles.pickHint, { color: pickerTextSecondaryColor }]}>
+                    MP3, WAV, or M4A files
+                  </Text>
                   <View style={styles.pickButton}>
                     <Text style={styles.pickButtonText}>Pick audio</Text>
                   </View>
@@ -589,9 +626,15 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
           )}
         </View>
 
-        <View style={[styles.pickerCard, mediaCardStyle]}>
+        <View
+          style={[
+            styles.pickerCard,
+            mediaCardStyle,
+            { borderColor: pickerBorderColor, backgroundColor: pickerSurfaceColor },
+          ]}
+        >
           {media.photoUri ? (
-            <View style={styles.selectionWrap}>
+            <View style={[styles.selectionWrap, { backgroundColor: pickerBackgroundColor, borderColor: pickerBorderColor }]}>
               <View style={styles.photoPreviewFrame}>
                 <Image
                   source={{ uri: media.photoUri }}
@@ -604,14 +647,16 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
               </View>
               <View style={styles.selectionInfoRow}>
                 <View style={styles.selectionTitleWrap}>
-                  <Text style={styles.selectionLabel}>Selected Photo</Text>
-                  <Text style={styles.selectionName} numberOfLines={1}>
+                  <Text style={[styles.selectionLabel, { color: pickerTextSecondaryColor }]}>
+                    Selected Photo
+                  </Text>
+                  <Text style={[styles.selectionName, { color: pickerTextColor }]} numberOfLines={1}>
                     {media.photoName ?? "Photo"}
                   </Text>
                 </View>
                 <Pressable
                   onPress={pickPhoto}
-                  style={styles.selectionAction}
+                  style={[styles.selectionAction, { backgroundColor: selectionActionBackgroundColor }]}
                   disabled={isPickingPhoto || isPickingAudio}
                   accessibilityLabel="Change photo"
                   accessibilityRole="button"
@@ -643,8 +688,10 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
                         color={colors.accent.primary}
                       />
                     </View>
-                    <Text style={styles.pickTitle}>Select Photo</Text>
-                    <Text style={styles.pickHint}>
+                    <Text style={[styles.pickTitle, { color: pickerTextColor }]}>
+                      Select Photo
+                    </Text>
+                    <Text style={[styles.pickHint, { color: pickerTextSecondaryColor }]}>
                       Choose an image from your library
                     </Text>
                     <View style={styles.pickButton}>
@@ -658,6 +705,10 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
                 <Pressable
                   style={({ pressed }) => [
                     styles.quickFillCard,
+                    {
+                      borderColor: quickFillBorderColor,
+                      backgroundColor: quickFillBackgroundColor,
+                    },
                     pressed && styles.quickFillCardPressed,
                   ]}
                   onPress={handleUseArtworkAsPhoto}
@@ -672,7 +723,7 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
                   />
                   <View style={styles.quickFillTextWrap}>
                     <Text style={styles.quickFillTitle}>Use album artwork</Text>
-                    <Text style={styles.quickFillHint} numberOfLines={2}>
+                    <Text style={[styles.quickFillHint, { color: pickerTextColor }]} numberOfLines={2}>
                       Reuse the track artwork as your photo in one tap.
                     </Text>
                   </View>
@@ -751,8 +802,8 @@ const styles = StyleSheet.create({
     borderRadius: IPHONE_EDGE_RADIUS,
     borderWidth: 2,
     borderStyle: "dashed",
-    borderColor: "#D5DBE5",
-    backgroundColor: "#F9FAFC",
+    borderColor: colors.light.border,
+    backgroundColor: colors.light.surface,
     padding: spacing.md,
     overflow: "hidden",
   },
@@ -781,7 +832,7 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: radius.md,
-    backgroundColor: "#F3F6FB",
+    backgroundColor: colors.light.surfaceMuted,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: spacing.md,
@@ -809,18 +860,18 @@ const styles = StyleSheet.create({
     borderRadius: radius.full,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#3A80EC",
+    backgroundColor: colors.accent.primary,
   },
   pickButtonText: {
     ...typography.button,
-    color: "#FFFFFF",
+    color: colors.accent.onPrimary,
     fontWeight: "700",
   },
   selectionWrap: {
     flex: 1,
     overflow: "hidden",
     borderRadius: IPHONE_EDGE_RADIUS - spacing.sm,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: colors.light.background,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.light.border,
   },
@@ -841,11 +892,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
     borderRadius: radius.full,
-    backgroundColor: "rgba(15, 23, 42, 0.72)",
+    backgroundColor: colors.overlay.dark,
   },
   aspectRatioBadgeText: {
     ...typography.caption,
-    color: "#FFFFFF",
+    color: colors.accent.onPrimary,
     fontWeight: "700",
     letterSpacing: 0.4,
   },
@@ -853,7 +904,7 @@ const styles = StyleSheet.create({
     flex: 1,
     width: "100%",
     minHeight: 0,
-    backgroundColor: "#EAF0FB",
+    backgroundColor: colors.light.surfaceMuted,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
@@ -888,7 +939,7 @@ const styles = StyleSheet.create({
     minHeight: 36,
     paddingHorizontal: spacing.md,
     borderRadius: radius.full,
-    backgroundColor: "#EEF3FC",
+    backgroundColor: colors.accent.primaryMuted,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -903,8 +954,8 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(88,86,214,0.35)",
-    backgroundColor: "rgba(88,86,214,0.08)",
+    borderColor: colors.brand.tintStrong,
+    backgroundColor: colors.brand.tintSoft,
     padding: spacing.sm,
   },
   quickFillCardPressed: {

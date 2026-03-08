@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   Platform,
+  useColorScheme,
   Pressable,
   Alert,
   ActivityIndicator,
@@ -136,6 +137,7 @@ function normalizeProfileUrl(value: string): string | null {
 
 export default function ProfileScreen() {
   const { height: windowHeight, width: windowWidth } = useWindowDimensions();
+  const colorScheme = useColorScheme();
   const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -185,6 +187,21 @@ export default function ProfileScreen() {
   const [isClosingProfileSettings, setIsClosingProfileSettings] = useState(false);
   const profileSettingsTranslateX = useRef(new Animated.Value(windowWidth)).current;
   const profileScrollY = useRef(new Animated.Value(0)).current;
+  const isDarkMode = colorScheme === "dark";
+  const profileBackgroundColor = isDarkMode ? colors.dark.background : colors.light.background;
+  const profileSurfaceColor = isDarkMode ? colors.dark.surface : colors.light.surface;
+  const profileSurfaceMutedColor = isDarkMode
+    ? colors.dark.surfaceMuted
+    : colors.light.surfaceMuted;
+  const profileTextColor = isDarkMode ? colors.dark.text : colors.light.text;
+  const profileTextSecondaryColor = isDarkMode
+    ? colors.dark.textSecondary
+    : colors.light.textSecondary;
+  const profileBorderColor = isDarkMode ? "rgba(255,255,255,0.15)" : colors.light.border;
+  const profileTopBorderColor = isDarkMode
+    ? "rgba(255,255,255,0.12)"
+    : "rgba(16,35,23,0.14)";
+  const profileStatusBarStyle = isDarkMode ? "light" : "dark";
 
   useEffect(() => {
     let isActive = true;
@@ -986,8 +1003,8 @@ export default function ProfileScreen() {
   }, [isProfileSettingsOpen, profileSettingsTranslateX, windowWidth]);
 
   return (
-    <SafeAreaView style={styles.container} edges={["left", "right"]}>
-      {isFocused && !isProfileSettingsOpen ? <StatusBar style="light" /> : null}
+    <SafeAreaView style={[styles.container, { backgroundColor: profileBackgroundColor }]} edges={["left", "right"]}>
+      {isFocused && !isProfileSettingsOpen ? <StatusBar style={profileStatusBarStyle} /> : null}
       {isProfileSettingsOpen ? (
         <Modal
           visible
@@ -1008,7 +1025,7 @@ export default function ProfileScreen() {
                   style={[styles.profileSettingsScreen, { paddingTop: modalTopInset }]}
                   edges={[]}
                 >
-                  <StatusBar style="dark" />
+                  <StatusBar style={profileStatusBarStyle} />
                   <View
                     style={styles.profileSettingsHeader}
                     {...(shouldUseRNSettingsGesture
@@ -1024,7 +1041,7 @@ export default function ProfileScreen() {
                       accessibilityLabel="Close edit profile"
                       accessibilityRole="button"
                     >
-                      <Ionicons name="chevron-back" size={24} color="#121826" />
+                      <Ionicons name="chevron-back" size={24} color={profileTextColor} />
                     </Pressable>
                     <Text style={styles.profileSettingsHeaderTitle}>Edit profile</Text>
                   </View>
@@ -1032,7 +1049,7 @@ export default function ProfileScreen() {
                     <expoSwiftUI.Host
                       style={styles.nativeSettingsHost}
                       useViewportSizeMeasurement
-                      colorScheme="light"
+                      colorScheme={isDarkMode ? "dark" : "light"}
                     >
                       <expoSwiftUI.Form>
                         <expoSwiftUI.Section title="Identity">
@@ -1156,7 +1173,7 @@ export default function ProfileScreen() {
 
                         {errorText ? (
                           <expoSwiftUI.Section title="Status">
-                            <expoSwiftUI.Text color="#C8383B">{errorText}</expoSwiftUI.Text>
+                            <expoSwiftUI.Text color={colors.accent.error}>{errorText}</expoSwiftUI.Text>
                           </expoSwiftUI.Section>
                         ) : null}
                       </expoSwiftUI.Form>
@@ -1188,7 +1205,7 @@ export default function ProfileScreen() {
                                   style={styles.profileSettingsMediaImage}
                                 />
                               ) : (
-                                <Ionicons name="person" size={44} color="#8792AA" />
+                                <Ionicons name="person" size={44} color={colors.light.textSecondary} />
                               )}
                             </Pressable>
                             <Text style={styles.profileSettingsMediaLabel}>Avatar</Text>
@@ -1205,7 +1222,7 @@ export default function ProfileScreen() {
                               accessibilityRole="button"
                             >
                               {isPickingAvatar ? (
-                                <ActivityIndicator size="small" color="#4A5BEA" />
+                                <ActivityIndicator size="small" color={colors.accent.primary} />
                               ) : (
                                 <Text style={styles.profileSettingsMediaCtaText}>Edit avatar</Text>
                               )}
@@ -1232,7 +1249,7 @@ export default function ProfileScreen() {
                                   style={styles.profileSettingsMediaImage}
                                 />
                               ) : (
-                                <Ionicons name="image-outline" size={40} color="#8792AA" />
+                                <Ionicons name="image-outline" size={40} color={colors.light.textSecondary} />
                               )}
                             </Pressable>
                             <Text style={styles.profileSettingsMediaLabel}>Banner</Text>
@@ -1249,7 +1266,7 @@ export default function ProfileScreen() {
                               accessibilityRole="button"
                             >
                               {isPickingHero ? (
-                                <ActivityIndicator size="small" color="#4A5BEA" />
+                                <ActivityIndicator size="small" color={colors.accent.primary} />
                               ) : (
                                 <Text style={styles.profileSettingsMediaCtaText}>Edit banner</Text>
                               )}
@@ -1265,7 +1282,7 @@ export default function ProfileScreen() {
                             value={artistNameDraft}
                             onChangeText={setArtistNameDraft}
                             placeholder="Add name"
-                            placeholderTextColor="#A7AFC0"
+                            placeholderTextColor={colors.light.textSecondary}
                             editable={!profileSettingsDisabled}
                             onSubmitEditing={() => {
                               void saveProfile({ includeLinks: false });
@@ -1303,6 +1320,7 @@ export default function ProfileScreen() {
         <Animated.View
           style={[
             styles.heroShell,
+            { backgroundColor: profileBackgroundColor },
             {
               minHeight: heroHeight,
               marginTop: heroTopInsetOffset,
@@ -1329,6 +1347,7 @@ export default function ProfileScreen() {
               <Animated.View
                 style={[
                   styles.heroBannerFallback,
+                  { backgroundColor: profileSurfaceColor },
                   {
                     transform: [
                       { scale: heroBannerPullScale },
@@ -1340,7 +1359,15 @@ export default function ProfileScreen() {
             )}
           </Animated.View>
 
-          <View style={styles.heroIdentityBlock}>
+          <View
+            style={[
+              styles.heroIdentityBlock,
+              {
+                backgroundColor: profileBackgroundColor,
+                borderTopColor: profileTopBorderColor,
+              },
+            ]}
+          >
             <Pressable
               onPress={() => {
                 void handlePickAvatar();
@@ -1359,11 +1386,11 @@ export default function ProfileScreen() {
                   {avatarImageUrlDraft ? (
                     <Image source={{ uri: avatarImageUrlDraft }} style={styles.heroAvatarImage} />
                   ) : (
-                    <Ionicons name="person" size={52} color="#9EABC8" />
+                    <Ionicons name="person" size={52} color={profileTextSecondaryColor} />
                   )}
                 </View>
                 <View style={styles.heroAvatarPlaceholder}>
-                  <Ionicons name="camera-outline" size={14} color="#F4F7FF" />
+                  <Ionicons name="camera-outline" size={14} color={profileTextColor} />
                 </View>
               </View>
             </Pressable>
@@ -1376,6 +1403,7 @@ export default function ProfileScreen() {
                 disabled={profileInputsDisabled}
                 style={({ pressed }) => [
                   styles.heroEditProfileButton,
+                  { backgroundColor: profileSurfaceMutedColor },
                   profileInputsDisabled && styles.heroActionDisabled,
                   pressed && !profileInputsDisabled && styles.optionChipPressed,
                 ]}
@@ -1383,11 +1411,14 @@ export default function ProfileScreen() {
                 accessibilityRole="button"
               >
                 {isPickingAvatar ? (
-                  <ActivityIndicator size="small" color="#11152A" />
+                  <ActivityIndicator size="small" color={profileTextColor} />
                 ) : (
                   <>
-                    <Ionicons name="pencil-outline" size={15} color="#11152A" />
-                    <Text style={styles.heroEditProfileButtonText} numberOfLines={1}>
+                    <Ionicons name="pencil-outline" size={15} color={profileTextColor} />
+                    <Text
+                      style={[styles.heroEditProfileButtonText, { color: profileTextColor }]}
+                      numberOfLines={1}
+                    >
                       Edit Profile
                     </Text>
                   </>
@@ -1399,7 +1430,11 @@ export default function ProfileScreen() {
               <Text
                 style={[
                   styles.heroArtistName,
-                  !artistNameDraft.trim() && styles.heroArtistNamePlaceholder,
+                  { color: profileTextColor },
+                  !artistNameDraft.trim() && [
+                    styles.heroArtistNamePlaceholder,
+                    { color: profileTextSecondaryColor },
+                  ],
                 ]}
               >
                 {heroArtistName}
@@ -1422,19 +1457,36 @@ export default function ProfileScreen() {
           ) : null}
 
           {isProfileLoading ? (
-            <View style={styles.loadingCard}>
-              <ActivityIndicator color="#F1F4FF" />
-              <Text style={styles.loadingText}>Loading profile...</Text>
+            <View
+              style={[
+                styles.loadingCard,
+                { backgroundColor: profileSurfaceColor, borderColor: profileBorderColor },
+              ]}
+            >
+              <ActivityIndicator color={profileTextColor} />
+              <Text style={[styles.loadingText, { color: profileTextSecondaryColor }]}>
+                Loading profile...
+              </Text>
             </View>
           ) : null}
 
-          <View style={styles.accountSection}>
-            <Text style={styles.sectionEyebrow}>Account Actions</Text>
-            <Text style={styles.sectionTitle}>Security & Session</Text>
+          <View
+            style={[
+              styles.accountSection,
+              { backgroundColor: profileSurfaceColor, borderColor: profileBorderColor },
+            ]}
+          >
+            <Text style={[styles.sectionEyebrow, { color: profileTextSecondaryColor }]}>
+              Account Actions
+            </Text>
+            <Text style={[styles.sectionTitle, { color: profileTextColor }]}>
+              Security & Session
+            </Text>
 
             <Pressable
               style={({ pressed }) => [
                 styles.actionRow,
+                { backgroundColor: profileSurfaceMutedColor, borderColor: profileBorderColor },
                 pressed && !actionsDisabled && styles.actionRowPressed,
               ]}
               onPress={handleSignOut}
@@ -1443,15 +1495,15 @@ export default function ProfileScreen() {
               accessibilityRole="button"
             >
               <View style={styles.actionRowLeft}>
-                <Ionicons name="log-out-outline" size={20} color="#E8ECF8" />
-                <Text style={styles.actionText}>
+                <Ionicons name="log-out-outline" size={20} color={profileTextColor} />
+                <Text style={[styles.actionText, { color: profileTextColor }]}>
                   {isLocalGuest ? "Exit Guest Mode" : "Sign Out"}
                 </Text>
               </View>
               {isSigningOut ? (
-                <ActivityIndicator size="small" color="#AEB7D1" />
+                <ActivityIndicator size="small" color={profileTextSecondaryColor} />
               ) : (
-                <Ionicons name="chevron-forward" size={16} color="#AEB7D1" />
+                <Ionicons name="chevron-forward" size={16} color={profileTextSecondaryColor} />
               )}
             </Pressable>
 
@@ -1460,6 +1512,7 @@ export default function ProfileScreen() {
                 <Pressable
                   style={({ pressed }) => [
                     styles.actionRow,
+                    { backgroundColor: profileSurfaceMutedColor, borderColor: profileBorderColor },
                     pressed && !actionsDisabled && styles.deleteRowPressed,
                   ]}
                   onPress={handleDeleteAccount}
@@ -1474,11 +1527,11 @@ export default function ProfileScreen() {
                   {isDeleting ? (
                     <ActivityIndicator size="small" color={colors.accent.error} />
                   ) : (
-                    <Ionicons name="chevron-forward" size={16} color="#AEB7D1" />
+                    <Ionicons name="chevron-forward" size={16} color={profileTextSecondaryColor} />
                   )}
                 </Pressable>
 
-                <Text style={styles.warningText}>
+                <Text style={[styles.warningText, { color: profileTextSecondaryColor }]}>
                   Deleting deactivates your account for v1 while keeping records recoverable.
                 </Text>
               </>
@@ -1493,7 +1546,7 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#03050A",
+    backgroundColor: colors.dark.background,
   },
   content: {
     paddingTop: 0,
@@ -1505,20 +1558,20 @@ const styles = StyleSheet.create({
   },
   profileSettingsScreen: {
     flex: 1,
-    backgroundColor: "#F4F5F7",
+    backgroundColor: colors.light.background,
   },
   nativeSettingsHost: {
     flex: 1,
-    backgroundColor: "#F4F5F7",
+    backgroundColor: colors.light.background,
   },
   profileSettingsAnimatedLayer: {
     flex: 1,
-    backgroundColor: "#F4F5F7",
+    backgroundColor: colors.light.background,
   },
   profileSettingsHeader: {
     minHeight: 58,
     borderBottomWidth: 1,
-    borderBottomColor: "#E6E8EE",
+    borderBottomColor: colors.light.border,
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: spacing.sm,
@@ -1532,11 +1585,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   profileSettingsBackButtonPressed: {
-    backgroundColor: "#E8EBF2",
+    backgroundColor: colors.light.surface,
   },
   profileSettingsHeaderTitle: {
     ...typography.h2,
-    color: "#232938",
+    color: colors.light.text,
     textAlign: "center",
     position: "absolute",
     left: 56,
@@ -1547,7 +1600,7 @@ const styles = StyleSheet.create({
   },
   profileSettingsAvatarSection: {
     borderBottomWidth: 1,
-    borderBottomColor: "#E6E8EE",
+    borderBottomColor: colors.light.border,
     paddingTop: spacing.lg,
     paddingBottom: spacing.md,
     paddingHorizontal: spacing.lg,
@@ -1569,9 +1622,9 @@ const styles = StyleSheet.create({
     width: 96,
     height: 96,
     borderRadius: radius.full,
-    backgroundColor: "#DDE2EC",
+    backgroundColor: colors.light.surfaceMuted,
     borderWidth: 1,
-    borderColor: "#D4DAE8",
+    borderColor: colors.light.border,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
@@ -1582,7 +1635,7 @@ const styles = StyleSheet.create({
   },
   profileSettingsMediaLabel: {
     ...typography.caption,
-    color: "#4A5266",
+    color: colors.light.textSecondary,
     fontWeight: "700",
     letterSpacing: 0.5,
     textTransform: "uppercase",
@@ -1597,17 +1650,17 @@ const styles = StyleSheet.create({
   },
   profileSettingsMediaCtaText: {
     ...typography.body,
-    color: "#4A5BEA",
+    color: colors.accent.primary,
     fontWeight: "600",
     textAlign: "center",
   },
   profileSettingsCard: {
-    backgroundColor: "#F4F5F7",
+    backgroundColor: colors.light.background,
   },
   profileSettingsRow: {
     minHeight: 56,
     borderBottomWidth: 1,
-    borderBottomColor: "#E6E8EE",
+    borderBottomColor: colors.light.border,
     paddingHorizontal: spacing.lg,
     flexDirection: "row",
     alignItems: "center",
@@ -1616,12 +1669,12 @@ const styles = StyleSheet.create({
   },
   profileSettingsRowLabel: {
     ...typography.body,
-    color: "#303645",
+    color: colors.light.text,
     flexShrink: 0,
   },
   profileSettingsNameInput: {
     ...typography.body,
-    color: "#1F2431",
+    color: colors.light.text,
     textAlign: "right",
     flex: 1,
     minHeight: 36,
@@ -1629,7 +1682,7 @@ const styles = StyleSheet.create({
   },
   heroShell: {
     width: "100%",
-    backgroundColor: "#03050A",
+    backgroundColor: colors.dark.background,
   },
   heroBanner: {
     width: "100%",
@@ -1642,7 +1695,7 @@ const styles = StyleSheet.create({
   },
   heroBannerFallback: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "#0F172D",
+    backgroundColor: colors.dark.surface,
   },
   heroEditProfileActionRow: {
     marginLeft: 156,
@@ -1656,7 +1709,7 @@ const styles = StyleSheet.create({
     minHeight: 38,
     borderRadius: radius.full,
     paddingHorizontal: spacing.md,
-    backgroundColor: "#EFF3FF",
+    backgroundColor: colors.light.surfaceMuted,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -1664,7 +1717,7 @@ const styles = StyleSheet.create({
   },
   heroEditProfileButtonText: {
     ...typography.caption,
-    color: "#11152A",
+    color: colors.dark.background,
     fontWeight: "700",
   },
   heroActionDisabled: {
@@ -1672,12 +1725,12 @@ const styles = StyleSheet.create({
   },
   heroIdentityBlock: {
     position: "relative",
-    backgroundColor: "#03050A",
+    backgroundColor: colors.dark.background,
     paddingHorizontal: spacing.lg,
     paddingTop: 90,
     paddingBottom: spacing.lg,
     borderTopWidth: 1,
-    borderTopColor: "rgba(184, 200, 236, 0.15)",
+    borderTopColor: "rgba(255,255,255,0.12)",
   },
   heroAvatarPressable: {
     position: "absolute",
@@ -1691,8 +1744,8 @@ const styles = StyleSheet.create({
     height: 140,
     borderRadius: 72,
     padding: 4,
-    backgroundColor: "rgba(222, 233, 255, 0.8)",
-    shadowColor: "#000000",
+    backgroundColor: "rgba(255,255,255,0.8)",
+    shadowColor: colors.dark.background,
     shadowOpacity: 0.42,
     shadowRadius: 24,
     shadowOffset: { width: 0, height: 14 },
@@ -1703,7 +1756,7 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
     borderRadius: 68,
-    backgroundColor: "#16203A",
+    backgroundColor: colors.dark.surface,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
@@ -1722,22 +1775,22 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "rgba(227, 236, 255, 0.42)",
-    backgroundColor: "rgba(18, 26, 44, 0.82)",
+    borderColor: "rgba(255,255,255,0.38)",
+    backgroundColor: "rgba(0,0,0,0.68)",
   },
   heroIdentityTextWrap: {
     gap: spacing.xs,
   },
   heroArtistName: {
     ...typography.h1,
-    color: "#F8FAFF",
+    color: colors.dark.text,
     fontSize: 42,
     lineHeight: 46,
     letterSpacing: 0.3,
     maxWidth: "88%",
   },
   heroArtistNamePlaceholder: {
-    color: "#D6DEEF",
+    color: colors.dark.textSecondary,
   },
   mainContent: {
     paddingHorizontal: spacing.lg,
@@ -1757,15 +1810,15 @@ const styles = StyleSheet.create({
   },
   errorPanelText: {
     ...typography.caption,
-    color: "#FFB8BE",
+    color: colors.accent.error,
     flex: 1,
   },
   loadingCard: {
     minHeight: 120,
     borderRadius: radius.lg,
-    backgroundColor: "#121A2E",
+    backgroundColor: colors.dark.surface,
     borderWidth: 1,
-    borderColor: "rgba(187, 203, 236, 0.15)",
+    borderColor: "rgba(255,255,255,0.15)",
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
@@ -1774,27 +1827,27 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     ...typography.body,
-    color: "#D7DFF4",
+    color: colors.dark.textSecondary,
   },
   sectionCard: {
     borderRadius: radius.lg,
-    backgroundColor: "#11192C",
+    backgroundColor: colors.dark.surface,
     borderWidth: 1,
-    borderColor: "rgba(187, 203, 236, 0.15)",
+    borderColor: "rgba(255,255,255,0.15)",
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
     marginBottom: spacing.md,
   },
   sectionEyebrow: {
     ...typography.caption,
-    color: "#8D9BBD",
+    color: colors.dark.textSecondary,
     textTransform: "uppercase",
     letterSpacing: 1,
     marginBottom: spacing.xs,
   },
   sectionTitle: {
     ...typography.h2,
-    color: "#F4F7FF",
+    color: colors.dark.text,
     marginBottom: spacing.md,
   },
   optionChipPressed: {
@@ -1809,8 +1862,8 @@ const styles = StyleSheet.create({
   addPlatformChip: {
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: "rgba(205, 218, 249, 0.3)",
-    backgroundColor: "#1A2946",
+    borderColor: "rgba(255,255,255,0.22)",
+    backgroundColor: colors.dark.surfaceMuted,
     paddingHorizontal: spacing.md,
     minHeight: 34,
     alignItems: "center",
@@ -1820,19 +1873,19 @@ const styles = StyleSheet.create({
   },
   addPlatformChipText: {
     ...typography.caption,
-    color: "#DBE4FC",
+    color: colors.dark.text,
     fontWeight: "600",
   },
   emptyLinksText: {
     ...typography.caption,
-    color: "#94A2C4",
+    color: colors.dark.textSecondary,
     marginBottom: spacing.sm,
   },
   linkRow: {
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: "rgba(205, 218, 249, 0.2)",
-    backgroundColor: "#0F172A",
+    borderColor: "rgba(255,255,255,0.15)",
+    backgroundColor: colors.dark.surface,
     padding: spacing.sm,
     marginTop: spacing.xs,
     gap: spacing.xs,
@@ -1844,20 +1897,20 @@ const styles = StyleSheet.create({
   },
   linkPlatform: {
     ...typography.caption,
-    color: "#DCE4FA",
+    color: colors.dark.text,
     fontWeight: "600",
   },
   linkInput: {
     ...typography.body,
-    color: "#F3F6FF",
+    color: colors.dark.text,
     flex: 1,
     minHeight: 36,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
     borderRadius: radius.sm,
     borderWidth: 1,
-    borderColor: "rgba(205, 218, 249, 0.2)",
-    backgroundColor: "#13203B",
+    borderColor: "rgba(255,255,255,0.15)",
+    backgroundColor: colors.dark.surfaceMuted,
   },
   linkRemoveButton: {
     width: 30,
@@ -1872,10 +1925,10 @@ const styles = StyleSheet.create({
     borderRadius: radius.full,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#F1F4FE",
+    backgroundColor: colors.accent.primary,
     marginTop: spacing.xs,
     borderWidth: 1,
-    borderColor: "#D7DEEE",
+    borderColor: colors.accent.primary,
     marginBottom: spacing.lg,
     flexDirection: "row",
     gap: spacing.xs,
@@ -1885,14 +1938,14 @@ const styles = StyleSheet.create({
   },
   saveButtonText: {
     ...typography.button,
-    color: "#101426",
+    color: colors.accent.onPrimary,
     fontWeight: "700",
   },
   accountSection: {
     borderRadius: radius.lg,
-    backgroundColor: "#11192C",
+    backgroundColor: colors.dark.surface,
     borderWidth: 1,
-    borderColor: "rgba(187, 203, 236, 0.15)",
+    borderColor: "rgba(255,255,255,0.15)",
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
   },
@@ -1903,16 +1956,16 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
-    backgroundColor: "#0D162A",
+    backgroundColor: colors.dark.surfaceMuted,
     borderWidth: 1,
-    borderColor: "rgba(205, 218, 249, 0.2)",
+    borderColor: "rgba(255,255,255,0.15)",
     marginBottom: spacing.sm,
   },
   actionRowPressed: {
     opacity: 0.86,
   },
   deleteRowPressed: {
-    backgroundColor: "#2B161D",
+    backgroundColor: "rgba(95,29,39,0.72)",
   },
   actionRowLeft: {
     flexDirection: "row",
@@ -1921,7 +1974,7 @@ const styles = StyleSheet.create({
   },
   actionText: {
     ...typography.body,
-    color: "#E8ECF8",
+    color: colors.dark.text,
     fontWeight: "600",
   },
   deleteText: {
@@ -1931,7 +1984,7 @@ const styles = StyleSheet.create({
   },
   warningText: {
     ...typography.caption,
-    color: "#8F9DBE",
+    color: colors.dark.textSecondary,
     lineHeight: 18,
     marginTop: spacing.xs,
   },

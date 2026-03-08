@@ -4,10 +4,10 @@ import {
   Platform,
   StyleSheet,
   Text,
+  useColorScheme,
   View,
 } from "react-native";
 import { Redirect, Tabs, usePathname, useRouter } from "expo-router";
-import { Icon, Label, NativeTabs } from "expo-router/unstable-native-tabs";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { usePostHog } from "posthog-react-native";
@@ -30,18 +30,9 @@ function extractNotificationType(data: unknown) {
   return typeof type === "string" ? type : "unknown";
 }
 
-function LiquidGlassTabBarBackground() {
-  return (
-    <View style={styles.glassRoot} pointerEvents="none">
-      <View style={styles.glassTint} />
-      <View style={styles.glassTopSheen} />
-      <View style={styles.glassInnerStroke} />
-    </View>
-  );
-}
-
 export default function TabsLayout() {
   const router = useRouter();
+  const colorScheme = useColorScheme();
   const pathname = usePathname();
   const { isAuthenticated } = useConvexAuth();
   const getOrCreateUser = useMutation(api.users.getOrCreate);
@@ -56,6 +47,14 @@ export default function TabsLayout() {
   const previousPathnameRef = useRef<string | null>(null);
   const [localOnboardingReady, setLocalOnboardingReady] = useState(false);
   const [localOnboardingCompleted, setLocalOnboardingCompleted] = useState(false);
+  const isDarkMode = colorScheme === "dark";
+  const tabActiveColor = isDarkMode ? "#F4F6F8" : "#111111";
+  const tabInactiveColor = isDarkMode ? "#9BA3AF" : "#6E6E73";
+  const tabBackgroundColor = isDarkMode ? "#000000" : "#FFFFFF";
+  const tabBorderColor = isDarkMode ? "#1C1C1E" : "#D1D1D6";
+  const tabNavigatorKey = isDarkMode ? "tabs-dark" : "tabs-light";
+  const gateBackgroundColor = isDarkMode ? colors.dark.background : colors.light.background;
+  const gateTextColor = isDarkMode ? colors.dark.textSecondary : colors.light.textSecondary;
 
   const track = useCallback(
     (event: EventName, props?: Record<string, string>) => {
@@ -233,9 +232,9 @@ export default function TabsLayout() {
   }
   if (!hasOnboardingStatus) {
     return (
-      <View style={styles.gateContainer}>
+      <View style={[styles.gateContainer, { backgroundColor: gateBackgroundColor }]}>
         <ActivityIndicator size="large" color={colors.accent.primary} />
-        <Text style={styles.gateText}>
+        <Text style={[styles.gateText, { color: gateTextColor }]}>
           {isLocalGuest ? "Preparing guest workspace..." : "Loading your workspace..."}
         </Text>
       </View>
@@ -244,81 +243,20 @@ export default function TabsLayout() {
   if (!isOnboardingCompleted) {
     return <Redirect href="/onboarding" />;
   }
-  if (Platform.OS === "ios") {
-    return (
-      <NativeTabs
-        blurEffect="systemThinMaterialLight"
-        backgroundColor="rgba(245,250,255,0.62)"
-        shadowColor="transparent"
-        iconColor={{
-          default: colors.light.textSecondary,
-          selected: colors.light.text,
-        }}
-        labelStyle={{
-          default: {
-            fontSize: typography.caption.fontSize,
-            fontWeight: "500",
-            color: colors.light.textSecondary,
-          },
-          selected: {
-            fontSize: typography.caption.fontSize,
-            fontWeight: "600",
-            color: colors.light.text,
-          },
-        }}
-      >
-        <NativeTabs.Trigger name="index">
-          <Icon sf={{ default: "house", selected: "house.fill" }} />
-          <Label>Home</Label>
-        </NativeTabs.Trigger>
-        <NativeTabs.Trigger name="create">
-          <Icon sf={{ default: "plus.circle", selected: "plus.circle.fill" }} />
-          <Label>Create</Label>
-        </NativeTabs.Trigger>
-        <NativeTabs.Trigger name="profile">
-          <Icon sf={{ default: "person", selected: "person.fill" }} />
-          <Label>Profile</Label>
-        </NativeTabs.Trigger>
-      </NativeTabs>
-    );
-  }
-
   return (
     <Tabs
+      key={tabNavigatorKey}
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: colors.light.text,
-        tabBarInactiveTintColor: colors.light.textSecondary,
-        tabBarBackground: () => <LiquidGlassTabBarBackground />,
+        tabBarActiveTintColor: tabActiveColor,
+        tabBarInactiveTintColor: tabInactiveColor,
         tabBarStyle: {
-          position: "absolute",
-          left: 14,
-          right: 14,
-          bottom: 0,
-          height: 84,
-          borderTopWidth: 0,
-          backgroundColor: "transparent",
-          borderTopLeftRadius: 28,
-          borderTopRightRadius: 28,
-          borderBottomLeftRadius: 0,
-          borderBottomRightRadius: 0,
-          overflow: "hidden",
-          paddingBottom: 8,
+          height: Platform.select({ ios: 84, android: 74, default: 74 }),
+          borderTopWidth: StyleSheet.hairlineWidth,
+          borderTopColor: tabBorderColor,
+          backgroundColor: tabBackgroundColor,
+          paddingBottom: Platform.select({ ios: 10, android: 8, default: 8 }),
           paddingTop: 8,
-          ...Platform.select({
-            ios: {
-              shadowColor: "#102440",
-              shadowOpacity: 0.16,
-              shadowRadius: 16,
-              shadowOffset: { width: 0, height: 2 },
-            },
-            android: {
-              elevation: 10,
-            },
-          }),
-        },
-        tabBarItemStyle: {
-          borderRadius: 20,
         },
         tabBarLabelStyle: {
           fontSize: typography.caption.fontSize,
@@ -364,44 +302,13 @@ export default function TabsLayout() {
 }
 
 const styles = StyleSheet.create({
-  glassRoot: {
-    flex: 1,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    borderBottomLeftRadius: 0,
-    borderBottomRightRadius: 0,
-    overflow: "hidden",
-  },
-  glassTint: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(245,250,255,0.78)",
-  },
-  glassTopSheen: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: StyleSheet.hairlineWidth + 1.5,
-    backgroundColor: "rgba(255,255,255,0.5)",
-  },
-  glassInnerStroke: {
-    ...StyleSheet.absoluteFillObject,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    borderBottomLeftRadius: 0,
-    borderBottomRightRadius: 0,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.78)",
-  },
   gateContainer: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.light.background,
     gap: 12,
   },
   gateText: {
     ...typography.body,
-    color: colors.light.textSecondary,
   },
 });

@@ -280,7 +280,7 @@ export default function OnboardingScreen() {
           }
         >
           {isCompleting ? (
-            <ActivityIndicator size="small" color="#FFFFFF" />
+            <ActivityIndicator size="small" color={colors.accent.onPrimary} />
           ) : (
             <Text style={styles.primaryButtonText}>
               {currentIndex === ONBOARDING_SLIDES.length - 1
@@ -297,7 +297,7 @@ export default function OnboardingScreen() {
 const styles = StyleSheet.create({
   loadingContainer: {
     flex: 1,
-    backgroundColor: "#F3F4FB",
+    backgroundColor: colors.light.background,
     alignItems: "center",
     justifyContent: "center",
     gap: spacing.md,
@@ -309,7 +309,7 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    backgroundColor: "#F3F4FB",
+    backgroundColor: colors.light.background,
   },
   backdropBlobA: {
     position: "absolute",
@@ -318,7 +318,7 @@ const styles = StyleSheet.create({
     width: 260,
     height: 260,
     borderRadius: radius.full,
-    backgroundColor: "rgba(88, 86, 214, 0.16)",
+    backgroundColor: colors.brand.tintStrong,
   },
   backdropBlobB: {
     position: "absolute",
@@ -327,7 +327,7 @@ const styles = StyleSheet.create({
     width: 300,
     height: 300,
     borderRadius: radius.full,
-    backgroundColor: "rgba(245, 133, 41, 0.14)",
+    backgroundColor: colors.brand.tint,
   },
   header: {
     flexDirection: "row",
@@ -350,7 +350,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.full,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
-    backgroundColor: "rgba(255,255,255,0.85)",
+    backgroundColor: colors.overlay.light,
   },
   skipButtonText: {
     ...typography.caption,
@@ -362,14 +362,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   card: {
-    backgroundColor: "rgba(255,255,255,0.9)",
+    backgroundColor: colors.overlay.lightStrong,
     borderRadius: 28,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.9)",
+    borderColor: colors.overlay.lightStrong,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.xxl,
     minHeight: 430,
-    shadowColor: "#101018",
+    shadowColor: "#0F2B1A",
     shadowOpacity: 0.09,
     shadowOffset: { width: 0, height: 18 },
     shadowRadius: 24,
@@ -379,9 +379,9 @@ const styles = StyleSheet.create({
     width: 68,
     height: 68,
     borderRadius: radius.full,
-    backgroundColor: "#ECEBFF",
+    backgroundColor: colors.accent.primaryMuted,
     borderWidth: 1,
-    borderColor: "#D9D8FF",
+    borderColor: colors.brand.tintStrong,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: spacing.lg,
@@ -415,9 +415,9 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.sm,
     borderRadius: radius.full,
-    backgroundColor: "#F5F4FF",
+    backgroundColor: colors.light.surface,
     borderWidth: 1,
-    borderColor: "#E3E1FF",
+    borderColor: colors.light.border,
   },
   flowPillText: {
     ...typography.caption,
@@ -439,7 +439,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: radius.full,
-    backgroundColor: "#D0D2DE",
+    backgroundColor: colors.light.border,
   },
   dotActive: {
     width: 28,
@@ -462,7 +462,7 @@ const styles = StyleSheet.create({
   },
   primaryButtonText: {
     ...typography.button,
-    color: "#FFFFFF",
+    color: colors.accent.onPrimary,
   },
   pressed: {
     opacity: 0.9,

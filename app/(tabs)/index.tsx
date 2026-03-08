@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   Platform,
+  useColorScheme,
   Pressable,
   FlatList,
   ActivityIndicator,
@@ -54,6 +55,8 @@ type ProjectAction = "rename" | "duplicate" | "delete";
 type ProjectThumbnailProps = {
   project: Project;
   title: string;
+  surfaceColor: string;
+  fallbackIconColor: string;
 };
 
 function isLocalProject(project: Project): project is LocalProject {
@@ -78,7 +81,12 @@ function normalizeAvatarUri(value: string | null | undefined): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function ProjectThumbnail({ project, title }: ProjectThumbnailProps) {
+function ProjectThumbnail({
+  project,
+  title,
+  surfaceColor,
+  fallbackIconColor,
+}: ProjectThumbnailProps) {
   const [thumbnailSize, setThumbnailSize] = useState(0);
   const photoUri = normalizeMediaUri(project.photoUri);
   const fallbackPreviewUri = normalizeMediaUri(project.exportedVideoUri);
@@ -96,7 +104,7 @@ function ProjectThumbnail({ project, title }: ProjectThumbnailProps) {
 
   return (
     <View
-      style={styles.thumbnail}
+      style={[styles.thumbnail, { backgroundColor: surfaceColor }]}
       onLayout={(event) => {
         const nextSize = Math.round(event.nativeEvent.layout.width);
         setThumbnailSize((current) => (current === nextSize ? current : nextSize));
@@ -124,7 +132,7 @@ function ProjectThumbnail({ project, title }: ProjectThumbnailProps) {
         <Ionicons
           name="image-outline"
           size={30}
-          color={colors.light.textSecondary}
+          color={fallbackIconColor}
         />
       )}
     </View>
@@ -214,6 +222,7 @@ async function triggerSelectionHaptic(type: "enter" | "toggle-on" | "toggle-off"
 
 export default function HomeScreen() {
   const router = useRouter();
+  const colorScheme = useColorScheme();
   const insets = useSafeAreaInsets();
   const convex = useConvex();
   const posthog = usePostHog();
@@ -230,6 +239,20 @@ export default function HomeScreen() {
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const longPressProjectIdRef = useRef<string | null>(null);
+  const isDarkMode = colorScheme === "dark";
+  const homeBackgroundColor = isDarkMode ? colors.dark.background : colors.light.background;
+  const homeSurfaceColor = isDarkMode ? colors.dark.surface : colors.light.surface;
+  const homeTextColor = isDarkMode ? colors.dark.text : colors.light.text;
+  const homeTextSecondaryColor = isDarkMode
+    ? colors.dark.textSecondary
+    : colors.light.textSecondary;
+  const homeBorderColor = isDarkMode ? colors.dark.border : colors.light.border;
+  const homeOverlayColor = isDarkMode ? "rgba(0,0,0,0.56)" : colors.overlay.light;
+  const homeOverlayStrongColor = isDarkMode
+    ? "rgba(14,16,20,0.78)"
+    : colors.overlay.lightStrong;
+  const fabBackgroundColor = isDarkMode ? "#FFFFFF" : colors.accent.fab;
+  const fabIconColor = isDarkMode ? "#000000" : colors.accent.fabIcon;
 
   const track = useCallback(
     (event: EventName, props?: Record<string, string>) => {
@@ -580,29 +603,43 @@ export default function HomeScreen() {
       const isRNCardGestureOwner = !canRenderNativeProjectGestures;
       const cardContent = (
         <View style={styles.cardContent}>
-          <ProjectThumbnail project={item} title={title} />
+          <ProjectThumbnail
+            project={item}
+            title={title}
+            surfaceColor={homeSurfaceColor}
+            fallbackIconColor={homeTextSecondaryColor}
+          />
           <View style={styles.cardBody}>
-            <Text numberOfLines={1} style={styles.cardTitle}>
+            <Text numberOfLines={1} style={[styles.cardTitle, { color: homeTextColor }]}>
               {title}
             </Text>
-            <Text style={styles.cardDate}>{formatDate(item.createdAt)}</Text>
+            <Text style={[styles.cardDate, { color: homeTextSecondaryColor }]}>
+              {formatDate(item.createdAt)}
+            </Text>
           </View>
         </View>
       );
 
       return (
-        <View style={[styles.card, isSelectionMode && isSelected && styles.cardSelected]}>
+        <View
+          style={[
+            styles.card,
+            { backgroundColor: homeSurfaceColor },
+            isSelectionMode && isSelected && styles.cardSelected,
+          ]}
+        >
           {isSelectionMode ? (
             <View
               style={[
                 styles.cardSelectBadge,
+                { backgroundColor: homeOverlayStrongColor },
                 isSelected && styles.cardSelectBadgeSelected,
               ]}
             >
               <Ionicons
                 name={isSelected ? "checkmark" : "ellipse-outline"}
                 size={14}
-                color={isSelected ? colors.light.background : colors.light.textSecondary}
+                color={isSelected ? colors.accent.onPrimary : homeTextSecondaryColor}
               />
             </View>
           ) : null}
@@ -646,7 +683,7 @@ export default function HomeScreen() {
 
           {!isSelectionMode ? (
             <Pressable
-              style={styles.cardMenuButton}
+              style={[styles.cardMenuButton, { backgroundColor: homeOverlayStrongColor }]}
               onPress={() => openProjectActions(item)}
               disabled={isDeleting}
               accessibilityLabel={`Project actions for ${title}`}
@@ -654,12 +691,12 @@ export default function HomeScreen() {
               accessibilityState={{ disabled: isDeleting }}
             >
               {isDeleting ? (
-                <ActivityIndicator size="small" color={colors.light.textSecondary} />
+                <ActivityIndicator size="small" color={homeTextSecondaryColor} />
               ) : (
                 <Ionicons
                   name="ellipsis-horizontal"
                   size={16}
-                  color={colors.light.text}
+                  color={homeTextColor}
                 />
               )}
             </Pressable>
@@ -672,6 +709,10 @@ export default function HomeScreen() {
       deletingProjectId,
       expoSwiftUI,
       handleProjectLongPress,
+      homeOverlayStrongColor,
+      homeSurfaceColor,
+      homeTextColor,
+      homeTextSecondaryColor,
       isSelectionMode,
       openProject,
       openProjectActions,
@@ -686,14 +727,14 @@ export default function HomeScreen() {
   const bulkDeleteBottom = Math.max(90, insets.bottom + 68);
 
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: homeBackgroundColor }]} edges={["top"]}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>
+        <Text style={[styles.headerTitle, { color: homeTextColor }]}>
           {isSelectionMode ? `${selectedCount} Selected` : "Projects"}
         </Text>
         <View style={styles.headerActions}>
           <Pressable
-            style={styles.selectModeButton}
+            style={[styles.selectModeButton, { backgroundColor: homeSurfaceColor }]}
             onPress={isSelectionMode ? clearSelectionMode : toggleSelectionMode}
             accessibilityLabel={
               isSelectionMode ? "Exit multi-select mode" : "Enter multi-select mode"
@@ -703,7 +744,7 @@ export default function HomeScreen() {
             <Ionicons
               name={isSelectionMode ? "close-outline" : "checkbox-outline"}
               size={20}
-              color={colors.light.text}
+              color={homeTextColor}
             />
           </Pressable>
           <Pressable
@@ -718,7 +759,7 @@ export default function HomeScreen() {
               <Ionicons
                 name="person-circle-outline"
                 size={32}
-                color={colors.light.text}
+                color={homeTextColor}
               />
             )}
           </Pressable>
@@ -758,15 +799,19 @@ export default function HomeScreen() {
               </expoSwiftUI.Host>
             ) : (
               <View style={styles.emptyState}>
-                <View style={styles.emptyIcon}>
+                <View style={[styles.emptyIcon, { backgroundColor: homeSurfaceColor }]}>
                   <Ionicons
                     name="film-outline"
                     size={48}
-                    color={colors.light.textSecondary}
+                    color={homeTextSecondaryColor}
                   />
                 </View>
-                <Text style={styles.emptyTitle}>Create your first promo</Text>
-                <Text style={styles.emptySubtitle}>Tap + to get started</Text>
+                <Text style={[styles.emptyTitle, { color: homeTextColor }]}>
+                  Create your first promo
+                </Text>
+                <Text style={[styles.emptySubtitle, { color: homeTextSecondaryColor }]}>
+                  Tap + to get started
+                </Text>
               </View>
             )
           )
@@ -774,7 +819,7 @@ export default function HomeScreen() {
       />
 
       {isLoading && (
-        <View style={styles.loadingOverlay}>
+        <View style={[styles.loadingOverlay, { backgroundColor: homeOverlayColor }]}>
           <ActivityIndicator size="large" color={colors.accent.primary} />
         </View>
       )}
@@ -795,11 +840,13 @@ export default function HomeScreen() {
         <View style={styles.actionsOverlay} pointerEvents="box-none">
           {actionProject ? (
             <>
-              <View style={styles.actionsCard}>
+              <View style={[styles.actionsCard, { backgroundColor: homeBackgroundColor }]}>
                 <Pressable
                   style={({ pressed }) => [
                     styles.actionsRow,
+                    { borderBottomColor: homeBorderColor },
                     pressed && styles.actionsRowPressed,
+                    pressed && { backgroundColor: homeSurfaceColor },
                   ]}
                   onPress={() => handleModalProjectAction("rename")}
                   accessibilityLabel="Rename project"
@@ -808,15 +855,17 @@ export default function HomeScreen() {
                   <Ionicons
                     name="create-outline"
                     size={18}
-                    color={colors.light.text}
+                    color={homeTextColor}
                   />
-                  <Text style={styles.actionsText}>Rename</Text>
+                  <Text style={[styles.actionsText, { color: homeTextColor }]}>Rename</Text>
                 </Pressable>
 
                 <Pressable
                   style={({ pressed }) => [
                     styles.actionsRow,
+                    { borderBottomColor: homeBorderColor },
                     pressed && styles.actionsRowPressed,
+                    pressed && { backgroundColor: homeSurfaceColor },
                   ]}
                   onPress={() => handleModalProjectAction("duplicate")}
                   accessibilityLabel="Duplicate project"
@@ -825,15 +874,17 @@ export default function HomeScreen() {
                   <Ionicons
                     name="copy-outline"
                     size={18}
-                    color={colors.light.text}
+                    color={homeTextColor}
                   />
-                  <Text style={styles.actionsText}>Duplicate</Text>
+                  <Text style={[styles.actionsText, { color: homeTextColor }]}>Duplicate</Text>
                 </Pressable>
 
                 <Pressable
                   style={({ pressed }) => [
                     styles.actionsRow,
+                    { borderBottomColor: homeBorderColor },
                     pressed && styles.actionsRowPressed,
+                    pressed && { backgroundColor: homeSurfaceColor },
                   ]}
                   onPress={() => handleModalProjectAction("delete")}
                   disabled={isDeletingSelectedProject}
@@ -876,13 +927,13 @@ export default function HomeScreen() {
           accessibilityState={{ disabled: isBulkDeleting }}
         >
           {isBulkDeleting ? (
-            <ActivityIndicator size="small" color="#FFFFFF" />
+            <ActivityIndicator size="small" color={colors.accent.onPrimary} />
           ) : (
             <>
               <Ionicons
                 name={isCancelSelectionAction ? "close" : "trash-outline"}
                 size={18}
-                color="#FFFFFF"
+                color={colors.accent.onPrimary}
               />
               <Text
                 style={[
@@ -897,12 +948,16 @@ export default function HomeScreen() {
         </Pressable>
       ) : (
         <Pressable
-          style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
+          style={({ pressed }) => [
+            styles.fab,
+            { backgroundColor: fabBackgroundColor },
+            pressed && styles.fabPressed,
+          ]}
           onPress={() => router.push("/create/picker" as const)}
           accessibilityLabel="Create new project"
           accessibilityRole="button"
         >
-          <Ionicons name="add" size={28} color={colors.accent.fabIcon} />
+          <Ionicons name="add" size={28} color={fabIconColor} />
         </Pressable>
       )}
     </SafeAreaView>
@@ -1026,7 +1081,7 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: radius.full,
-    backgroundColor: "rgba(255,255,255,0.85)",
+    backgroundColor: colors.overlay.lightStrong,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1037,7 +1092,7 @@ const styles = StyleSheet.create({
     width: 26,
     height: 26,
     borderRadius: radius.full,
-    backgroundColor: "rgba(255,255,255,0.92)",
+    backgroundColor: colors.overlay.lightStrong,
     alignItems: "center",
     justifyContent: "center",
     zIndex: 3,
@@ -1074,11 +1129,11 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.6)",
+    backgroundColor: colors.overlay.light,
   },
   actionsBackdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.22)",
+    backgroundColor: colors.overlay.darkSoft,
   },
   actionsOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -1117,7 +1172,7 @@ const styles = StyleSheet.create({
   },
   fab: {
     position: "absolute",
-    bottom: 100,
+    bottom: 40,
     right: spacing.lg,
     width: 56,
     height: 56,
@@ -1125,7 +1180,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accent.fab,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
+    shadowColor: colors.dark.background,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 8,
@@ -1148,7 +1203,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     flexDirection: "row",
     gap: spacing.xs,
-    shadowColor: "#000",
+    shadowColor: colors.dark.background,
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.2,
     shadowRadius: 7,
@@ -1158,9 +1213,9 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   bulkDeleteButtonCancel: {
-    backgroundColor: "#111111",
+    backgroundColor: colors.accent.fab,
     borderWidth: 1,
-    borderColor: "#111111",
+    borderColor: colors.accent.fab,
   },
   bulkDeleteButtonPressed: {
     opacity: 0.9,
@@ -1168,10 +1223,10 @@ const styles = StyleSheet.create({
   },
   bulkDeleteText: {
     ...typography.button,
-    color: "#FFFFFF",
+    color: colors.accent.onPrimary,
     fontWeight: "700",
   },
   bulkDeleteTextCancel: {
-    color: "#FFFFFF",
+    color: colors.accent.onPrimary,
   },
 });
