@@ -5,8 +5,8 @@
 - Product name: MusicPromo
 - Doc owner: Nick
 - Stakeholders: Nick (sole developer / product owner)
-- Last updated (YYYY-MM-DD): 2026-03-06
-- Version: 1.5 (Phase 5 iOS-native surface planning)
+- Last updated (YYYY-MM-DD): 2026-03-07
+- Version: 1.6 (Phase 5 iOS-native rollout in progress)
 - Links: GitHub repo at `/home/nick/MusicPromo`
 
 ## 1) Product Summary
@@ -82,7 +82,7 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 
 - **Global navigation pattern:** Bottom tab bar, 3 tabs: Home, Create, Profile
 - **Global primary action:** "+" FAB button (black rounded square, bottom-right on Home screen)
-- **Color theme strategy:** Light/white for browsing (Home, Picker), dark/black for editing (Editor, Export, Share)
+- **Color theme strategy:** System color-scheme adaptive surfaces with brand-green accents; create/edit/export screens preserve dark-first readability
 
 ### App-Level Screens
 
@@ -427,20 +427,30 @@ Primary reference: Meta's Edits app. Secondary: Spotify (legacy profile patterns
 - **Color tokens:**
   - **Light theme (browsing):**
     - Background: `#FFFFFF`
-    - Surface: `#F5F5F5`
-    - Text: `#1A1A1A`
-    - Text secondary: `#8E8E93`
+    - Surface: `#F3FAF4`
+    - Surface muted: `#EAF5EC`
+    - Text: `#102317`
+    - Text secondary: `#5D7064`
+    - Border: `#D6E6DA`
   - **Dark theme (editing):**
     - Background: `#000000`
-    - Surface: `#1C1C1E`
-    - Text: `#FFFFFF`
-    - Text secondary: `#ABABAB`
+    - Surface: `#18191C`
+    - Surface muted: `#23252A`
+    - Text: `#F8F9FB`
+    - Text secondary: `#B6BBC4`
+    - Border: `#343943`
   - **Accents:**
-    - Primary CTA: `#5856D6` (blue-purple)
+    - Primary CTA: `#1E9C53` (brand green)
+    - Primary muted: `#DDF4E5`
+    - On-primary text/icon: `#FFFFFF`
     - Instagram gradient: orange → pink → purple
     - Success: green
     - Error: red
     - FAB: black with white icon
+  - **Overlay + brand helpers:**
+    - Light overlay: `rgba(255,255,255,0.82)` / strong `rgba(255,255,255,0.92)`
+    - Dark overlay: `rgba(0,0,0,0.26)` / strong `rgba(0,0,0,0.62)`
+    - Brand tint: `rgba(30,156,83,0.07)` / `0.12` / `0.18`
   - **Strategy:** Light for browsing (Home, Picker), dark for editing (Editor, Export, Share)
 - **Typography:**
   - Font family: SF Pro (iOS system) / Inter (cross-platform fallback)
@@ -451,7 +461,7 @@ Primary reference: Meta's Edits app. Secondary: Spotify (legacy profile patterns
     - Caption: 13pt regular (metadata, timestamps)
     - Button: 17pt semibold (CTAs)
 - **Components:**
-  - Buttons: Rounded rectangles. Primary = filled (blue-purple or gradient). Secondary = outlined/gray.
+  - Buttons: Rounded rectangles. Primary = filled (brand green or gradient). Secondary = outlined/gray.
   - Cards: Rounded corners, thumbnail + text below (2-column project grid)
   - Tab bar: Bottom-fixed, icon + label, 3 tabs
   - Pickers: Full-screen with grid, tabs at top, action buttons in header
@@ -605,6 +615,14 @@ Primary reference: Meta's Edits app. Secondary: Spotify (legacy profile patterns
 - Preserve deterministic fallback paths to existing React Native components for Android and unsupported iOS capability paths
 - Keep create/export/share reliability unchanged while upgrading presentation and interaction fidelity
 - Validate rollout with explicit fallback matrix and migration analytics
+- Phase 5 implementation status (2026-03-07):
+  - Adopted dynamic color-token usage across sign-in, onboarding, tab shell, home/projects, profile, and create picker surfaces for light/dark parity
+  - Updated tabs shell to use stable adaptive RN tab styling and removed the experimental iOS liquid-glass tab bar treatment
+  - Added adaptive create-layout/picker background and status-bar behavior, including native summary/form color-scheme alignment where native surfaces are enabled
+  - Simplified rendering screen progress UI to percentage-first display (native circular spinner removed) while preserving export lifecycle behavior
+  - Expanded template customization artwork-scale controls from `1x–1.5x` to `1x–5x` and improved label formatting/selection handling
+  - Improved photo-matched background color generation with ThumbHash-derived multi-swatch extraction for template settings
+  - Aligned preview/export disc-hole behavior and artwork-scale interpolation across template stages and FFmpeg rendering path; hardened safe-fallback filter graph parsing on iOS FFmpeg kit
 
 ### Phase 6: Template System + Export Standardization (Post-Phase 5)
 - Standardize template authoring around one canonical template contract
