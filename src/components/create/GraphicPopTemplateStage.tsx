@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Image, Pressable, StyleSheet, View } from "react-native";
 import { radius } from "@/constants/tokens";
 import { VinylPreview } from "@/components/create/VinylPreview";
@@ -13,6 +14,8 @@ import {
 import { toRgba } from "@/lib/vinylTemplateSpec";
 
 const MAX_BACKGROUND_BLUR = 24;
+const MIN_RECORD_SIZE = 0.75;
+const MAX_RECORD_SIZE = 1.3;
 
 export function GraphicPopTemplateStage({
   width,
@@ -41,7 +44,24 @@ export function GraphicPopTemplateStage({
     Math.max(1 - (templateTweaks?.recordTransparency ?? 0), 0.35),
     1,
   );
+  const normalizedRecordSize = Math.min(
+    Math.max(templateTweaks?.recordSize ?? 1, MIN_RECORD_SIZE),
+    MAX_RECORD_SIZE,
+  );
+  const discSize = Math.max(
+    96,
+    Math.round(layout.discSize * normalizedRecordSize),
+  );
+  const discX = Math.round(layout.discX + (layout.discSize - discSize) / 2);
+  const discY = Math.round(layout.discY + (layout.discSize - discSize) / 2);
   const hasBackgroundImage = Boolean(templateTweaks?.stageBackgroundImageUri);
+  const backgroundSource = useMemo(
+    () =>
+      templateTweaks?.stageBackgroundImageUri
+        ? { uri: templateTweaks.stageBackgroundImageUri }
+        : null,
+    [templateTweaks?.stageBackgroundImageUri],
+  );
 
   return (
     <View
@@ -58,9 +78,9 @@ export function GraphicPopTemplateStage({
       ]}
       accessibilityLabel={`${playbackLabel}. ${trackTitle}. ${subtitle}`}
     >
-      {templateTweaks?.stageBackgroundImageUri ? (
+      {backgroundSource ? (
         <Image
-          source={{ uri: templateTweaks.stageBackgroundImageUri }}
+          source={backgroundSource}
           style={styles.backgroundImage}
           blurRadius={Math.round(normalizedBackgroundBlur)}
           resizeMode="cover"
@@ -110,14 +130,14 @@ export function GraphicPopTemplateStage({
         style={[
           styles.discWrap,
           {
-            left: layout.discX,
-            top: layout.discY,
+            left: discX,
+            top: discY,
           },
         ]}
       >
         <VinylPreview
           imageUri={photoUri ?? null}
-          size={layout.discSize}
+          size={discSize}
           spinning={isPlaying}
           spinSpeed={templateTweaks?.spinSpeed ?? 1}
           discOpacity={normalizedRecordOpacity}
@@ -133,11 +153,11 @@ export function GraphicPopTemplateStage({
           style={[
             styles.playTouch,
             {
-              left: layout.discX,
-              top: layout.discY,
-              width: layout.discSize,
-              height: layout.discSize,
-              borderRadius: layout.discRadius,
+              left: discX,
+              top: discY,
+              width: discSize,
+              height: discSize,
+              borderRadius: Math.round(discSize / 2),
             },
           ]}
           accessibilityLabel={isPlaying ? "Pause preview" : "Play preview"}

@@ -13,9 +13,14 @@ import {
 } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import * as Haptics from "expo-haptics";
+import * as ExpoSwiftUI from "@expo/ui/swift-ui";
 import { colors, radius, spacing, typography } from "@/constants/tokens";
 import { TemplateSwitcher } from "@/components/create/TemplateSwitcher";
 import type { AspectRatio } from "@/components/create/AspectRatioToggle";
+import {
+  getIOSNativeUIPhase5Availability,
+  type ExpoSwiftUIModule,
+} from "@/lib/iosNativeUi";
 import type { TemplateDefinition } from "@/lib/templates";
 
 interface EditMediaModalProps {
@@ -112,6 +117,37 @@ export function EditMediaModal({
       templateDefinitions[0],
     [draftTemplateId, templateDefinitions],
   );
+  const selectedTemplateIndex = useMemo(
+    () =>
+      Math.max(
+        0,
+        templateDefinitions.findIndex((option) => option.id === draftTemplateId),
+      ),
+    [draftTemplateId, templateDefinitions],
+  );
+  const nativeEditTemplateAvailability = getIOSNativeUIPhase5Availability({
+    minIOSVersion: 16,
+  });
+  const nativeEditTemplateEnabledByContract = nativeEditTemplateAvailability.enabled;
+  const expoSwiftUI = nativeEditTemplateEnabledByContract
+    ? (ExpoSwiftUI as ExpoSwiftUIModule)
+    : null;
+  const expoSwiftUIAny = expoSwiftUI as Record<string, unknown> | null;
+  const hasNativeEditTemplateComponents = Boolean(
+    expoSwiftUIAny &&
+      "Host" in expoSwiftUIAny &&
+      "Form" in expoSwiftUIAny &&
+      "Section" in expoSwiftUIAny &&
+      "Picker" in expoSwiftUIAny &&
+      "Button" in expoSwiftUIAny &&
+      "LabeledContent" in expoSwiftUIAny &&
+      "Text" in expoSwiftUIAny,
+  );
+  const canUseNativeEditTemplateControls =
+    false &&
+    nativeEditTemplateEnabledByContract &&
+    expoSwiftUI !== null &&
+    hasNativeEditTemplateComponents;
 
   const handleAspectRatioSelect = useCallback(
     (nextAspectRatio: AspectRatio) => {
@@ -268,94 +304,167 @@ export function EditMediaModal({
             </View>
 
             <View style={styles.content}>
-              <View style={styles.section}>
-              <Text style={styles.sectionLabel}>Aspect Ratio</Text>
-              <View style={styles.aspectRow}>
-                {ASPECT_OPTIONS.map((option) => {
-                  const selected = option === draftAspectRatio;
-                  return (
-                    <Pressable
-                      key={option}
-                      onPress={() => handleAspectRatioSelect(option)}
-                      style={[styles.optionPill, selected && styles.optionPillSelected]}
-                      accessibilityLabel={`Aspect ratio ${option}`}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected }}
-                    >
-                      <Ionicons
-                        name="crop"
-                        size={14}
-                        color={selected ? colors.dark.text : colors.dark.textSecondary}
-                      />
-                      <Text
-                        style={[
-                          styles.optionPillText,
-                          selected && styles.optionPillTextSelected,
-                        ]}
-                      >
-                        {option}
+              {canUseNativeEditTemplateControls && expoSwiftUI ? (
+                <View style={styles.nativeControlsWrap}>
+                  <expoSwiftUI.Host style={styles.nativeControlsHost} colorScheme="dark">
+                    <expoSwiftUI.Form>
+                      <expoSwiftUI.Section title="Layout">
+                        <expoSwiftUI.Picker
+                          label="Aspect ratio"
+                          options={ASPECT_OPTIONS}
+                          selectedIndex={Math.max(0, ASPECT_OPTIONS.indexOf(draftAspectRatio))}
+                          variant="segmented"
+                          onOptionSelected={(event) => {
+                            const nextAspectRatio =
+                              ASPECT_OPTIONS[event.nativeEvent.index] ?? ASPECT_OPTIONS[0];
+                            handleAspectRatioSelect(nextAspectRatio);
+                          }}
+                        />
+                      </expoSwiftUI.Section>
+
+                      <expoSwiftUI.Section title="Template">
+                        <expoSwiftUI.Picker
+                          label="Template"
+                          options={templateDefinitions.map((option) => option.name)}
+                          selectedIndex={selectedTemplateIndex}
+                          variant="menu"
+                          onOptionSelected={(event) => {
+                            const nextTemplateId =
+                              templateDefinitions[event.nativeEvent.index]?.id ??
+                              templateDefinitions[0]?.id;
+                            if (!nextTemplateId) return;
+                            handleTemplateSelect(nextTemplateId);
+                          }}
+                        />
+                      </expoSwiftUI.Section>
+
+                      <expoSwiftUI.Section title="Audio & Video">
+                        <expoSwiftUI.LabeledContent label="Audio">
+                          <expoSwiftUI.Text>
+                            {audioLabel || "Current audio"}
+                          </expoSwiftUI.Text>
+                        </expoSwiftUI.LabeledContent>
+                        <expoSwiftUI.Button
+                          systemImage="music.note"
+                          onPress={onSwapAudio}
+                        >
+                          Change audio track
+                        </expoSwiftUI.Button>
+                        <expoSwiftUI.LabeledContent label="Photo">
+                          <expoSwiftUI.Text>
+                            {photoLabel || "Current image"}
+                          </expoSwiftUI.Text>
+                        </expoSwiftUI.LabeledContent>
+                        <expoSwiftUI.Button
+                          systemImage="photo"
+                          onPress={onSwapPhoto}
+                        >
+                          Change photo
+                        </expoSwiftUI.Button>
+                      </expoSwiftUI.Section>
+                    </expoSwiftUI.Form>
+                  </expoSwiftUI.Host>
+                </View>
+              ) : (
+                <>
+                  <View style={styles.section}>
+                    <Text style={styles.sectionLabel}>Aspect Ratio</Text>
+                    <View style={styles.aspectRow}>
+                      {ASPECT_OPTIONS.map((option) => {
+                        const selected = option === draftAspectRatio;
+                        return (
+                          <Pressable
+                            key={option}
+                            onPress={() => handleAspectRatioSelect(option)}
+                            style={[styles.optionPill, selected && styles.optionPillSelected]}
+                            accessibilityLabel={`Aspect ratio ${option}`}
+                            accessibilityRole="button"
+                            accessibilityState={{ selected }}
+                          >
+                            <Ionicons
+                              name="crop"
+                              size={14}
+                              color={selected ? colors.dark.text : colors.dark.textSecondary}
+                            />
+                            <Text
+                              style={[
+                                styles.optionPillText,
+                                selected && styles.optionPillTextSelected,
+                              ]}
+                            >
+                              {option}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </View>
+
+                  <View style={styles.section}>
+                    <View style={styles.templateHeader}>
+                      <Text style={styles.sectionLabel}>Template</Text>
+                      <Text style={styles.templateMeta}>
+                        {selectedTemplate?.name ?? "Template"}
                       </Text>
+                    </View>
+                    <TemplateSwitcher
+                      options={templateDefinitions}
+                      value={draftTemplateId}
+                      onChange={handleTemplateSelect}
+                    />
+                  </View>
+
+                  <View style={styles.section}>
+                    <Text style={styles.sectionLabel}>Audio & Video</Text>
+                    <Pressable
+                      onPress={onSwapAudio}
+                      style={styles.actionRow}
+                      accessibilityLabel="Change audio"
+                      accessibilityRole="button"
+                    >
+                      <View style={styles.actionLeft}>
+                        <Ionicons
+                          name="musical-notes-outline"
+                          size={18}
+                          color={colors.accent.primary}
+                        />
+                        <View style={styles.actionTextWrap}>
+                          <Text style={styles.actionTitle}>Change Audio Track</Text>
+                          <Text style={styles.actionMeta} numberOfLines={1}>
+                            {audioLabel || "Current audio"}
+                          </Text>
+                        </View>
+                      </View>
+                      <Ionicons
+                        name="chevron-forward"
+                        size={18}
+                        color={colors.dark.textSecondary}
+                      />
                     </Pressable>
-                  );
-                })}
-              </View>
-              </View>
-
-              <View style={styles.section}>
-              <View style={styles.templateHeader}>
-                <Text style={styles.sectionLabel}>Template</Text>
-                <Text style={styles.templateMeta}>
-                  {selectedTemplate?.name ?? "Template"}
-                </Text>
-              </View>
-              <TemplateSwitcher
-                options={templateDefinitions}
-                value={draftTemplateId}
-                onChange={handleTemplateSelect}
-              />
-              </View>
-
-              <View style={styles.section}>
-              <Text style={styles.sectionLabel}>Audio & Video</Text>
-              <Pressable
-                onPress={onSwapAudio}
-                style={styles.actionRow}
-                accessibilityLabel="Change audio"
-                accessibilityRole="button"
-              >
-                <View style={styles.actionLeft}>
-                  <Ionicons
-                    name="musical-notes-outline"
-                    size={18}
-                    color={colors.accent.primary}
-                  />
-                  <View style={styles.actionTextWrap}>
-                    <Text style={styles.actionTitle}>Change Audio Track</Text>
-                    <Text style={styles.actionMeta} numberOfLines={1}>
-                      {audioLabel || "Current audio"}
-                    </Text>
+                    <Pressable
+                      onPress={onSwapPhoto}
+                      style={styles.actionRow}
+                      accessibilityLabel="Change photo"
+                      accessibilityRole="button"
+                    >
+                      <View style={styles.actionLeft}>
+                        <Ionicons name="camera-outline" size={18} color={colors.accent.primary} />
+                        <View style={styles.actionTextWrap}>
+                          <Text style={styles.actionTitle}>Change Photo</Text>
+                          <Text style={styles.actionMeta} numberOfLines={1}>
+                            {photoLabel || "Current image"}
+                          </Text>
+                        </View>
+                      </View>
+                      <Ionicons
+                        name="chevron-forward"
+                        size={18}
+                        color={colors.dark.textSecondary}
+                      />
+                    </Pressable>
                   </View>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color={colors.dark.textSecondary} />
-              </Pressable>
-              <Pressable
-                onPress={onSwapPhoto}
-                style={styles.actionRow}
-                accessibilityLabel="Change photo"
-                accessibilityRole="button"
-              >
-                <View style={styles.actionLeft}>
-                  <Ionicons name="camera-outline" size={18} color={colors.accent.primary} />
-                  <View style={styles.actionTextWrap}>
-                    <Text style={styles.actionTitle}>Change Photo</Text>
-                    <Text style={styles.actionMeta} numberOfLines={1}>
-                      {photoLabel || "Current image"}
-                    </Text>
-                  </View>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color={colors.dark.textSecondary} />
-              </Pressable>
-              </View>
+                </>
+              )}
             </View>
 
             <View style={styles.footer}>
@@ -453,6 +562,15 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: spacing.lg,
     gap: spacing.md,
+  },
+  nativeControlsWrap: {
+    minHeight: 260,
+    borderRadius: radius.md,
+    overflow: "hidden",
+  },
+  nativeControlsHost: {
+    flex: 1,
+    backgroundColor: colors.dark.background,
   },
   section: {
     gap: spacing.sm,

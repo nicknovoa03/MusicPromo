@@ -44,6 +44,7 @@ export interface RenderOptions {
   aspectRatio: "9:16" | "1:1";
   templateTweaks?: {
     spinSpeed?: number;
+    recordSize?: number;
     recordTransparency?: number;
     backgroundBlur?: number;
     rotationStartDeg?: number;
@@ -99,6 +100,8 @@ const VIDEO_OUTPUT_RANGE = "pc";
 const BASE_SPIN_ROTATION_SECONDS = 4;
 const MIN_SPIN_SPEED = 0.25;
 const MAX_SPIN_SPEED = 4;
+const MIN_RECORD_SIZE = 0.75;
+const MAX_RECORD_SIZE = 1.3;
 const MIN_RECORD_TRANSPARENCY = 0;
 const MAX_RECORD_TRANSPARENCY = 0.65;
 const MIN_BACKGROUND_BLUR = 0;
@@ -506,6 +509,12 @@ async function renderVinylVideoWithVariant(
     MAX_SPIN_SPEED,
     1,
   );
+  const normalizedRecordSize = clampNumber(
+    templateTweaks?.recordSize,
+    MIN_RECORD_SIZE,
+    MAX_RECORD_SIZE,
+    1,
+  );
   const normalizedBackgroundBlur = clampNumber(
     templateTweaks?.backgroundBlur,
     MIN_BACKGROUND_BLUR,
@@ -545,20 +554,35 @@ async function renderVinylVideoWithVariant(
       ? 0
       : Math.max(0.8, normalizedBackgroundBlur);
   const layout = getSimpleSpinTemplateLayout({ width, height, aspectRatio });
-  const {
-    discSize,
-    discRadius,
-    discX,
-    discY,
-    glowSize,
-    glowRadius,
-    glowX,
-    glowY,
-    ambientGlowSize,
-    ambientGlowRadius,
-    ambientGlowX,
-    ambientGlowY,
-  } = layout;
+  const discCenterX = layout.discX + layout.discSize / 2;
+  const discCenterY = layout.discY + layout.discSize / 2;
+  const discSize = Math.max(
+    96,
+    Math.round(layout.discSize * normalizedRecordSize),
+  );
+  const discRadius = Math.round(discSize / 2);
+  const discX = Math.round(discCenterX - discSize / 2);
+  const discY = Math.round(discCenterY - discSize / 2);
+
+  const glowCenterX = layout.glowX + layout.glowSize / 2;
+  const glowCenterY = layout.glowY + layout.glowSize / 2;
+  const glowSize = Math.max(
+    discSize + 8,
+    Math.round(layout.glowSize * normalizedRecordSize),
+  );
+  const glowRadius = Math.round(glowSize / 2);
+  const glowX = Math.round(glowCenterX - glowSize / 2);
+  const glowY = Math.round(glowCenterY - glowSize / 2);
+
+  const ambientGlowCenterX = layout.ambientGlowX + layout.ambientGlowSize / 2;
+  const ambientGlowCenterY = layout.ambientGlowY + layout.ambientGlowSize / 2;
+  const ambientGlowSize = Math.max(
+    glowSize + 8,
+    Math.round(layout.ambientGlowSize * normalizedRecordSize),
+  );
+  const ambientGlowRadius = Math.round(ambientGlowSize / 2);
+  const ambientGlowX = Math.round(ambientGlowCenterX - ambientGlowSize / 2);
+  const ambientGlowY = Math.round(ambientGlowCenterY - ambientGlowSize / 2);
   const vinylTone = getVinylToneSpec(variant.toneId);
   const centerGeometry = getVinylCenterGeometry(variant.toneId, discSize);
   const labelRadius = centerGeometry.labelRadius;

@@ -377,6 +377,7 @@ export function AudioTrimmer({
         visible={isDurationPickerVisible}
         transparent
         animationType="slide"
+        presentationStyle="overFullScreen"
         onRequestClose={() => setIsDurationPickerVisible(false)}
       >
         <View style={styles.durationModalRoot}>
@@ -572,7 +573,7 @@ const styles = StyleSheet.create({
   },
   durationModalBackdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.4)",
+    backgroundColor: "transparent",
   },
   durationModalSheet: {
     backgroundColor: "#020A15",

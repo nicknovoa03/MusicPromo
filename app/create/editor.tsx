@@ -250,6 +250,7 @@ export default function EditorScreen() {
     trimStart?: string;
     trimEnd?: string;
     spinSpeed?: string;
+    recordSize?: string;
     recordTransparency?: string;
     stageBackgroundColor?: string;
     showTemplateInfo?: string;
@@ -295,6 +296,10 @@ export default function EditorScreen() {
     params.spinSpeed,
     DEFAULT_TEMPLATE_TWEAKS.spinSpeed,
   );
+  const initialRecordSize = parseNumberParam(
+    params.recordSize,
+    DEFAULT_TEMPLATE_TWEAKS.recordSize,
+  );
   const initialRecordTransparency = parseNumberParam(
     params.recordTransparency,
     DEFAULT_TEMPLATE_TWEAKS.recordTransparency,
@@ -307,6 +312,7 @@ export default function EditorScreen() {
   const initialTemplateTweaks = normalizeTemplateTweaks(
     parsedTemplateTweaks ?? {
       spinSpeed: initialSpinSpeed,
+      recordSize: initialRecordSize,
       recordTransparency: initialRecordTransparency,
       stageBackgroundColor: initialStageBackgroundColor,
     },
@@ -1321,6 +1327,9 @@ export default function EditorScreen() {
         return;
       }
 
+      await stopAndResetPreview();
+      await unloadPreviewSound();
+
       if (autosaveTimerRef.current) {
         clearTimeout(autosaveTimerRef.current);
         autosaveTimerRef.current = null;
@@ -1374,6 +1383,8 @@ export default function EditorScreen() {
     serializedTemplateTweaks,
     showTemplateInfo,
     persistProjectSnapshot,
+    stopAndResetPreview,
+    unloadPreviewSound,
   ]);
 
   const handleTemplateChange = useCallback((nextTemplateId: string) => {
@@ -1461,6 +1472,9 @@ export default function EditorScreen() {
       const normalizedNext = normalizeTemplateTweaks(next);
       if (normalizedNext.spinSpeed !== templateTweaks.spinSpeed) {
         track("template_tweak_changed", { control: "spin_speed" });
+      }
+      if (normalizedNext.recordSize !== templateTweaks.recordSize) {
+        track("template_tweak_changed", { control: "record_size" });
       }
       if (normalizedNext.recordTransparency !== templateTweaks.recordTransparency) {
         track("template_tweak_changed", { control: "record_transparency" });
@@ -1696,29 +1710,27 @@ export default function EditorScreen() {
             >
               <Ionicons name="settings-outline" size={18} color={colors.dark.text} />
             </Pressable>
-            {!canUseNativeEditorControls ? (
-              <Pressable
-                onPress={handleToggleTemplateInfo}
-                style={({ pressed }) => [
-                  styles.previewInfoToggleButton,
-                  showTemplateInfo && styles.previewInfoToggleButtonActive,
-                  pressed && styles.previewTemplateButtonPressed,
-                ]}
-                accessibilityLabel={
-                  showTemplateInfo
-                    ? "Hide template information"
-                    : "Show template information"
-                }
-                accessibilityRole="button"
-                accessibilityState={{ selected: showTemplateInfo }}
-              >
-                <Ionicons
-                  name="information-circle-outline"
-                  size={18}
-                  color={showTemplateInfo ? colors.dark.background : colors.dark.text}
-                />
-              </Pressable>
-            ) : null}
+            <Pressable
+              onPress={handleToggleTemplateInfo}
+              style={({ pressed }) => [
+                styles.previewInfoToggleButton,
+                showTemplateInfo && styles.previewInfoToggleButtonActive,
+                pressed && styles.previewTemplateButtonPressed,
+              ]}
+              accessibilityLabel={
+                showTemplateInfo
+                  ? "Hide template information"
+                  : "Show template information"
+              }
+              accessibilityRole="button"
+              accessibilityState={{ selected: showTemplateInfo }}
+            >
+              <Ionicons
+                name="information-circle-outline"
+                size={18}
+                color={showTemplateInfo ? colors.dark.background : colors.dark.text}
+              />
+            </Pressable>
             <Pressable
               onPress={handleOpenEditMedia}
               style={({ pressed }) => [

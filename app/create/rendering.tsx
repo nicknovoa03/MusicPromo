@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -109,6 +109,7 @@ export default function RenderingScreen() {
     templateId?: string;
     templateTweaks?: string;
     spinSpeed?: string;
+    recordSize?: string;
     recordTransparency?: string;
     stageBackgroundColor?: string;
     photoUri: string;
@@ -124,27 +125,50 @@ export default function RenderingScreen() {
   const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
   const createProject = useMutation(api.projects.create);
   const updateProject = useMutation(api.projects.update);
-  const projectTitle = firstParam(params.title)?.trim() || "New Project";
-  const audioName = firstParam(params.audioName) || "";
-  const aspectRatio = firstParam(params.aspectRatio) === "1:1" ? "1:1" : "9:16";
-  const showTemplateInfo = firstParam(params.showTemplateInfo) === "1";
-  const templateId = resolveTemplateId(firstParam(params.templateId));
-  const parsedTemplateTweaks = parseTemplateTweaksParam(
-    firstParam(params.templateTweaks),
-  );
-  const templateTweaks = parsedTemplateTweaks
-    ? parsedTemplateTweaks
-    : normalizeTemplateTweaks({
-        spinSpeed: Number(firstParam(params.spinSpeed)),
-        recordTransparency: Number.isFinite(Number(firstParam(params.recordTransparency)))
-          ? Number(firstParam(params.recordTransparency))
-          : undefined,
-        stageBackgroundColor: firstParam(params.stageBackgroundColor) ?? undefined,
-      });
+  const titleParam = firstParam(params.title);
+  const audioNameParam = firstParam(params.audioName);
+  const aspectRatioParam = firstParam(params.aspectRatio);
+  const showTemplateInfoParam = firstParam(params.showTemplateInfo);
+  const templateIdParam = firstParam(params.templateId);
+  const templateTweaksParam = firstParam(params.templateTweaks);
+  const spinSpeedParam = firstParam(params.spinSpeed);
+  const recordSizeParam = firstParam(params.recordSize);
+  const recordTransparencyParam = firstParam(params.recordTransparency);
+  const stageBackgroundColorParam = firstParam(params.stageBackgroundColor);
+  const photoUriParam = firstParam(params.photoUri);
+
+  const projectTitle = titleParam?.trim() || "New Project";
+  const audioName = audioNameParam || "";
+  const aspectRatio = aspectRatioParam === "1:1" ? "1:1" : "9:16";
+  const showTemplateInfo = showTemplateInfoParam === "1";
+  const templateId = resolveTemplateId(templateIdParam);
+  const templateTweaks = useMemo(() => {
+    const parsedTemplateTweaks = parseTemplateTweaksParam(templateTweaksParam);
+    if (parsedTemplateTweaks) {
+      return parsedTemplateTweaks;
+    }
+    return normalizeTemplateTweaks({
+      spinSpeed: Number(spinSpeedParam),
+      recordSize: Number.isFinite(Number(recordSizeParam))
+        ? Number(recordSizeParam)
+        : undefined,
+      recordTransparency: Number.isFinite(Number(recordTransparencyParam))
+        ? Number(recordTransparencyParam)
+        : undefined,
+      stageBackgroundColor: stageBackgroundColorParam ?? undefined,
+    });
+  }, [
+    templateTweaksParam,
+    spinSpeedParam,
+    recordSizeParam,
+    recordTransparencyParam,
+    stageBackgroundColorParam,
+  ]);
   const previewTemplateDefinition = getTemplateDefinition(templateId);
   const TemplateStageComponent = previewTemplateDefinition.StageComponent;
-  const previewPhotoUri = normalizeMediaUri(
-    decodeUriParam(firstParam(params.photoUri)),
+  const previewPhotoUri = useMemo(
+    () => normalizeMediaUri(decodeUriParam(photoUriParam)),
+    [photoUriParam],
   );
   const trackTitle = displayMediaLabel(audioName, "Untitled track");
   const stageWidthRatio = aspectRatio === "9:16" ? 9 / 16 : 1;
@@ -238,6 +262,9 @@ export default function RenderingScreen() {
       ? parsedTemplateTweaks
       : normalizeTemplateTweaks({
           spinSpeed: Number(firstParam(params.spinSpeed)),
+          recordSize: Number.isFinite(Number(firstParam(params.recordSize)))
+            ? Number(firstParam(params.recordSize))
+            : undefined,
           recordTransparency: Number.isFinite(Number(firstParam(params.recordTransparency)))
             ? Number(firstParam(params.recordTransparency))
             : undefined,
@@ -414,6 +441,47 @@ export default function RenderingScreen() {
     startRender();
   }, [startRender]);
   const nativeProgressRatio = Math.max(0, Math.min(progress / 100, 1));
+  const stagePreview = useMemo(
+    () => (
+      <View style={styles.stageWrap}>
+        <View style={[styles.stageFrame, { width: stageWidth, height: stageHeight }]}>
+          <TemplateStageComponent
+            width={stageWidth}
+            height={stageHeight}
+            aspectRatio={aspectRatio}
+            photoUri={previewPhotoUri}
+            isPlaying={renderState === "rendering"}
+            playbackLabel="Now Playing"
+            trackTitle={trackTitle}
+            subtitle={projectTitle}
+            templateTweaks={templateTweaks}
+          />
+          {showTemplateInfo ? (
+            <TemplateInfoBadge
+              templateId={templateId}
+              templateTweaks={templateTweaks}
+              aspectRatio={aspectRatio}
+              compact
+              style={styles.stageTemplateInfoBadge}
+            />
+          ) : null}
+        </View>
+      </View>
+    ),
+    [
+      TemplateStageComponent,
+      stageWidth,
+      stageHeight,
+      aspectRatio,
+      previewPhotoUri,
+      renderState,
+      trackTitle,
+      projectTitle,
+      templateTweaks,
+      showTemplateInfo,
+      templateId,
+    ],
+  );
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
@@ -470,30 +538,7 @@ export default function RenderingScreen() {
               </View>
             ) : null}
 
-            <View style={styles.stageWrap}>
-              <View style={[styles.stageFrame, { width: stageWidth, height: stageHeight }]}>
-                <TemplateStageComponent
-                  width={stageWidth}
-                  height={stageHeight}
-                  aspectRatio={aspectRatio}
-                  photoUri={previewPhotoUri}
-                  isPlaying={renderState === "rendering"}
-                  playbackLabel="Now Playing"
-                  trackTitle={trackTitle}
-                  subtitle={projectTitle}
-                  templateTweaks={templateTweaks}
-                />
-                {showTemplateInfo ? (
-                  <TemplateInfoBadge
-                    templateId={templateId}
-                    templateTweaks={templateTweaks}
-                    aspectRatio={aspectRatio}
-                    compact
-                    style={styles.stageTemplateInfoBadge}
-                  />
-                ) : null}
-              </View>
-            </View>
+            {stagePreview}
 
             <Text style={styles.message}>
               Please don't close the app{"\n"}or lock your screen.

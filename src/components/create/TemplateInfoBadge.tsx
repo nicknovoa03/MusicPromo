@@ -25,6 +25,7 @@ export function TemplateInfoBadge({
 }: TemplateInfoBadgeProps) {
   const templateName = getTemplateDefinition(templateId).name;
   const spinSpeed = `${formatNumber(templateTweaks.spinSpeed)}x`;
+  const size = `${Math.round(templateTweaks.recordSize * 100)}%`;
   const transparency = `${Math.round(templateTweaks.recordTransparency * 100)}%`;
   const blur = templateTweaks.backgroundBlur <= 0
     ? "off"
@@ -38,12 +39,13 @@ export function TemplateInfoBadge({
   const chips = useMemo(
     () => [
       `SPD ${spinSpeed}`,
+      `SIZ ${size}`,
       `TRN ${transparency}`,
       `BLR ${blur}`,
       `ANG ${angle} ${direction}`,
       `BG ${background}`,
     ],
-    [angle, background, blur, direction, spinSpeed, transparency],
+    [angle, background, blur, direction, size, spinSpeed, transparency],
   );
 
   return (

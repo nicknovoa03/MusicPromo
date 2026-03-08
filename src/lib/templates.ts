@@ -23,6 +23,7 @@ export interface TemplateStageProps {
 
 export interface TemplateTweaks {
   spinSpeed: number;
+  recordSize: number;
   recordTransparency: number;
   backgroundBlur: number;
   rotationStartDeg: number;
@@ -33,6 +34,7 @@ export interface TemplateTweaks {
 
 export const DEFAULT_TEMPLATE_TWEAKS: TemplateTweaks = {
   spinSpeed: 1,
+  recordSize: 1,
   recordTransparency: 0,
   backgroundBlur: 0,
   rotationStartDeg: 0,
@@ -44,6 +46,7 @@ export const DEFAULT_TEMPLATE_TWEAKS: TemplateTweaks = {
 export interface TemplateTweaksRoutePayload {
   v: 1 | 2 | 3 | 4;
   spinSpeed: number;
+  recordSize?: number;
   recordTransparency?: number;
   recordOpacity?: number;
   backgroundBlur?: number;
@@ -55,6 +58,8 @@ export interface TemplateTweaksRoutePayload {
 
 const MIN_SPIN_SPEED = 0.25;
 const MAX_SPIN_SPEED = 4;
+const MIN_RECORD_SIZE = 0.75;
+const MAX_RECORD_SIZE = 1.3;
 const MIN_RECORD_TRANSPARENCY = 0;
 const MAX_RECORD_TRANSPARENCY = 0.65;
 const MIN_BACKGROUND_BLUR = 0;
@@ -105,6 +110,11 @@ export function normalizeTemplateTweaks(
       MIN_SPIN_SPEED,
       MAX_SPIN_SPEED,
     ),
+    recordSize: clampNumber(
+      input?.recordSize ?? DEFAULT_TEMPLATE_TWEAKS.recordSize,
+      MIN_RECORD_SIZE,
+      MAX_RECORD_SIZE,
+    ),
     recordTransparency: clampNumber(
       recordTransparencyInput ?? DEFAULT_TEMPLATE_TWEAKS.recordTransparency,
       MIN_RECORD_TRANSPARENCY,
@@ -133,6 +143,7 @@ export function serializeTemplateTweaksParam(value: TemplateTweaks): string {
   const payload: TemplateTweaksRoutePayload = {
     v: 4,
     spinSpeed: normalized.spinSpeed,
+    recordSize: normalized.recordSize,
     recordTransparency: normalized.recordTransparency,
     backgroundBlur: normalized.backgroundBlur,
     rotationStartDeg: normalized.rotationStartDeg,
@@ -155,6 +166,7 @@ export function parseTemplateTweaksParam(
     }
     return normalizeTemplateTweaks({
       spinSpeed: parsed.spinSpeed,
+      recordSize: parsed.recordSize,
       recordTransparency: parsed.recordTransparency,
       recordOpacity: parsed.recordOpacity,
       backgroundBlur: parsed.backgroundBlur,

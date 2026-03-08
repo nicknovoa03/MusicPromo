@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Animated, Easing, Image, StyleSheet, View } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { colors } from "@/constants/tokens";
@@ -128,6 +128,10 @@ export function VinylPreview({
     GRAPHIC_POP_CENTER_SHADOW_ALPHA_BYTE,
   );
   const iconSize = Math.max(size * 0.2, 32);
+  const artworkSource = useMemo(
+    () => (imageUri ? { uri: imageUri } : null),
+    [imageUri],
+  );
 
   return (
     <View
@@ -158,9 +162,9 @@ export function VinylPreview({
           },
         ]}
       >
-        {imageUri ? (
+        {artworkSource ? (
           <Image
-            source={{ uri: imageUri }}
+            source={artworkSource}
             style={styles.artwork}
             resizeMode="cover"
             accessibilityLabel="Vinyl artwork"

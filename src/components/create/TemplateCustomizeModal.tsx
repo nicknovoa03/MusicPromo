@@ -48,6 +48,14 @@ interface BackgroundOption {
   swatch: string;
 }
 
+type TemplateControlTab = "quickTune" | "background" | "advancedMotion";
+
+const TEMPLATE_CONTROL_TABS: Array<{ id: TemplateControlTab; label: string }> = [
+  { id: "quickTune", label: "Style" },
+  { id: "background", label: "Background" },
+  { id: "advancedMotion", label: "Motion" },
+];
+
 function isPresetBackgroundColor(
   color: string | null | undefined,
   options: BackgroundOption[],
@@ -56,6 +64,7 @@ function isPresetBackgroundColor(
 }
 
 const SPIN_SPEED_OPTIONS = [0.6, 0.8, 1, 1.25, 1.5];
+const RECORD_SIZE_OPTIONS = [0.8, 0.9, 1, 1.1, 1.2];
 const RECORD_TRANSPARENCY_OPTIONS = [0, 0.15, 0.3, 0.45, 0.6];
 const BACKGROUND_BLUR_OPTIONS = [0, 2, 4, 8, 12, 18];
 const ROTATION_START_OPTIONS = [0, 90, 180, -90];
@@ -89,6 +98,10 @@ function formatSpeed(value: number): string {
 
 function formatTransparency(value: number): string {
   return `${Math.round(clamp(value, 0, 1) * 100)}%`;
+}
+
+function formatRecordSize(value: number): string {
+  return `${Math.round(clamp(value, 0.75, 1.3) * 100)}%`;
 }
 
 function formatBlur(value: number): string {
@@ -415,6 +428,11 @@ function PaletteStrip({
   onSelect,
 }: PaletteStripProps) {
   const normalizedHue = ((hue % 360) + 360) % 360;
+  const [paletteViewportWidth, setPaletteViewportWidth] = useState(0);
+  const [paletteScrollX, setPaletteScrollX] = useState(0);
+  const [sectionLayouts, setSectionLayouts] = useState<
+    Record<string, { x: number; width: number }>
+  >({});
   const selectedGrayscaleSwatchId = useMemo(() => {
     if (saturation > 8) return null;
     const grayscaleSection = PALETTE_SECTIONS.find((section) => section.id === "gray");
@@ -450,51 +468,110 @@ function PaletteStrip({
     },
     [normalizedHue, saturation, selectedGrayscaleSwatchId],
   );
+  const activePalettePageIndex = useMemo(() => {
+    if (paletteViewportWidth <= 0) return 0;
+    const viewportCenter = paletteScrollX + paletteViewportWidth / 2;
+    let closestIndex = 0;
+    let closestDistance = Number.POSITIVE_INFINITY;
+
+    PALETTE_SECTIONS.forEach((section, index) => {
+      const layout = sectionLayouts[section.id];
+      if (!layout) return;
+      const sectionCenter = layout.x + layout.width / 2;
+      const distance = Math.abs(sectionCenter - viewportCenter);
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closestIndex = index;
+      }
+    });
+
+    return closestIndex;
+  }, [paletteScrollX, paletteViewportWidth, sectionLayouts]);
 
   return (
-    <ScrollView
-      horizontal
-      nestedScrollEnabled
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.paletteStripRow}
-      style={styles.paletteStripScroll}
-    >
-      {PALETTE_SECTIONS.map((section, sectionIndex) => (
-        <View key={section.id} style={styles.paletteSection}>
-          <Text style={styles.paletteSectionLabel}>{section.label}</Text>
-          <View style={styles.paletteSectionSwatches}>
-            {section.swatches.map((swatch) => {
-              const selected = isSelected(swatch);
-              return (
-                <Pressable
-                  key={swatch.id}
-                  onPress={() => onSelect(swatch)}
-                  disabled={disabled}
-                  style={[
-                    styles.paletteDotWrap,
-                    selected && styles.paletteDotWrapSelected,
-                    disabled && styles.paletteDotWrapDisabled,
-                  ]}
-                  accessibilityLabel={`${section.label} ${swatch.label}`}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected, disabled }}
-                >
-                  <View
+    <View style={styles.paletteStripWrap}>
+      <ScrollView
+        horizontal
+        nestedScrollEnabled
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.paletteStripRow}
+        style={styles.paletteStripScroll}
+        onLayout={(event) => {
+          setPaletteViewportWidth(event.nativeEvent.layout.width);
+        }}
+        onScroll={(event) => {
+          setPaletteScrollX(event.nativeEvent.contentOffset.x);
+        }}
+        scrollEventThrottle={16}
+      >
+        {PALETTE_SECTIONS.map((section, sectionIndex) => (
+          <View
+            key={section.id}
+            style={styles.paletteSection}
+            onLayout={(event) => {
+              const { x, width } = event.nativeEvent.layout;
+              setSectionLayouts((previous) => {
+                const existing = previous[section.id];
+                if (
+                  existing &&
+                  Math.abs(existing.x - x) < 1 &&
+                  Math.abs(existing.width - width) < 1
+                ) {
+                  return previous;
+                }
+                return { ...previous, [section.id]: { x, width } };
+              });
+            }}
+          >
+            <Text style={styles.paletteSectionLabel}>{section.label}</Text>
+            <View style={styles.paletteSectionSwatches}>
+              {section.swatches.map((swatch) => {
+                const selected = isSelected(swatch);
+                return (
+                  <Pressable
+                    key={swatch.id}
+                    onPress={() => onSelect(swatch)}
+                    disabled={disabled}
                     style={[
-                      styles.paletteDot,
-                      { backgroundColor: swatch.hex },
+                      styles.paletteDotWrap,
+                      selected && styles.paletteDotWrapSelected,
+                      disabled && styles.paletteDotWrapDisabled,
                     ]}
-                  />
-                </Pressable>
-              );
-            })}
+                    accessibilityLabel={`${section.label} ${swatch.label}`}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected, disabled }}
+                  >
+                    <View
+                      style={[
+                        styles.paletteDot,
+                        { backgroundColor: swatch.hex },
+                      ]}
+                    />
+                  </Pressable>
+                );
+              })}
+            </View>
+            {sectionIndex < PALETTE_SECTIONS.length - 1 ? (
+              <View style={styles.paletteSectionDivider} />
+            ) : null}
           </View>
-          {sectionIndex < PALETTE_SECTIONS.length - 1 ? (
-            <View style={styles.paletteSectionDivider} />
-          ) : null}
-        </View>
-      ))}
-    </ScrollView>
+        ))}
+      </ScrollView>
+      <View style={styles.palettePager}>
+        {PALETTE_SECTIONS.map((section, index) => {
+          const isActive = index === activePalettePageIndex;
+          return (
+            <View
+              key={`pager-${section.id}`}
+              style={[
+                styles.palettePagerDot,
+                isActive && styles.palettePagerDotActive,
+              ]}
+            />
+          );
+        })}
+      </View>
+    </View>
   );
 }
 
@@ -537,8 +614,9 @@ export function TemplateCustomizeModal({
   const [customLightness, setCustomLightness] = useState(DEFAULT_CUSTOM_LIGHTNESS);
   const [isCustomColorEnabled, setIsCustomColorEnabled] = useState(false);
   const [isBackgroundPhotoLoading, setIsBackgroundPhotoLoading] = useState(false);
-  const [isNativeBackgroundExpanded, setIsNativeBackgroundExpanded] = useState(true);
-  const [isNativeAdvancedExpanded, setIsNativeAdvancedExpanded] = useState(false);
+  const [activeControlTab, setActiveControlTab] = useState<TemplateControlTab>(
+    "quickTune",
+  );
   const [lastPresetBackgroundColor, setLastPresetBackgroundColor] = useState<
     string | null
   >(null);
@@ -586,8 +664,7 @@ export function TemplateCustomizeModal({
       }
       openAnimationRef.current = null;
     });
-    setIsNativeBackgroundExpanded(true);
-    setIsNativeAdvancedExpanded(false);
+    setActiveControlTab("quickTune");
   }, [visible, sheetTranslateY]);
 
   useEffect(
@@ -657,10 +734,6 @@ export function TemplateCustomizeModal({
     stageViewportHeight * 0.66,
     520,
   );
-  const selectedRotationDirectionLabel =
-    ROTATION_DIRECTION_OPTIONS.find(
-      (option) => option.value === draft.rotationDirection,
-    )?.label ?? "CW";
   const showToneOptions = customSaturation > 2;
   const nativeTemplateControlsAvailability = getIOSNativeUIPhase5Availability({
     minIOSVersion: 16,
@@ -676,7 +749,6 @@ export function TemplateCustomizeModal({
       "Host" in expoSwiftUIAny &&
       "Form" in expoSwiftUIAny &&
       "Section" in expoSwiftUIAny &&
-      "DisclosureGroup" in expoSwiftUIAny &&
       "Picker" in expoSwiftUIAny &&
       "Slider" in expoSwiftUIAny &&
       "LabeledContent" in expoSwiftUIAny &&
@@ -685,6 +757,7 @@ export function TemplateCustomizeModal({
       "ColorPicker" in expoSwiftUIAny,
   );
   const canUseNativeTemplateControls =
+    false &&
     nativeTemplateControlsEnabledByContract &&
     expoSwiftUI !== null &&
     hasNativeTemplateControlsComponents;
@@ -698,6 +771,14 @@ export function TemplateCustomizeModal({
     );
     return optionIndex >= 0 ? optionIndex : null;
   }, [backgroundOptions, draft.stageBackgroundColor]);
+  const activeControlTabIndex = useMemo(
+    () =>
+      Math.max(
+        0,
+        TEMPLATE_CONTROL_TABS.findIndex((tab) => tab.id === activeControlTab),
+      ),
+    [activeControlTab],
+  );
 
   const updateSpinSpeed = useCallback((spinSpeed: number, withHaptics = true) => {
     if (spinSpeed === draft.spinSpeed) return;
@@ -706,6 +787,14 @@ export function TemplateCustomizeModal({
       void triggerSelectionHaptic();
     }
   }, [draft.spinSpeed]);
+
+  const updateRecordSize = useCallback((recordSize: number, withHaptics = true) => {
+    if (recordSize === draft.recordSize) return;
+    setDraft((prev) => ({ ...prev, recordSize }));
+    if (withHaptics) {
+      void triggerSelectionHaptic();
+    }
+  }, [draft.recordSize]);
 
   const updateRecordTransparency = useCallback((
     recordTransparency: number,
@@ -1046,6 +1135,16 @@ export function TemplateCustomizeModal({
     },
     [updateBackground],
   );
+  const handleControlTabSelect = useCallback(
+    (nextTab: TemplateControlTab, withHaptics = true) => {
+      if (nextTab === activeControlTab) return;
+      setActiveControlTab(nextTab);
+      if (withHaptics) {
+        void triggerSelectionHaptic();
+      }
+    },
+    [activeControlTab],
+  );
 
   return (
     <Modal
@@ -1115,174 +1214,196 @@ export function TemplateCustomizeModal({
                 colorScheme="dark"
               >
                 <expoSwiftUI.Form>
-                  <expoSwiftUI.Section title="Quick Tune">
-                    <expoSwiftUI.LabeledContent label="Spin speed">
-                      <expoSwiftUI.Text>{formatSpeed(draft.spinSpeed)}</expoSwiftUI.Text>
-                    </expoSwiftUI.LabeledContent>
-                    <expoSwiftUI.Slider
-                      min={0}
-                      max={SPIN_SPEED_OPTIONS.length - 1}
-                      steps={SPIN_SPEED_OPTIONS.length - 1}
-                      value={findClosestOptionIndex(SPIN_SPEED_OPTIONS, draft.spinSpeed)}
-                      color={colors.accent.primary}
-                      onValueChange={(nextValue) => {
-                        const sliderIndex = Math.round(
-                          clamp(nextValue, 0, SPIN_SPEED_OPTIONS.length - 1),
-                        );
-                        const spinSpeed = SPIN_SPEED_OPTIONS[sliderIndex] ?? draft.spinSpeed;
-                        updateSpinSpeed(spinSpeed, false);
+                  <expoSwiftUI.Section>
+                    <expoSwiftUI.Picker
+                      label="Template control tabs"
+                      options={TEMPLATE_CONTROL_TABS.map((tab) => tab.label)}
+                      selectedIndex={activeControlTabIndex}
+                      variant="segmented"
+                      onOptionSelected={(event) => {
+                        const nextTab =
+                          TEMPLATE_CONTROL_TABS[event.nativeEvent.index]?.id ?? "quickTune";
+                        handleControlTabSelect(nextTab, false);
                       }}
                     />
-
-                    <expoSwiftUI.LabeledContent label="Record transparency">
-                      <expoSwiftUI.Text>
-                        {formatTransparency(draft.recordTransparency)}
-                      </expoSwiftUI.Text>
-                    </expoSwiftUI.LabeledContent>
-                    <expoSwiftUI.Slider
-                      min={0}
-                      max={RECORD_TRANSPARENCY_OPTIONS.length - 1}
-                      steps={RECORD_TRANSPARENCY_OPTIONS.length - 1}
-                      value={findClosestOptionIndex(
-                        RECORD_TRANSPARENCY_OPTIONS,
-                        draft.recordTransparency,
-                      )}
-                      color={colors.accent.primary}
-                      onValueChange={(nextValue) => {
-                        const sliderIndex = Math.round(
-                          clamp(nextValue, 0, RECORD_TRANSPARENCY_OPTIONS.length - 1),
-                        );
-                        const recordTransparency =
-                          RECORD_TRANSPARENCY_OPTIONS[sliderIndex] ??
-                          draft.recordTransparency;
-                        updateRecordTransparency(recordTransparency, false);
-                      }}
-                    />
-
-                    {isBackgroundPhotoSelected ? (
+                    {activeControlTab === "quickTune" ? (
                       <>
-                        <expoSwiftUI.LabeledContent label="Background blur">
-                          <expoSwiftUI.Text>{formatBlur(draft.backgroundBlur)}</expoSwiftUI.Text>
+                        <expoSwiftUI.LabeledContent label="Record size">
+                          <expoSwiftUI.Text>{formatRecordSize(draft.recordSize)}</expoSwiftUI.Text>
                         </expoSwiftUI.LabeledContent>
                         <expoSwiftUI.Slider
                           min={0}
-                          max={BACKGROUND_BLUR_OPTIONS.length - 1}
-                          steps={BACKGROUND_BLUR_OPTIONS.length - 1}
+                          max={RECORD_SIZE_OPTIONS.length - 1}
+                          steps={RECORD_SIZE_OPTIONS.length - 1}
+                          value={findClosestOptionIndex(RECORD_SIZE_OPTIONS, draft.recordSize)}
+                          color={colors.accent.primary}
+                          onValueChange={(nextValue) => {
+                            const sliderIndex = Math.round(
+                              clamp(nextValue, 0, RECORD_SIZE_OPTIONS.length - 1),
+                            );
+                            const recordSize =
+                              RECORD_SIZE_OPTIONS[sliderIndex] ?? draft.recordSize;
+                            updateRecordSize(recordSize, false);
+                          }}
+                        />
+                        <expoSwiftUI.LabeledContent label="Record transparency">
+                          <expoSwiftUI.Text>
+                            {formatTransparency(draft.recordTransparency)}
+                          </expoSwiftUI.Text>
+                        </expoSwiftUI.LabeledContent>
+                        <expoSwiftUI.Slider
+                          min={0}
+                          max={RECORD_TRANSPARENCY_OPTIONS.length - 1}
+                          steps={RECORD_TRANSPARENCY_OPTIONS.length - 1}
                           value={findClosestOptionIndex(
-                            BACKGROUND_BLUR_OPTIONS,
-                            draft.backgroundBlur,
+                            RECORD_TRANSPARENCY_OPTIONS,
+                            draft.recordTransparency,
                           )}
                           color={colors.accent.primary}
                           onValueChange={(nextValue) => {
                             const sliderIndex = Math.round(
-                              clamp(nextValue, 0, BACKGROUND_BLUR_OPTIONS.length - 1),
+                              clamp(nextValue, 0, RECORD_TRANSPARENCY_OPTIONS.length - 1),
                             );
-                            const backgroundBlur =
-                              BACKGROUND_BLUR_OPTIONS[sliderIndex] ?? draft.backgroundBlur;
-                            updateBackgroundBlur(backgroundBlur, false);
+                            const recordTransparency =
+                              RECORD_TRANSPARENCY_OPTIONS[sliderIndex] ??
+                              draft.recordTransparency;
+                            updateRecordTransparency(recordTransparency, false);
                           }}
                         />
                       </>
                     ) : null}
 
-                    <expoSwiftUI.Picker
-                      label="Spin direction"
-                      options={ROTATION_DIRECTION_OPTIONS.map((option) => option.label)}
-                      selectedIndex={Math.max(
-                        0,
-                        ROTATION_DIRECTION_OPTIONS.findIndex(
-                          (option) => option.value === draft.rotationDirection,
-                        ),
-                      )}
-                      variant="segmented"
-                      onOptionSelected={(event) => {
-                        updateRotationDirection(
-                          ROTATION_DIRECTION_OPTIONS[event.nativeEvent.index]?.value ?? "cw",
-                        );
-                      }}
-                    />
-                  </expoSwiftUI.Section>
-
-                  <expoSwiftUI.Section>
-                    <expoSwiftUI.DisclosureGroup
-                      label="Background"
-                      isExpanded={isNativeBackgroundExpanded}
-                      onStateChange={setIsNativeBackgroundExpanded}
-                    >
-                      <expoSwiftUI.Picker
-                        label="Preset"
-                        options={backgroundOptionsLabels}
-                        selectedIndex={selectedBackgroundOptionIndex}
-                        variant="menu"
-                        onOptionSelected={(event) => {
-                          handleNativeBackgroundPresetSelect(event.nativeEvent.index);
-                        }}
-                      />
-                      <expoSwiftUI.ColorPicker
-                        label="Custom color"
-                        selection={draft.stageBackgroundColor ?? customColor}
-                        supportsOpacity={false}
-                        onValueChanged={handleNativeBackgroundColorChange}
-                      />
-                      <expoSwiftUI.LabeledContent label="Photo background">
-                        <expoSwiftUI.Text>
-                          {draft.stageBackgroundImageUri ? "Selected" : "None"}
-                        </expoSwiftUI.Text>
-                      </expoSwiftUI.LabeledContent>
-                      <expoSwiftUI.Button
-                        systemImage="photo.badge.plus"
-                        disabled={isBackgroundPhotoLoading}
-                        onPress={() => {
-                          void handlePickBackgroundPhoto();
-                        }}
-                      >
-                        {isBackgroundPhotoLoading
-                          ? "Loading photo..."
-                          : "Choose background photo"}
-                      </expoSwiftUI.Button>
-                      {draft.stageBackgroundImageUri ? (
+                    {activeControlTab === "background" ? (
+                      <>
+                        <expoSwiftUI.Picker
+                          label="Preset"
+                          options={backgroundOptionsLabels}
+                          selectedIndex={selectedBackgroundOptionIndex}
+                          variant="menu"
+                          onOptionSelected={(event) => {
+                            handleNativeBackgroundPresetSelect(event.nativeEvent.index);
+                          }}
+                        />
+                        <expoSwiftUI.ColorPicker
+                          label="Custom color"
+                          selection={draft.stageBackgroundColor ?? customColor}
+                          supportsOpacity={false}
+                          onValueChanged={handleNativeBackgroundColorChange}
+                        />
+                        <expoSwiftUI.LabeledContent label="Photo background">
+                          <expoSwiftUI.Text>
+                            {draft.stageBackgroundImageUri ? "Selected" : "None"}
+                          </expoSwiftUI.Text>
+                        </expoSwiftUI.LabeledContent>
                         <expoSwiftUI.Button
-                          systemImage="xmark.circle"
+                          systemImage="photo.badge.plus"
+                          disabled={isBackgroundPhotoLoading}
                           onPress={() => {
-                            setBackgroundPhoto(null);
+                            void handlePickBackgroundPhoto();
                           }}
                         >
-                          Remove background photo
+                          {isBackgroundPhotoLoading
+                            ? "Loading photo..."
+                            : "Choose background photo"}
                         </expoSwiftUI.Button>
-                      ) : null}
-                    </expoSwiftUI.DisclosureGroup>
-                  </expoSwiftUI.Section>
+                        {draft.stageBackgroundImageUri ? (
+                          <expoSwiftUI.Button
+                            systemImage="xmark.circle"
+                            onPress={() => {
+                              setBackgroundPhoto(null);
+                            }}
+                          >
+                            Remove background photo
+                          </expoSwiftUI.Button>
+                        ) : null}
+                        {isBackgroundPhotoSelected ? (
+                          <>
+                            <expoSwiftUI.LabeledContent label="Background blur">
+                              <expoSwiftUI.Text>{formatBlur(draft.backgroundBlur)}</expoSwiftUI.Text>
+                            </expoSwiftUI.LabeledContent>
+                            <expoSwiftUI.Slider
+                              min={0}
+                              max={BACKGROUND_BLUR_OPTIONS.length - 1}
+                              steps={BACKGROUND_BLUR_OPTIONS.length - 1}
+                              value={findClosestOptionIndex(
+                                BACKGROUND_BLUR_OPTIONS,
+                                draft.backgroundBlur,
+                              )}
+                              color={colors.accent.primary}
+                              onValueChange={(nextValue) => {
+                                const sliderIndex = Math.round(
+                                  clamp(nextValue, 0, BACKGROUND_BLUR_OPTIONS.length - 1),
+                                );
+                                const backgroundBlur =
+                                  BACKGROUND_BLUR_OPTIONS[sliderIndex] ?? draft.backgroundBlur;
+                                updateBackgroundBlur(backgroundBlur, false);
+                              }}
+                            />
+                          </>
+                        ) : null}
+                      </>
+                    ) : null}
 
-                  <expoSwiftUI.Section>
-                    <expoSwiftUI.DisclosureGroup
-                      label="Advanced Motion"
-                      isExpanded={isNativeAdvancedExpanded}
-                      onStateChange={setIsNativeAdvancedExpanded}
-                    >
-                      <expoSwiftUI.LabeledContent label="Spin start angle">
-                        <expoSwiftUI.Text>
-                          {formatRotationStart(draft.rotationStartDeg)}
-                        </expoSwiftUI.Text>
-                      </expoSwiftUI.LabeledContent>
-                      <expoSwiftUI.Slider
-                        min={0}
-                        max={ROTATION_START_OPTIONS.length - 1}
-                        steps={ROTATION_START_OPTIONS.length - 1}
-                        value={findClosestOptionIndex(
-                          ROTATION_START_OPTIONS,
-                          draft.rotationStartDeg,
-                        )}
-                        color={colors.accent.primary}
-                        onValueChange={(nextValue) => {
-                          const sliderIndex = Math.round(
-                            clamp(nextValue, 0, ROTATION_START_OPTIONS.length - 1),
-                          );
-                          const rotationStartDeg =
-                            ROTATION_START_OPTIONS[sliderIndex] ?? draft.rotationStartDeg;
-                          updateRotationStartDeg(rotationStartDeg, false);
-                        }}
-                      />
-                    </expoSwiftUI.DisclosureGroup>
+                    {activeControlTab === "advancedMotion" ? (
+                      <>
+                        <expoSwiftUI.LabeledContent label="Spin speed">
+                          <expoSwiftUI.Text>{formatSpeed(draft.spinSpeed)}</expoSwiftUI.Text>
+                        </expoSwiftUI.LabeledContent>
+                        <expoSwiftUI.Slider
+                          min={0}
+                          max={SPIN_SPEED_OPTIONS.length - 1}
+                          steps={SPIN_SPEED_OPTIONS.length - 1}
+                          value={findClosestOptionIndex(SPIN_SPEED_OPTIONS, draft.spinSpeed)}
+                          color={colors.accent.primary}
+                          onValueChange={(nextValue) => {
+                            const sliderIndex = Math.round(
+                              clamp(nextValue, 0, SPIN_SPEED_OPTIONS.length - 1),
+                            );
+                            const spinSpeed = SPIN_SPEED_OPTIONS[sliderIndex] ?? draft.spinSpeed;
+                            updateSpinSpeed(spinSpeed, false);
+                          }}
+                        />
+                        <expoSwiftUI.Picker
+                          label="Spin direction"
+                          options={ROTATION_DIRECTION_OPTIONS.map((option) => option.label)}
+                          selectedIndex={Math.max(
+                            0,
+                            ROTATION_DIRECTION_OPTIONS.findIndex(
+                              (option) => option.value === draft.rotationDirection,
+                            ),
+                          )}
+                          variant="segmented"
+                          onOptionSelected={(event) => {
+                            updateRotationDirection(
+                              ROTATION_DIRECTION_OPTIONS[event.nativeEvent.index]?.value ?? "cw",
+                            );
+                          }}
+                        />
+                        <expoSwiftUI.LabeledContent label="Spin start angle">
+                          <expoSwiftUI.Text>
+                            {formatRotationStart(draft.rotationStartDeg)}
+                          </expoSwiftUI.Text>
+                        </expoSwiftUI.LabeledContent>
+                        <expoSwiftUI.Slider
+                          min={0}
+                          max={ROTATION_START_OPTIONS.length - 1}
+                          steps={ROTATION_START_OPTIONS.length - 1}
+                          value={findClosestOptionIndex(
+                            ROTATION_START_OPTIONS,
+                            draft.rotationStartDeg,
+                          )}
+                          color={colors.accent.primary}
+                          onValueChange={(nextValue) => {
+                            const sliderIndex = Math.round(
+                              clamp(nextValue, 0, ROTATION_START_OPTIONS.length - 1),
+                            );
+                            const rotationStartDeg =
+                              ROTATION_START_OPTIONS[sliderIndex] ?? draft.rotationStartDeg;
+                            updateRotationStartDeg(rotationStartDeg, false);
+                          }}
+                        />
+                      </>
+                    ) : null}
                   </expoSwiftUI.Section>
                 </expoSwiftUI.Form>
               </expoSwiftUI.Host>
@@ -1293,358 +1414,425 @@ export function TemplateCustomizeModal({
               contentContainerStyle={styles.content}
               showsVerticalScrollIndicator={false}
             >
-              <View style={styles.controlSection}>
-              <View style={styles.controlHeader}>
-                <Text style={styles.controlLabel}>Background</Text>
-              </View>
-              <ScrollView
-                horizontal
-                nestedScrollEnabled
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.backgroundRow}
-              >
-                {backgroundOptions.map((option) => {
-                  const selected = option.color === draft.stageBackgroundColor;
+              <View style={styles.controlPanel}>
+                <View style={styles.controlTabRow}>
+                {TEMPLATE_CONTROL_TABS.map((tab) => {
+                  const selected = tab.id === activeControlTab;
                   return (
                     <Pressable
-                      key={option.id}
-                      onPress={() => {
-                        setIsCustomColorEnabled(false);
-                        setLastPresetBackgroundColor(option.color);
-                        updateBackground(option.color);
-                      }}
+                      key={tab.id}
+                      onPress={() => handleControlTabSelect(tab.id)}
                       style={[
-                        styles.backgroundSwatchWrap,
-                        selected && styles.backgroundSwatchWrapSelected,
+                        styles.controlTabPill,
+                        selected && styles.controlTabPillSelected,
                       ]}
-                      accessibilityLabel={`Background ${option.label}`}
+                      accessibilityLabel={`Show ${tab.label}`}
                       accessibilityRole="button"
                       accessibilityState={{ selected }}
                     >
-                      <View
+                      <Text
                         style={[
-                          styles.backgroundSwatch,
-                          { backgroundColor: option.swatch },
+                          styles.controlTabPillText,
+                          selected && styles.controlTabPillTextSelected,
                         ]}
-                      />
+                      >
+                        {tab.label}
+                      </Text>
                     </Pressable>
                   );
                 })}
-                <Pressable
-                  onPress={() => toggleCustomColorEnabled(!isCustomColorEnabled)}
-                  style={[
-                    styles.backgroundSwatchWrap,
-                    styles.customBackgroundToggleWrap,
-                    isCustomColorEnabled && styles.backgroundSwatchWrapSelected,
-                  ]}
-                  accessibilityLabel="Toggle custom background color"
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: isCustomColorEnabled }}
-                >
-                  <View
-                    style={[
-                      styles.backgroundSwatch,
-                      styles.customBackgroundToggleInner,
-                      { backgroundColor: customColor },
-                    ]}
-                  />
-                  <Ionicons
-                    name="color-palette"
-                    size={11}
-                    color="#ffffff"
-                    style={styles.customBackgroundToggleIcon}
-                  />
-                </Pressable>
-                <Pressable
-                  onPress={handlePickBackgroundPhoto}
-                  style={[
-                    styles.backgroundSwatchWrap,
-                    styles.photoBackgroundToggleWrap,
-                    isBackgroundPhotoSelected && styles.backgroundSwatchWrapSelected,
-                  ]}
-                  accessibilityLabel="Add photo background"
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: isBackgroundPhotoSelected }}
-                >
-                  {isBackgroundPhotoLoading ? (
-                    <ActivityIndicator size="small" color={colors.dark.text} />
-                  ) : draft.stageBackgroundImageUri ? (
-                    <RNImage
-                      source={{ uri: draft.stageBackgroundImageUri }}
-                      style={[styles.backgroundSwatch, styles.photoBackgroundThumb]}
-                      resizeMode="cover"
-                    />
-                  ) : (
-                    <View
-                      style={[
-                        styles.backgroundSwatch,
-                        styles.photoBackgroundPlaceholder,
-                      ]}
-                    >
-                      <Ionicons
-                        name="image-outline"
-                        size={14}
-                        color={colors.dark.textSecondary}
-                      />
+                </View>
+
+                <View style={styles.controlPanelBody}>
+              {activeControlTab === "background" ? (
+                <>
+                  <View style={styles.controlSection}>
+                    <View style={styles.controlHeader}>
+                      <Text style={styles.controlLabel}>Background</Text>
                     </View>
-                  )}
-                </Pressable>
-              </ScrollView>
-              {isCustomColorEnabled ? (
-                <View style={styles.customColorCard}>
-                  <View style={styles.customColorHeader}>
-                    <Text style={styles.customColorTitle}>Custom Color</Text>
-                    <View
-                      style={[
-                        styles.customColorSwatch,
-                        { backgroundColor: customColor },
-                      ]}
-                    />
+                    <ScrollView
+                      horizontal
+                      nestedScrollEnabled
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.backgroundRow}
+                    >
+                      {backgroundOptions.map((option) => {
+                        const selected = option.color === draft.stageBackgroundColor;
+                        return (
+                          <Pressable
+                            key={option.id}
+                            onPress={() => {
+                              setIsCustomColorEnabled(false);
+                              setLastPresetBackgroundColor(option.color);
+                              updateBackground(option.color);
+                            }}
+                            style={[
+                              styles.backgroundSwatchWrap,
+                              selected && styles.backgroundSwatchWrapSelected,
+                            ]}
+                            accessibilityLabel={`Background ${option.label}`}
+                            accessibilityRole="button"
+                            accessibilityState={{ selected }}
+                          >
+                            <View
+                              style={[
+                                styles.backgroundSwatch,
+                                { backgroundColor: option.swatch },
+                              ]}
+                            />
+                          </Pressable>
+                        );
+                      })}
+                      <Pressable
+                        onPress={() => toggleCustomColorEnabled(!isCustomColorEnabled)}
+                        style={[
+                          styles.backgroundSwatchWrap,
+                          styles.customBackgroundToggleWrap,
+                          isCustomColorEnabled && styles.backgroundSwatchWrapSelected,
+                        ]}
+                        accessibilityLabel="Toggle custom background color"
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: isCustomColorEnabled }}
+                      >
+                        <View
+                          style={[
+                            styles.backgroundSwatch,
+                            styles.customBackgroundToggleInner,
+                            { backgroundColor: customColor },
+                          ]}
+                        />
+                        <Ionicons
+                          name="color-palette"
+                          size={11}
+                          color="#ffffff"
+                          style={styles.customBackgroundToggleIcon}
+                        />
+                      </Pressable>
+                      <Pressable
+                        onPress={handlePickBackgroundPhoto}
+                        style={[
+                          styles.backgroundSwatchWrap,
+                          styles.photoBackgroundToggleWrap,
+                          isBackgroundPhotoSelected && styles.backgroundSwatchWrapSelected,
+                        ]}
+                        accessibilityLabel="Add photo background"
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: isBackgroundPhotoSelected }}
+                      >
+                        {isBackgroundPhotoLoading ? (
+                          <ActivityIndicator size="small" color={colors.dark.text} />
+                        ) : draft.stageBackgroundImageUri ? (
+                          <RNImage
+                            source={{ uri: draft.stageBackgroundImageUri }}
+                            style={[styles.backgroundSwatch, styles.photoBackgroundThumb]}
+                            resizeMode="cover"
+                          />
+                        ) : (
+                          <View
+                            style={[
+                              styles.backgroundSwatch,
+                              styles.photoBackgroundPlaceholder,
+                            ]}
+                          >
+                            <Ionicons
+                              name="image-outline"
+                              size={14}
+                              color={colors.dark.textSecondary}
+                            />
+                          </View>
+                        )}
+                      </Pressable>
+                    </ScrollView>
+                    {isCustomColorEnabled ? (
+                      <View style={styles.customColorCard}>
+                        <View style={styles.customColorHeader}>
+                          <Text style={styles.customColorTitle}>Custom Color</Text>
+                          <View
+                            style={[
+                              styles.customColorSwatch,
+                              { backgroundColor: customColor },
+                            ]}
+                          />
+                        </View>
+
+                        <View style={styles.customHueHeader}>
+                          <Text style={styles.customHueLabel}>Palette</Text>
+                        </View>
+                        <PaletteStrip
+                          hue={customHue}
+                          saturation={customSaturation}
+                          lightness={customLightness}
+                          disabled={!isCustomColorEnabled}
+                          onSelect={handleCustomPaletteSelect}
+                        />
+
+                        {showToneOptions ? (
+                          <>
+                            <View style={styles.customHueHeader}>
+                              <Text style={styles.customHueLabel}>Tone</Text>
+                            </View>
+                            <ScrollView
+                              horizontal
+                              nestedScrollEnabled
+                              showsHorizontalScrollIndicator={false}
+                              contentContainerStyle={styles.customToneRow}
+                            >
+                              {CUSTOM_TONE_OPTIONS.map((tone, toneIndex) => {
+                                const selected = tone === customLightness;
+                                const toneColor = hslToHex(customHue, customSaturation, tone);
+                                const toneLabel = CUSTOM_TONE_LABELS[toneIndex] ?? "Tone";
+                                return (
+                                  <Pressable
+                                    key={`tone-${tone}`}
+                                    onPress={() => handleCustomToneSelect(tone)}
+                                    style={[
+                                      styles.customToneSwatchWrap,
+                                      selected && styles.customToneSwatchWrapSelected,
+                                    ]}
+                                    accessibilityLabel={`Color tone ${toneLabel}`}
+                                    accessibilityRole="button"
+                                    accessibilityState={{ selected }}
+                                  >
+                                    <View
+                                      style={[
+                                        styles.customToneSwatch,
+                                        { backgroundColor: toneColor },
+                                      ]}
+                                    />
+                                  </Pressable>
+                                );
+                              })}
+                            </ScrollView>
+                          </>
+                        ) : null}
+                      </View>
+                    ) : null}
                   </View>
 
-                  <View style={styles.customHueHeader}>
-                    <Text style={styles.customHueLabel}>Palette</Text>
-                  </View>
-                  <PaletteStrip
-                    hue={customHue}
-                    saturation={customSaturation}
-                    lightness={customLightness}
-                    disabled={!isCustomColorEnabled}
-                    onSelect={handleCustomPaletteSelect}
-                  />
-
-                  {showToneOptions ? (
-                    <>
-                      <View style={styles.customHueHeader}>
-                        <Text style={styles.customHueLabel}>Tone</Text>
+                  {isBackgroundPhotoSelected ? (
+                    <View style={styles.controlSection}>
+                      <View style={styles.controlHeader}>
+                        <Text style={styles.controlLabel}>Background Blur</Text>
                       </View>
                       <ScrollView
                         horizontal
                         nestedScrollEnabled
                         showsHorizontalScrollIndicator={false}
-                        contentContainerStyle={styles.customToneRow}
+                        contentContainerStyle={styles.optionRow}
                       >
-                        {CUSTOM_TONE_OPTIONS.map((tone, toneIndex) => {
-                          const selected = tone === customLightness;
-                          const toneColor = hslToHex(customHue, customSaturation, tone);
-                          const toneLabel = CUSTOM_TONE_LABELS[toneIndex] ?? "Tone";
+                        {BACKGROUND_BLUR_OPTIONS.map((option) => {
+                          const selected = option === draft.backgroundBlur;
                           return (
                             <Pressable
-                              key={`tone-${tone}`}
-                              onPress={() => handleCustomToneSelect(tone)}
-                              style={[
-                                styles.customToneSwatchWrap,
-                                selected && styles.customToneSwatchWrapSelected,
-                              ]}
-                              accessibilityLabel={`Color tone ${toneLabel}`}
+                              key={`blur-${option}`}
+                              onPress={() => updateBackgroundBlur(option)}
+                              style={[styles.optionPill, selected && styles.optionPillSelected]}
+                              accessibilityLabel={`Background blur ${formatBlur(option)}`}
                               accessibilityRole="button"
                               accessibilityState={{ selected }}
                             >
-                              <View
+                              <Text
                                 style={[
-                                  styles.customToneSwatch,
-                                  { backgroundColor: toneColor },
+                                  styles.optionPillText,
+                                  selected && styles.optionPillTextSelected,
                                 ]}
-                              />
+                              >
+                                {formatBlur(option)}
+                              </Text>
                             </Pressable>
                           );
                         })}
                       </ScrollView>
-                    </>
+                    </View>
                   ) : null}
-                </View>
+                </>
               ) : null}
-            </View>
 
-            {isBackgroundPhotoSelected ? (
-              <View style={styles.controlSection}>
-                <View style={styles.controlHeader}>
-                  <Text style={styles.controlLabel}>Background Blur</Text>
-                  <Text style={styles.controlValue}>
-                    {formatBlur(draft.backgroundBlur)}
-                  </Text>
+              {activeControlTab === "quickTune" ? (
+                <>
+                  <View style={styles.controlSection}>
+                    <View style={styles.controlHeader}>
+                      <Text style={styles.controlLabel}>Record Size</Text>
+                    </View>
+                    <ScrollView
+                      horizontal
+                      nestedScrollEnabled
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.optionRow}
+                    >
+                      {RECORD_SIZE_OPTIONS.map((option) => {
+                        const selected = option === draft.recordSize;
+                        return (
+                          <Pressable
+                            key={`record-size-${option}`}
+                            onPress={() => updateRecordSize(option)}
+                            style={[styles.optionPill, selected && styles.optionPillSelected]}
+                            accessibilityLabel={`Record size ${formatRecordSize(option)}`}
+                            accessibilityRole="button"
+                            accessibilityState={{ selected }}
+                          >
+                            <Text
+                              style={[
+                                styles.optionPillText,
+                                selected && styles.optionPillTextSelected,
+                              ]}
+                            >
+                              {formatRecordSize(option)}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </ScrollView>
+                  </View>
+
+                  <View style={styles.controlSection}>
+                    <View style={styles.controlHeader}>
+                      <Text style={styles.controlLabel}>Record Transparency</Text>
+                    </View>
+                    <ScrollView
+                      horizontal
+                      nestedScrollEnabled
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.optionRow}
+                    >
+                      {RECORD_TRANSPARENCY_OPTIONS.map((option) => {
+                        const selected = option === draft.recordTransparency;
+                        return (
+                          <Pressable
+                            key={String(option)}
+                            onPress={() => updateRecordTransparency(option)}
+                            style={[styles.optionPill, selected && styles.optionPillSelected]}
+                            accessibilityLabel={`Record transparency ${Math.round(option * 100)}%`}
+                            accessibilityRole="button"
+                            accessibilityState={{ selected }}
+                          >
+                            <Text
+                              style={[
+                                styles.optionPillText,
+                                selected && styles.optionPillTextSelected,
+                              ]}
+                            >
+                              {`${Math.round(option * 100)}%`}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </ScrollView>
+                  </View>
+                </>
+              ) : null}
+
+              {activeControlTab === "advancedMotion" ? (
+                <>
+                  <View style={styles.controlSection}>
+                    <View style={styles.controlHeader}>
+                      <Text style={styles.controlLabel}>Spin Speed</Text>
+                    </View>
+                    <ScrollView
+                      horizontal
+                      nestedScrollEnabled
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.optionRow}
+                    >
+                      {SPIN_SPEED_OPTIONS.map((option) => {
+                        const selected = option === draft.spinSpeed;
+                        return (
+                          <Pressable
+                            key={String(option)}
+                            onPress={() => updateSpinSpeed(option)}
+                            style={[styles.optionPill, selected && styles.optionPillSelected]}
+                            accessibilityLabel={`Spin speed ${formatSpeed(option)}`}
+                            accessibilityRole="button"
+                            accessibilityState={{ selected }}
+                          >
+                            <Text
+                              style={[
+                                styles.optionPillText,
+                                selected && styles.optionPillTextSelected,
+                              ]}
+                            >
+                              {formatSpeed(option)}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </ScrollView>
+                  </View>
+
+                  <View style={styles.controlSection}>
+                    <View style={styles.controlHeader}>
+                      <Text style={styles.controlLabel}>Spin Start Angle</Text>
+                    </View>
+                    <ScrollView
+                      horizontal
+                      nestedScrollEnabled
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.optionRow}
+                    >
+                      {ROTATION_START_OPTIONS.map((option) => {
+                        const selected = option === draft.rotationStartDeg;
+                        return (
+                          <Pressable
+                            key={`start-angle-${option}`}
+                            onPress={() => updateRotationStartDeg(option)}
+                            style={[styles.optionPill, selected && styles.optionPillSelected]}
+                            accessibilityLabel={`Spin start angle ${formatRotationStart(option)}`}
+                            accessibilityRole="button"
+                            accessibilityState={{ selected }}
+                          >
+                            <Text
+                              style={[
+                                styles.optionPillText,
+                                selected && styles.optionPillTextSelected,
+                              ]}
+                            >
+                              {formatRotationStart(option)}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </ScrollView>
+                  </View>
+
+                  <View style={styles.controlSection}>
+                    <View style={styles.controlHeader}>
+                      <Text style={styles.controlLabel}>Spin Direction</Text>
+                    </View>
+                    <ScrollView
+                      horizontal
+                      nestedScrollEnabled
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.optionRow}
+                    >
+                      {ROTATION_DIRECTION_OPTIONS.map((option) => {
+                        const selected = option.value === draft.rotationDirection;
+                        return (
+                          <Pressable
+                            key={option.value}
+                            onPress={() => updateRotationDirection(option.value)}
+                            style={[styles.optionPill, selected && styles.optionPillSelected]}
+                            accessibilityLabel={`Spin direction ${option.label}`}
+                            accessibilityRole="button"
+                            accessibilityState={{ selected }}
+                          >
+                            <Text
+                              style={[
+                                styles.optionPillText,
+                                selected && styles.optionPillTextSelected,
+                              ]}
+                            >
+                              {option.label}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </ScrollView>
+                  </View>
+                </>
+              ) : null}
                 </View>
-                <ScrollView
-                  horizontal
-                  nestedScrollEnabled
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.optionRow}
-                >
-                  {BACKGROUND_BLUR_OPTIONS.map((option) => {
-                    const selected = option === draft.backgroundBlur;
-                    return (
-                      <Pressable
-                        key={`blur-${option}`}
-                        onPress={() => updateBackgroundBlur(option)}
-                        style={[styles.optionPill, selected && styles.optionPillSelected]}
-                        accessibilityLabel={`Background blur ${formatBlur(option)}`}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected }}
-                      >
-                        <Text
-                          style={[
-                            styles.optionPillText,
-                            selected && styles.optionPillTextSelected,
-                          ]}
-                        >
-                          {formatBlur(option)}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </ScrollView>
               </View>
-            ) : null}
-
-            <View style={styles.controlSection}>
-              <View style={styles.controlHeader}>
-                <Text style={styles.controlLabel}>Spin Speed</Text>
-                <Text style={styles.controlValue}>{formatSpeed(draft.spinSpeed)}</Text>
-              </View>
-              <ScrollView
-                horizontal
-                nestedScrollEnabled
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.optionRow}
-              >
-                {SPIN_SPEED_OPTIONS.map((option) => {
-                  const selected = option === draft.spinSpeed;
-                  return (
-                    <Pressable
-                      key={String(option)}
-                      onPress={() => updateSpinSpeed(option)}
-                      style={[styles.optionPill, selected && styles.optionPillSelected]}
-                      accessibilityLabel={`Spin speed ${formatSpeed(option)}`}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected }}
-                    >
-                      <Text
-                        style={[
-                          styles.optionPillText,
-                          selected && styles.optionPillTextSelected,
-                        ]}
-                      >
-                        {formatSpeed(option)}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
-            </View>
-
-            <View style={styles.controlSection}>
-              <View style={styles.controlHeader}>
-                <Text style={styles.controlLabel}>Record Transparency</Text>
-                <Text style={styles.controlValue}>
-                  {formatTransparency(draft.recordTransparency)}
-                </Text>
-              </View>
-              <ScrollView
-                horizontal
-                nestedScrollEnabled
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.optionRow}
-              >
-                {RECORD_TRANSPARENCY_OPTIONS.map((option) => {
-                  const selected = option === draft.recordTransparency;
-                  return (
-                    <Pressable
-                      key={String(option)}
-                      onPress={() => updateRecordTransparency(option)}
-                      style={[styles.optionPill, selected && styles.optionPillSelected]}
-                      accessibilityLabel={`Record transparency ${Math.round(option * 100)}%`}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected }}
-                    >
-                      <Text
-                        style={[
-                          styles.optionPillText,
-                          selected && styles.optionPillTextSelected,
-                        ]}
-                      >
-                        {`${Math.round(option * 100)}%`}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
-            </View>
-
-            <View style={styles.controlSection}>
-              <View style={styles.controlHeader}>
-                <Text style={styles.controlLabel}>Spin Start Angle</Text>
-                <Text style={styles.controlValue}>
-                  {formatRotationStart(draft.rotationStartDeg)}
-                </Text>
-              </View>
-              <ScrollView
-                horizontal
-                nestedScrollEnabled
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.optionRow}
-              >
-                {ROTATION_START_OPTIONS.map((option) => {
-                  const selected = option === draft.rotationStartDeg;
-                  return (
-                    <Pressable
-                      key={`start-angle-${option}`}
-                      onPress={() => updateRotationStartDeg(option)}
-                      style={[styles.optionPill, selected && styles.optionPillSelected]}
-                      accessibilityLabel={`Spin start angle ${formatRotationStart(option)}`}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected }}
-                    >
-                      <Text
-                        style={[
-                          styles.optionPillText,
-                          selected && styles.optionPillTextSelected,
-                        ]}
-                      >
-                        {formatRotationStart(option)}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
-            </View>
-
-            <View style={styles.controlSection}>
-              <View style={styles.controlHeader}>
-                <Text style={styles.controlLabel}>Spin Direction</Text>
-                <Text style={styles.controlValue}>{selectedRotationDirectionLabel}</Text>
-              </View>
-              <ScrollView
-                horizontal
-                nestedScrollEnabled
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.optionRow}
-              >
-                {ROTATION_DIRECTION_OPTIONS.map((option) => {
-                  const selected = option.value === draft.rotationDirection;
-                  return (
-                    <Pressable
-                      key={option.value}
-                      onPress={() => updateRotationDirection(option.value)}
-                      style={[styles.optionPill, selected && styles.optionPillSelected]}
-                      accessibilityLabel={`Spin direction ${option.label}`}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected }}
-                    >
-                      <Text
-                        style={[
-                          styles.optionPillText,
-                          selected && styles.optionPillTextSelected,
-                        ]}
-                      >
-                        {option.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
-            </View>
-
-          </ScrollView>
+            </ScrollView>
           )}
 
         <View style={styles.footer}>
@@ -1731,6 +1919,54 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.lg,
     gap: spacing.md,
   },
+  controlPanel: {
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(255,255,255,0.03)",
+    overflow: "hidden",
+  },
+  controlTabRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.09)",
+    backgroundColor: "rgba(255,255,255,0.015)",
+  },
+  controlPanelBody: {
+    paddingHorizontal: spacing.sm,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.sm,
+    gap: spacing.md,
+  },
+  controlTabPill: {
+    flex: 1,
+    minHeight: 34,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: spacing.sm,
+  },
+  controlTabPillSelected: {
+    borderColor: colors.accent.primary,
+    backgroundColor: colors.accent.primary,
+  },
+  controlTabPillText: {
+    ...typography.caption,
+    color: colors.dark.textSecondary,
+    fontWeight: "700",
+    letterSpacing: 0.2,
+  },
+  controlTabPillTextSelected: {
+    color: colors.dark.text,
+  },
   previewCard: {
     minHeight: 300,
     position: "relative",
@@ -1756,11 +1992,6 @@ const styles = StyleSheet.create({
     color: colors.dark.textSecondary,
     textTransform: "uppercase",
     letterSpacing: 0.4,
-    fontWeight: "700",
-  },
-  controlValue: {
-    ...typography.caption,
-    color: colors.dark.text,
     fontWeight: "700",
   },
   optionRow: {
@@ -1885,6 +2116,9 @@ const styles = StyleSheet.create({
   paletteStripScroll: {
     marginHorizontal: -spacing.xs,
   },
+  paletteStripWrap: {
+    gap: spacing.xs,
+  },
   paletteStripRow: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -1935,6 +2169,23 @@ const styles = StyleSheet.create({
     width: 18,
     height: 18,
     borderRadius: radius.full,
+  },
+  palettePager: {
+    flexDirection: "row",
+    alignSelf: "center",
+    alignItems: "center",
+    gap: spacing.xs,
+    paddingTop: 2,
+  },
+  palettePagerDot: {
+    width: 6,
+    height: 6,
+    borderRadius: radius.full,
+    backgroundColor: "rgba(255,255,255,0.24)",
+  },
+  palettePagerDotActive: {
+    width: 16,
+    backgroundColor: colors.accent.primary,
   },
   customToneRow: {
     flexDirection: "row",
