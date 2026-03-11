@@ -16,23 +16,16 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { StatusBar } from "expo-status-bar";
 import { useIsFocused } from "@react-navigation/native";
-import { useConvexAuth, useQuery } from "convex/react";
 import * as ExpoSwiftUI from "@expo/ui/swift-ui";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import { usePostHog } from "posthog-react-native";
-import { api } from "../../convex/_generated/api";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
 import type { EventName } from "@/lib/analytics";
-import {
-  DEFAULT_LOCAL_PROFILE_PREFERENCES,
-  getLocalProfilePreferences,
-} from "@/lib/localProfile";
 import { extractEmbeddedAudioArtworkUri } from "@/lib/audioArtwork";
 import { persistPickedMediaFile } from "@/lib/mediaStorage";
 import { decodeUriParam, encodeUriParam } from "@/lib/uri";
 import { normalizeMediaUri } from "@/lib/mediaUri";
-import { useLocalSession } from "@/providers/localSession";
 import {
   normalizeTemplateTweaks,
   parseTemplateTweaksParam,
@@ -56,6 +49,7 @@ interface MediaSelection {
 }
 
 const DEFAULT_NEW_PROJECT_TRIM_END = 5;
+const DEFAULT_NEW_PROJECT_ASPECT_RATIO: "9:16" = "9:16";
 const IPHONE_EDGE_RADIUS = 36;
 
 function firstParam(param: string | string[] | undefined) {
@@ -124,13 +118,6 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
   const initialPhotoUri = normalizeMediaUri(decodeUriParam(firstParam(params.photoUri)));
   const initialAudioUri = normalizeMediaUri(decodeUriParam(firstParam(params.audioUri)));
   const returnToEditor = firstParam(params.returnToEditor) === "1";
-  const { isAuthenticated } = useConvexAuth();
-  const { isLocalGuest } = useLocalSession();
-  const currentUser = useQuery(api.users.current);
-  const [localPreferences, setLocalPreferences] = useState(
-    DEFAULT_LOCAL_PROFILE_PREFERENCES
-  );
-
   const [media, setMedia] = useState<MediaSelection>({
     photoUri: initialPhotoUri || null,
     photoName: firstParam(params.photoName) || null,
@@ -141,24 +128,6 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
   const [loadingTarget, setLoadingTarget] = useState<LoadingTarget>(null);
   const [contentHeight, setContentHeight] = useState(0);
 
-  useEffect(() => {
-    let isActive = true;
-
-    (async () => {
-      const prefs = await getLocalProfilePreferences();
-      if (!isActive) return;
-      setLocalPreferences(prefs);
-    })();
-
-    return () => {
-      isActive = false;
-    };
-  }, []);
-
-  const useLocalDefaults = isLocalGuest || !isAuthenticated;
-  const preferredAspectRatio = useLocalDefaults
-    ? localPreferences.defaultAspectRatio
-    : currentUser?.preferences?.defaultAspectRatio ?? "9:16";
   const nativePickerAvailability = getIOSNativeUIPhase5Availability({
     minIOSVersion: 16,
   });
@@ -314,7 +283,7 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
   const navigateToEditor = useCallback(
     (selection: MediaSelection) => {
       if (!selection.photoUri || !selection.audioUri) return;
-      const nextAspectRatio = aspectRatio ?? preferredAspectRatio;
+      const nextAspectRatio = aspectRatio ?? DEFAULT_NEW_PROJECT_ASPECT_RATIO;
       const nextTrimStart = trimStart ?? "0";
       const nextTrimEnd = trimEnd ?? String(DEFAULT_NEW_PROJECT_TRIM_END);
       const nextParams: Record<string, string> = {
@@ -341,7 +310,6 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
     },
     [
       aspectRatio,
-      preferredAspectRatio,
       trimStart,
       trimEnd,
       serializedTemplateTweaks,
@@ -393,7 +361,7 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
           photoName: firstParam(params.photoName) ?? "",
           audioUri: firstParam(params.audioUri) ?? "",
           audioName: firstParam(params.audioName) ?? "",
-          aspectRatio: aspectRatio ?? preferredAspectRatio,
+          aspectRatio: aspectRatio ?? DEFAULT_NEW_PROJECT_ASPECT_RATIO,
           templateId,
           trimStart: trimStart ?? "0",
           trimEnd: trimEnd ?? String(DEFAULT_NEW_PROJECT_TRIM_END),
@@ -419,7 +387,6 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
     params.audioName,
     aspectRatio,
     templateId,
-    preferredAspectRatio,
     trimStart,
     trimEnd,
     serializedTemplateTweaks,
@@ -456,7 +423,7 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
     : colors.light.surfaceMuted;
   const pickerIconBorderColor = isDarkMode ? colors.dark.border : colors.light.border;
   const statusBarStyle = isDarkMode ? "light" : "dark";
-  const activeAspectRatio = aspectRatio ?? preferredAspectRatio;
+  const activeAspectRatio = aspectRatio ?? DEFAULT_NEW_PROJECT_ASPECT_RATIO;
   const dockOverlayCompensation = tabEmbedded ? 82 : 0;
   const contentSidePadding = spacing.md;
   const contentHorizontalPadding = contentSidePadding * 2;
@@ -909,7 +876,7 @@ const styles = StyleSheet.create({
   aspectRatioBadge: {
     position: "absolute",
     right: spacing.sm,
-    bottom: spacing.sm,
+    top: spacing.sm,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
     borderRadius: radius.full,

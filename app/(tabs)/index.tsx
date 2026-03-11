@@ -121,6 +121,7 @@ function ProjectThumbnail({
           trackTitle={title}
           subtitle={templateDefinition.name}
           templateTweaks={templateTweaks ?? undefined}
+          showWatermark={false}
         />
       ) : fallbackPreviewUri ? (
         <Image

@@ -21,6 +21,7 @@ export interface TemplateStageProps {
   subtitle: string;
   templateTweaks?: TemplateTweaks;
   onTogglePlay?: () => void;
+  showWatermark?: boolean;
 }
 
 export interface TemplateTweaks {
@@ -38,7 +39,7 @@ export interface TemplateTweaks {
 export const DEFAULT_TEMPLATE_TWEAKS: TemplateTweaks = {
   spinSpeed: 1,
   recordSize: 1,
-  artworkScale: 1,
+  artworkScale: 3,
   recordTransparency: 0,
   backgroundBlur: 0,
   rotationStartDeg: 0,
@@ -65,8 +66,8 @@ const MIN_SPIN_SPEED = 0.25;
 const MAX_SPIN_SPEED = 4;
 const MIN_RECORD_SIZE = 0.75;
 const MAX_RECORD_SIZE = 1.3;
-const MIN_ARTWORK_SCALE = 1;
-const MAX_ARTWORK_SCALE = 5;
+const MIN_ARTWORK_SCALE = 1.5;
+const MAX_ARTWORK_SCALE = 4.5;
 const MIN_RECORD_TRANSPARENCY = 0;
 const MAX_RECORD_TRANSPARENCY = 0.65;
 const MIN_BACKGROUND_BLUR = 0;
@@ -215,7 +216,7 @@ const LEGACY_TEMPLATE_ID_ALIASES: Record<string, string> = {
   hybrid: TEMPLATE_ID_WHOLE,
 };
 
-export const DEFAULT_TEMPLATE_ID = TEMPLATE_ID_CD;
+export const DEFAULT_TEMPLATE_ID = TEMPLATE_ID_WHOLE;
 
 const TEMPLATE_DEFINITIONS: Record<string, TemplateDefinition> = {
   [TEMPLATE_ID_VINYL]: {
@@ -267,8 +268,8 @@ export function getTemplateDefinition(templateId?: string | null): TemplateDefin
 
 export function listTemplateDefinitions(): TemplateDefinition[] {
   return [
+    TEMPLATE_DEFINITIONS[TEMPLATE_ID_WHOLE],
     TEMPLATE_DEFINITIONS[TEMPLATE_ID_CD],
     TEMPLATE_DEFINITIONS[TEMPLATE_ID_VINYL],
-    TEMPLATE_DEFINITIONS[TEMPLATE_ID_WHOLE],
   ];
 }

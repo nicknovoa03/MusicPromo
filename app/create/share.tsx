@@ -18,6 +18,7 @@ import { colors, typography, spacing, radius } from "@/constants/tokens";
 import { TemplateInfoBadge } from "@/components/create/TemplateInfoBadge";
 import { CircularMediaPreview } from "@/components/create/CircularMediaPreview";
 import { VinylPreview } from "@/components/create/VinylPreview";
+import { BetaWatermark } from "@/components/create/BetaWatermark";
 import type { EventName } from "@/lib/analytics";
 import { decodeUriParam } from "@/lib/uri";
 import { normalizeMediaUri } from "@/lib/mediaUri";
@@ -234,6 +235,10 @@ export default function ShareScreen() {
               style={styles.shareTemplateInfoBadge}
             />
           ) : null}
+          <BetaWatermark
+            containerWidth={isCompactHeight ? 168 : 200}
+            inset={showTemplateInfo ? 36 : undefined}
+          />
         </View>
 
         {/* Share buttons */}

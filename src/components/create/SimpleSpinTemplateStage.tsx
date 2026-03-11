@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { Image, Pressable, StyleSheet, View } from "react-native";
 import { radius } from "@/constants/tokens";
 import { VinylPreview } from "@/components/create/VinylPreview";
+import { BetaWatermark } from "@/components/create/BetaWatermark";
 import type { TemplateStageProps } from "@/lib/templates";
 import {
   getVinylCenterGeometry,
@@ -32,6 +33,7 @@ export function SimpleSpinTemplateStage({
   subtitle,
   templateTweaks,
   onTogglePlay,
+  showWatermark = true,
 }: TemplateStageProps) {
   const vinylToneId: VinylToneId = "simple-spin";
   const layout = getSimpleSpinTemplateLayout({ width, height, aspectRatio });
@@ -211,6 +213,8 @@ export function SimpleSpinTemplateStage({
           accessibilityRole="button"
         />
       ) : null}
+
+      {showWatermark ? <BetaWatermark containerWidth={width} /> : null}
     </View>
   );
 }

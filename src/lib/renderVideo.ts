@@ -22,6 +22,10 @@ import {
   GRAPHIC_POP_GLOW_HEX,
   GRAPHIC_POP_STAGE_BACKGROUND_HEX,
 } from "@/lib/graphicPopTemplateSpec";
+import {
+  BETA_WATERMARK_TEXT,
+  isBetaWatermarkEnabled,
+} from "@/lib/betaWatermark";
 import { normalizeMediaUri } from "@/lib/mediaUri";
 import {
   getVinylCenterGeometry,
@@ -61,10 +65,13 @@ export interface RenderOptions {
 type FFmpegKitModule = typeof import("ffmpeg-kit-react-native");
 type FFmpegSession = import("ffmpeg-kit-react-native").FFmpegSession;
 type Statistics = import("ffmpeg-kit-react-native").Statistics;
+type FFmpegKitClass = typeof import("ffmpeg-kit-react-native").FFmpegKit;
+type ReturnCodeClass = typeof import("ffmpeg-kit-react-native").ReturnCode;
 type RenderPath = "primary" | "fallback" | "safe_fallback";
 let ffmpegModule: FFmpegKitModule | null = null;
 let activeRenderSessionId: number | null = null;
 let activeRenderToken: symbol | null = null;
+let drawtextSupportCache: boolean | null = null;
 
 async function getFFmpegKit(): Promise<FFmpegKitModule> {
   if (isExpoGo()) {
@@ -103,14 +110,15 @@ const MIN_SPIN_SPEED = 0.25;
 const MAX_SPIN_SPEED = 4;
 const MIN_RECORD_SIZE = 0.75;
 const MAX_RECORD_SIZE = 1.3;
-const MIN_ARTWORK_SCALE = 1;
-const MAX_ARTWORK_SCALE = 5;
+const MIN_ARTWORK_SCALE = 1.5;
+const MAX_ARTWORK_SCALE = 4.5;
 const MIN_RECORD_TRANSPARENCY = 0;
 const MAX_RECORD_TRANSPARENCY = 0.65;
 const MIN_BACKGROUND_BLUR = 0;
 const MAX_BACKGROUND_BLUR = 24;
 const MIN_ROTATION_START_DEG = -180;
 const MAX_ROTATION_START_DEG = 180;
+const ENABLE_BETA_WATERMARK = isBetaWatermarkEnabled();
 
 const RENDER_PATH_COLORS: Record<RenderPath, string> = {
   primary: "#38d17b",
@@ -268,10 +276,16 @@ function buildRenderModeBadgeFilterGraph(params: {
   height: number;
   mode: RenderPath;
   enabled: boolean;
+  watermarkEnabled: boolean;
 }): string[] {
-  const { inputLabel, width, height, mode, enabled } = params;
+  const { inputLabel, width, height, mode, enabled, watermarkEnabled } = params;
   if (!enabled) {
-    return [`${inputLabel}format=yuv420p[out]`];
+    return buildWatermarkFilterGraph({
+      inputLabel,
+      width,
+      height,
+      enabled: watermarkEnabled,
+    });
   }
 
   const geometry = getRenderModeBadgeGeometry(width, height);
@@ -295,8 +309,87 @@ function buildRenderModeBadgeFilterGraph(params: {
   lines.push(
     `${currentLabel}drawbox=x=${geometry.x}:y=${geometry.y}:w=${geometry.width}:h=${geometry.height}:color=white@0.28:t=2[mode_badge_out]`,
   );
-  lines.push("[mode_badge_out]format=yuv420p[out]");
+  lines.push(
+    ...buildWatermarkFilterGraph({
+      inputLabel: "[mode_badge_out]",
+      width,
+      height,
+      enabled: watermarkEnabled,
+    }),
+  );
   return lines;
+}
+
+function escapeDrawtextText(value: string): string {
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/:/g, "\\:")
+    .replace(/,/g, "\\,")
+    .replace(/'/g, "\\'");
+}
+
+function buildWatermarkFilterGraph(params: {
+  inputLabel: string;
+  width: number;
+  height: number;
+  enabled: boolean;
+}): string[] {
+  const { inputLabel, width, enabled } = params;
+  if (!enabled) {
+    return [`${inputLabel}format=yuv420p[out]`];
+  }
+
+  const fontSize = Math.max(22, Math.round(width * 0.022));
+  const inset = Math.max(18, Math.round(width * 0.016));
+  const shadow = Math.max(1, Math.round(fontSize * 0.08));
+  const escapedWatermarkText = escapeDrawtextText(BETA_WATERMARK_TEXT);
+
+  return [
+    `${inputLabel}drawtext=text='${escapedWatermarkText}':x=w-tw-${inset}:y=h-th-${inset}:fontsize=${fontSize}:fontcolor=white@0.72:shadowcolor=black@0.55:shadowx=${shadow}:shadowy=${shadow}[beta_watermark_out]`,
+    "[beta_watermark_out]format=yuv420p[out]",
+  ];
+}
+
+async function supportsDrawtextWatermark(params: {
+  FFmpegKit: FFmpegKitClass;
+  ReturnCode: ReturnCodeClass;
+}): Promise<boolean> {
+  if (!ENABLE_BETA_WATERMARK) return false;
+  if (drawtextSupportCache !== null) return drawtextSupportCache;
+
+  const outputPath = Paths.join(
+    Paths.cache,
+    `drawtext_probe_${Date.now()}_${Math.floor(Math.random() * 1_000_000)}.jpg`,
+  );
+  const escapedProbeText = escapeDrawtextText("beta");
+  const probeArgs = [
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    "color=c=black:s=96x96:d=0.1",
+    "-vf",
+    `drawtext=text='${escapedProbeText}':x=4:y=4:fontsize=12:fontcolor=white`,
+    "-frames:v",
+    "1",
+    outputPath,
+  ];
+
+  try {
+    const probeSession = await params.FFmpegKit.executeWithArguments(probeArgs);
+    const probeReturnCode = await probeSession.getReturnCode();
+    drawtextSupportCache = params.ReturnCode.isSuccess(probeReturnCode);
+  } catch {
+    drawtextSupportCache = false;
+  } finally {
+    try {
+      await LegacyFileSystem.deleteAsync(outputPath, { idempotent: true });
+    } catch {
+      // Ignore cleanup failures.
+    }
+  }
+
+  return drawtextSupportCache;
 }
 
 function buildPhotoScaleCropFilter(width: number, height: number): string {
@@ -719,6 +812,7 @@ async function renderVinylVideoWithVariant(
 
   const outputPath = Paths.join(Paths.cache, `export_${Date.now()}.mp4`);
   let photoInputUriForRender = preparedPhotoUri;
+  let exportWatermarkEnabled = false;
 
   const buildPrimaryFilterComplex = (
     audioTrimStartSec: number,
@@ -763,6 +857,7 @@ async function renderVinylVideoWithVariant(
           height,
           mode,
           enabled: debugRenderModeBadge,
+          watermarkEnabled: exportWatermarkEnabled,
         }),
       );
       lines.push(
@@ -857,6 +952,7 @@ async function renderVinylVideoWithVariant(
         height,
         mode,
         enabled: debugRenderModeBadge,
+        watermarkEnabled: exportWatermarkEnabled,
       }),
     );
     lines.push(
@@ -909,6 +1005,7 @@ async function renderVinylVideoWithVariant(
           height,
           mode: "safe_fallback",
           enabled: debugRenderModeBadge,
+          watermarkEnabled: exportWatermarkEnabled,
         }),
         `[${audioInputIndex}:a]atrim=start=${audioTrimStartSec}:end=${audioTrimEndSec},asetpts=PTS-STARTPTS[audio_out]`,
       );
@@ -939,6 +1036,7 @@ async function renderVinylVideoWithVariant(
         height,
         mode: "safe_fallback",
         enabled: debugRenderModeBadge,
+        watermarkEnabled: exportWatermarkEnabled,
       }),
       `[${audioInputIndex}:a]atrim=start=${audioTrimStartSec}:end=${audioTrimEndSec},asetpts=PTS-STARTPTS[audio_out]`,
     );
@@ -1071,6 +1169,15 @@ async function renderVinylVideoWithVariant(
 
   try {
     const { FFmpegKit, ReturnCode } = await getFFmpegKit();
+    exportWatermarkEnabled = await supportsDrawtextWatermark({
+      FFmpegKit,
+      ReturnCode,
+    });
+    if (__DEV__ && ENABLE_BETA_WATERMARK && !exportWatermarkEnabled) {
+      console.warn(
+        "[renderVinylVideoWithVariant] Beta watermark disabled for export because FFmpeg drawtext is unavailable on this build.",
+      );
+    }
 
     const runCommand = async (
       commandArguments: string[],

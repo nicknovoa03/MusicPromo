@@ -2167,7 +2167,7 @@ const styles = StyleSheet.create({
   previewAspectRatioBadge: {
     position: "absolute",
     right: spacing.sm,
-    bottom: spacing.sm,
+    top: spacing.sm,
     minHeight: 40,
     minWidth: 56,
     alignItems: "center",

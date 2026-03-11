@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { Image, Pressable, StyleSheet, View } from "react-native";
 import { radius } from "@/constants/tokens";
 import { CircularMediaPreview } from "@/components/create/CircularMediaPreview";
+import { BetaWatermark } from "@/components/create/BetaWatermark";
 import type { TemplateStageProps } from "@/lib/templates";
 import {
   GRAPHIC_POP_STAGE_BACKGROUND_HEX,
@@ -23,6 +24,7 @@ export function WholeTemplateStage({
   subtitle,
   templateTweaks,
   onTogglePlay,
+  showWatermark = true,
 }: TemplateStageProps) {
   const layout = getGraphicPopTemplateLayout({ width, height, aspectRatio });
   const normalizedBackgroundBlur = Math.min(
@@ -120,6 +122,8 @@ export function WholeTemplateStage({
           accessibilityRole="button"
         />
       ) : null}
+
+      {showWatermark ? <BetaWatermark containerWidth={width} /> : null}
     </View>
   );
 }

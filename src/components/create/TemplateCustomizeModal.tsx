@@ -91,9 +91,13 @@ function isPresetBackgroundColor(
   return options.some((option) => option.color === (color ?? null));
 }
 
-const SPIN_SPEED_OPTIONS = [0.6, 0.8, 1, 1.25, 1.5];
-const RECORD_SIZE_OPTIONS = [0.8, 0.9, 1, 1.1, 1.2];
-const ARTWORK_SCALE_OPTIONS = [1, 2, 3, 4, 5];
+const SPIN_SPEED_OPTIONS = [0.5, 1, 1.5];
+const RECORD_SIZE_OPTIONS = [0.8, 1, 1.2];
+const ARTWORK_SCALE_OPTIONS = [1.5, 3, 4.5];
+const MIN_ARTWORK_SCALE = ARTWORK_SCALE_OPTIONS[0] ?? 1.5;
+const DEFAULT_ARTWORK_SCALE = ARTWORK_SCALE_OPTIONS[1] ?? 3;
+const MAX_ARTWORK_SCALE =
+  ARTWORK_SCALE_OPTIONS[ARTWORK_SCALE_OPTIONS.length - 1] ?? 4.5;
 const RECORD_TRANSPARENCY_OPTIONS = [0, 0.15, 0.3, 0.45, 0.6];
 const BACKGROUND_BLUR_OPTIONS = [0, 2, 4, 8, 12, 18];
 const ROTATION_START_OPTIONS = [0, 90, 180, -90];
@@ -131,20 +135,27 @@ function formatTransparency(value: number): string {
 }
 
 function formatRecordSize(value: number): string {
-  return `${Math.round(clamp(value, 0.75, 1.3) * 100)}%`;
+  const normalized = clamp(value, 0.75, 1.3);
+  const rounded = Math.round(normalized * 10) / 10;
+  if (Math.abs(rounded - Math.round(rounded)) < 0.05) {
+    return `${Math.round(rounded)}x`;
+  }
+  return `${rounded.toFixed(1).replace(/^0/, "")}x`;
 }
 
 function formatArtworkScale(value: number): string {
-  const normalized = clamp(value, 1, 5);
-  const rounded = Math.round(normalized);
-  if (Math.abs(normalized - rounded) < 0.05) {
-    return `${rounded}x`;
+  const normalized = clamp(value, MIN_ARTWORK_SCALE, MAX_ARTWORK_SCALE);
+  const rebased = normalized / DEFAULT_ARTWORK_SCALE;
+  const rounded = Math.round(rebased * 10) / 10;
+  if (Math.abs(rounded - Math.round(rounded)) < 0.05) {
+    return `${Math.round(rounded)}x`;
   }
-  return `${normalized.toFixed(1)}x`;
+  return `${rounded.toFixed(1).replace(/^0/, "")}x`;
 }
 
 function formatArtworkScalePercent(value: number): string {
-  return `${Math.round(clamp(value, 1, 5) * 100)}%`;
+  const normalized = clamp(value, MIN_ARTWORK_SCALE, MAX_ARTWORK_SCALE);
+  return `${Math.round((normalized / DEFAULT_ARTWORK_SCALE) * 100)}%`;
 }
 
 function formatBlur(value: number): string {
@@ -1989,19 +2000,18 @@ export function TemplateCustomizeModal({
                     <View style={styles.controlHeader}>
                       <Text style={styles.controlLabel}>{recordSizeControlLabel}</Text>
                     </View>
-                    <ScrollView
-                      horizontal
-                      nestedScrollEnabled
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={styles.optionRow}
-                    >
+                    <View style={styles.recordSizeRow}>
                       {RECORD_SIZE_OPTIONS.map((option) => {
                         const selected = option === draft.recordSize;
                         return (
                           <Pressable
                             key={`record-size-${option}`}
                             onPress={() => updateRecordSize(option)}
-                            style={[styles.optionPill, selected && styles.optionPillSelected]}
+                            style={[
+                              styles.optionPill,
+                              styles.recordSizeOption,
+                              selected && styles.optionPillSelected,
+                            ]}
                             accessibilityLabel={`${recordSizeAccessibilityPrefix} ${formatRecordSize(option)}`}
                             accessibilityRole="button"
                             accessibilityState={{ selected }}
@@ -2017,7 +2027,7 @@ export function TemplateCustomizeModal({
                           </Pressable>
                         );
                       })}
-                    </ScrollView>
+                    </View>
                   </View>
 
                   {isVinylTemplate ? (
@@ -2025,12 +2035,7 @@ export function TemplateCustomizeModal({
                       <View style={styles.controlHeader}>
                         <Text style={styles.controlLabel}>Artwork Size</Text>
                       </View>
-                      <ScrollView
-                        horizontal
-                        nestedScrollEnabled
-                        showsHorizontalScrollIndicator={false}
-                        contentContainerStyle={styles.optionRow}
-                      >
+                      <View style={styles.artworkSizeRow}>
                         {ARTWORK_SCALE_OPTIONS.map((option) => {
                           const selected =
                             option ===
@@ -2044,7 +2049,11 @@ export function TemplateCustomizeModal({
                             <Pressable
                               key={`artwork-size-${option}`}
                               onPress={() => updateArtworkScale(option)}
-                              style={[styles.optionPill, selected && styles.optionPillSelected]}
+                              style={[
+                                styles.optionPill,
+                                styles.artworkSizeOption,
+                                selected && styles.optionPillSelected,
+                              ]}
                               accessibilityLabel={`Artwork size ${formatArtworkScale(option)} ${formatArtworkScalePercent(option)}`}
                               accessibilityRole="button"
                               accessibilityState={{ selected }}
@@ -2060,7 +2069,7 @@ export function TemplateCustomizeModal({
                             </Pressable>
                           );
                         })}
-                      </ScrollView>
+                      </View>
                     </View>
                   ) : null}
 
@@ -2081,7 +2090,7 @@ export function TemplateCustomizeModal({
                             key={String(option)}
                             onPress={() => updateRecordTransparency(option)}
                             style={[styles.optionPill, selected && styles.optionPillSelected]}
-                            accessibilityLabel={`Transparency ${Math.round(option * 100)}%`}
+                            accessibilityLabel={`Transparency ${formatTransparency(option)}`}
                             accessibilityRole="button"
                             accessibilityState={{ selected }}
                           >
@@ -2091,7 +2100,7 @@ export function TemplateCustomizeModal({
                                 selected && styles.optionPillTextSelected,
                               ]}
                             >
-                              {`${Math.round(option * 100)}%`}
+                              {formatTransparency(option)}
                             </Text>
                           </Pressable>
                         );
@@ -2107,19 +2116,18 @@ export function TemplateCustomizeModal({
                     <View style={styles.controlHeader}>
                       <Text style={styles.controlLabel}>Spin Speed</Text>
                     </View>
-                    <ScrollView
-                      horizontal
-                      nestedScrollEnabled
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={styles.optionRow}
-                    >
+                    <View style={styles.motionOptionRow}>
                       {SPIN_SPEED_OPTIONS.map((option) => {
                         const selected = option === draft.spinSpeed;
                         return (
                           <Pressable
                             key={String(option)}
                             onPress={() => updateSpinSpeed(option)}
-                            style={[styles.optionPill, selected && styles.optionPillSelected]}
+                            style={[
+                              styles.optionPill,
+                              styles.motionOption,
+                              selected && styles.optionPillSelected,
+                            ]}
                             accessibilityLabel={`Spin speed ${formatSpeed(option)}`}
                             accessibilityRole="button"
                             accessibilityState={{ selected }}
@@ -2135,26 +2143,25 @@ export function TemplateCustomizeModal({
                           </Pressable>
                         );
                       })}
-                    </ScrollView>
+                    </View>
                   </View>
 
                   <View style={styles.controlSection}>
                     <View style={styles.controlHeader}>
                       <Text style={styles.controlLabel}>Spin Start Angle</Text>
                     </View>
-                    <ScrollView
-                      horizontal
-                      nestedScrollEnabled
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={styles.optionRow}
-                    >
+                    <View style={styles.motionOptionRow}>
                       {ROTATION_START_OPTIONS.map((option) => {
                         const selected = option === draft.rotationStartDeg;
                         return (
                           <Pressable
                             key={`start-angle-${option}`}
                             onPress={() => updateRotationStartDeg(option)}
-                            style={[styles.optionPill, selected && styles.optionPillSelected]}
+                            style={[
+                              styles.optionPill,
+                              styles.motionOption,
+                              selected && styles.optionPillSelected,
+                            ]}
                             accessibilityLabel={`Spin start angle ${formatRotationStart(option)}`}
                             accessibilityRole="button"
                             accessibilityState={{ selected }}
@@ -2170,26 +2177,25 @@ export function TemplateCustomizeModal({
                           </Pressable>
                         );
                       })}
-                    </ScrollView>
+                    </View>
                   </View>
 
                   <View style={styles.controlSection}>
                     <View style={styles.controlHeader}>
                       <Text style={styles.controlLabel}>Spin Direction</Text>
                     </View>
-                    <ScrollView
-                      horizontal
-                      nestedScrollEnabled
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={styles.optionRow}
-                    >
+                    <View style={styles.motionOptionRow}>
                       {ROTATION_DIRECTION_OPTIONS.map((option) => {
                         const selected = option.value === draft.rotationDirection;
                         return (
                           <Pressable
                             key={option.value}
                             onPress={() => updateRotationDirection(option.value)}
-                            style={[styles.optionPill, selected && styles.optionPillSelected]}
+                            style={[
+                              styles.optionPill,
+                              styles.motionOption,
+                              selected && styles.optionPillSelected,
+                            ]}
                             accessibilityLabel={`Spin direction ${option.label}`}
                             accessibilityRole="button"
                             accessibilityState={{ selected }}
@@ -2205,7 +2211,7 @@ export function TemplateCustomizeModal({
                           </Pressable>
                         );
                       })}
-                    </ScrollView>
+                    </View>
                   </View>
                 </>
               ) : null}
@@ -2479,6 +2485,24 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingRight: spacing.sm,
   },
+  recordSizeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    width: "100%",
+  },
+  artworkSizeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    width: "100%",
+  },
+  motionOptionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    width: "100%",
+  },
   aspectRatioRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -2497,6 +2521,18 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   aspectRatioOption: {
+    flex: 1,
+    minWidth: 0,
+  },
+  recordSizeOption: {
+    flex: 1,
+    minWidth: 0,
+  },
+  artworkSizeOption: {
+    flex: 1,
+    minWidth: 0,
+  },
+  motionOption: {
     flex: 1,
     minWidth: 0,
   },
