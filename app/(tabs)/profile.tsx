@@ -865,15 +865,17 @@ export default function ProfileScreen() {
   });
   const heroArtistName = artistNameDraft.trim() || "Tap to add artist name";
   const actionsDisabled = isSigningOut || isDeleting;
-  const profileInputsDisabled =
+  const profileMutationDisabled =
     isProfileLoading ||
     isSavingProfile ||
     isSavingPreferences ||
     isSigningOut ||
-    isDeleting ||
-    isPickingAvatar ||
-    isPickingHero;
+    isDeleting;
+  const profileInputsDisabled =
+    profileMutationDisabled || isPickingAvatar || isPickingHero;
   const profileSettingsDisabled = profileInputsDisabled;
+  const avatarPickerVisualDisabled = profileMutationDisabled || isPickingAvatar;
+  const heroPickerVisualDisabled = profileMutationDisabled || isPickingHero;
   const modalTopInset = Platform.OS === "ios" ? (insets.top > 0 ? insets.top : 44) : 0;
   const heroTopInsetOffset = 0;
   const shouldUseRNSettingsGesture = !canUseNativeProfileSettings;
@@ -1201,7 +1203,7 @@ export default function ProfileScreen() {
                               disabled={profileSettingsDisabled}
                               style={({ pressed }) => [
                                 styles.profileSettingsAvatarButton,
-                                profileSettingsDisabled && styles.heroActionDisabled,
+                                avatarPickerVisualDisabled && styles.heroActionDisabled,
                                 pressed && !profileSettingsDisabled && styles.optionChipPressed,
                               ]}
                               accessibilityLabel="Edit profile picture"
@@ -1228,7 +1230,7 @@ export default function ProfileScreen() {
                               style={({ pressed }) => [
                                 styles.profileSettingsAvatarButton,
                                 styles.profileSettingsAvatarButtonSecondary,
-                                profileSettingsDisabled && styles.heroActionDisabled,
+                                heroPickerVisualDisabled && styles.heroActionDisabled,
                                 pressed && !profileSettingsDisabled && styles.optionChipPressed,
                               ]}
                               accessibilityLabel="Edit banner picture"

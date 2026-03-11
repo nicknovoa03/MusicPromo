@@ -1,7 +1,7 @@
 import { Paths } from "expo-file-system";
 import * as LegacyFileSystem from "expo-file-system/legacy";
 import Constants from "expo-constants";
-import { Platform } from "react-native";
+import { Image, Platform } from "react-native";
 import {
   getCenterTextureSpec,
   getSimpleSpinTemplateLayout,
@@ -22,10 +22,7 @@ import {
   GRAPHIC_POP_GLOW_HEX,
   GRAPHIC_POP_STAGE_BACKGROUND_HEX,
 } from "@/lib/graphicPopTemplateSpec";
-import {
-  BETA_WATERMARK_TEXT,
-  isBetaWatermarkEnabled,
-} from "@/lib/betaWatermark";
+import { isBetaWatermarkEnabled } from "@/lib/betaWatermark";
 import { normalizeMediaUri } from "@/lib/mediaUri";
 import {
   getVinylCenterGeometry,
@@ -65,13 +62,11 @@ export interface RenderOptions {
 type FFmpegKitModule = typeof import("ffmpeg-kit-react-native");
 type FFmpegSession = import("ffmpeg-kit-react-native").FFmpegSession;
 type Statistics = import("ffmpeg-kit-react-native").Statistics;
-type FFmpegKitClass = typeof import("ffmpeg-kit-react-native").FFmpegKit;
-type ReturnCodeClass = typeof import("ffmpeg-kit-react-native").ReturnCode;
 type RenderPath = "primary" | "fallback" | "safe_fallback";
 let ffmpegModule: FFmpegKitModule | null = null;
 let activeRenderSessionId: number | null = null;
 let activeRenderToken: symbol | null = null;
-let drawtextSupportCache: boolean | null = null;
+let watermarkOverlayInputUriCache: string | null = null;
 
 async function getFFmpegKit(): Promise<FFmpegKitModule> {
   if (isExpoGo()) {
@@ -119,6 +114,7 @@ const MAX_BACKGROUND_BLUR = 24;
 const MIN_ROTATION_START_DEG = -180;
 const MAX_ROTATION_START_DEG = 180;
 const ENABLE_BETA_WATERMARK = isBetaWatermarkEnabled();
+const BETA_WATERMARK_IMAGE_MODULE = require("../../assets/beta-watermark.png");
 
 const RENDER_PATH_COLORS: Record<RenderPath, string> = {
   primary: "#38d17b",
@@ -277,14 +273,24 @@ function buildRenderModeBadgeFilterGraph(params: {
   mode: RenderPath;
   enabled: boolean;
   watermarkEnabled: boolean;
+  watermarkInputLabel?: string | null;
 }): string[] {
-  const { inputLabel, width, height, mode, enabled, watermarkEnabled } = params;
+  const {
+    inputLabel,
+    width,
+    height,
+    mode,
+    enabled,
+    watermarkEnabled,
+    watermarkInputLabel,
+  } = params;
   if (!enabled) {
     return buildWatermarkFilterGraph({
       inputLabel,
       width,
       height,
       enabled: watermarkEnabled,
+      watermarkInputLabel,
     });
   }
 
@@ -315,17 +321,10 @@ function buildRenderModeBadgeFilterGraph(params: {
       width,
       height,
       enabled: watermarkEnabled,
+      watermarkInputLabel,
     }),
   );
   return lines;
-}
-
-function escapeDrawtextText(value: string): string {
-  return value
-    .replace(/\\/g, "\\\\")
-    .replace(/:/g, "\\:")
-    .replace(/,/g, "\\,")
-    .replace(/'/g, "\\'");
 }
 
 function buildWatermarkFilterGraph(params: {
@@ -333,63 +332,21 @@ function buildWatermarkFilterGraph(params: {
   width: number;
   height: number;
   enabled: boolean;
+  watermarkInputLabel?: string | null;
 }): string[] {
-  const { inputLabel, width, enabled } = params;
-  if (!enabled) {
+  const { inputLabel, width, enabled, watermarkInputLabel } = params;
+  if (!enabled || !watermarkInputLabel) {
     return [`${inputLabel}format=yuv420p[out]`];
   }
 
-  const fontSize = Math.max(22, Math.round(width * 0.022));
+  const watermarkWidth = Math.max(190, Math.round(width * 0.22));
   const inset = Math.max(18, Math.round(width * 0.016));
-  const shadow = Math.max(1, Math.round(fontSize * 0.08));
-  const escapedWatermarkText = escapeDrawtextText(BETA_WATERMARK_TEXT);
 
   return [
-    `${inputLabel}drawtext=text='${escapedWatermarkText}':x=w-tw-${inset}:y=h-th-${inset}:fontsize=${fontSize}:fontcolor=white@0.72:shadowcolor=black@0.55:shadowx=${shadow}:shadowy=${shadow}[beta_watermark_out]`,
+    `${watermarkInputLabel}format=rgba,scale=${watermarkWidth}:-1[beta_watermark_scaled]`,
+    `${inputLabel}[beta_watermark_scaled]overlay=x=W-w-${inset}:y=H-h-${inset}:format=auto:eof_action=repeat[beta_watermark_out]`,
     "[beta_watermark_out]format=yuv420p[out]",
   ];
-}
-
-async function supportsDrawtextWatermark(params: {
-  FFmpegKit: FFmpegKitClass;
-  ReturnCode: ReturnCodeClass;
-}): Promise<boolean> {
-  if (!ENABLE_BETA_WATERMARK) return false;
-  if (drawtextSupportCache !== null) return drawtextSupportCache;
-
-  const outputPath = Paths.join(
-    Paths.cache,
-    `drawtext_probe_${Date.now()}_${Math.floor(Math.random() * 1_000_000)}.jpg`,
-  );
-  const escapedProbeText = escapeDrawtextText("beta");
-  const probeArgs = [
-    "-y",
-    "-f",
-    "lavfi",
-    "-i",
-    "color=c=black:s=96x96:d=0.1",
-    "-vf",
-    `drawtext=text='${escapedProbeText}':x=4:y=4:fontsize=12:fontcolor=white`,
-    "-frames:v",
-    "1",
-    outputPath,
-  ];
-
-  try {
-    const probeSession = await params.FFmpegKit.executeWithArguments(probeArgs);
-    const probeReturnCode = await probeSession.getReturnCode();
-    drawtextSupportCache = params.ReturnCode.isSuccess(probeReturnCode);
-  } catch {
-    drawtextSupportCache = false;
-  } finally {
-    try {
-      await LegacyFileSystem.deleteAsync(outputPath, { idempotent: true });
-    } catch {
-      // Ignore cleanup failures.
-    }
-  }
-
-  return drawtextSupportCache;
 }
 
 function buildPhotoScaleCropFilter(width: number, height: number): string {
@@ -554,6 +511,50 @@ async function ensureRenderableInputUri(
   }
 
   return copiedUri;
+}
+
+async function getBetaWatermarkOverlayInputUri(): Promise<string> {
+  if (watermarkOverlayInputUriCache) {
+    try {
+      const existingInfo = await LegacyFileSystem.getInfoAsync(
+        watermarkOverlayInputUriCache,
+      );
+      if (existingInfo.exists) {
+        return watermarkOverlayInputUriCache;
+      }
+    } catch {
+      // Fall through and refresh cache.
+    }
+    watermarkOverlayInputUriCache = null;
+  }
+
+  const resolvedAsset = Image.resolveAssetSource(BETA_WATERMARK_IMAGE_MODULE);
+  const assetUri = normalizeMediaUri(resolvedAsset?.uri ?? "");
+  if (!assetUri.trim()) {
+    throw new Error("Unable to load beta watermark asset.");
+  }
+
+  if (/^https?:\/\//i.test(assetUri)) {
+    if (!LegacyFileSystem.cacheDirectory) {
+      throw new Error("Unable to access app cache for beta watermark download.");
+    }
+    const downloadUri = `${LegacyFileSystem.cacheDirectory}beta-watermark-${Date.now()}-${Math.floor(
+      Math.random() * 1_000_000,
+    )}.png`;
+    try {
+      await LegacyFileSystem.downloadAsync(assetUri, downloadUri);
+    } catch {
+      throw new Error(
+        "Unable to download beta watermark asset for rendering.",
+      );
+    }
+    watermarkOverlayInputUriCache = downloadUri;
+    return downloadUri;
+  }
+
+  const preparedWatermarkUri = await ensureRenderableInputUri(assetUri, "photo");
+  watermarkOverlayInputUriCache = preparedWatermarkUri;
+  return preparedWatermarkUri;
 }
 
 function summarizeFfmpegLogs(logs: string): string {
@@ -812,6 +813,7 @@ async function renderVinylVideoWithVariant(
 
   const outputPath = Paths.join(Paths.cache, `export_${Date.now()}.mp4`);
   let photoInputUriForRender = preparedPhotoUri;
+  let watermarkInputUri: string | null = null;
   let exportWatermarkEnabled = false;
 
   const buildPrimaryFilterComplex = (
@@ -819,6 +821,9 @@ async function renderVinylVideoWithVariant(
     audioTrimEndSec: number,
     mode: RenderPath,
   ) => {
+    const watermarkInputLabel = exportWatermarkEnabled
+      ? `[${audioInputIndex + 1}:v]`
+      : null;
     const lines: string[] = [];
     if (hasBackgroundImage) {
       const blurFilter =
@@ -858,6 +863,7 @@ async function renderVinylVideoWithVariant(
           mode,
           enabled: debugRenderModeBadge,
           watermarkEnabled: exportWatermarkEnabled,
+          watermarkInputLabel,
         }),
       );
       lines.push(
@@ -953,6 +959,7 @@ async function renderVinylVideoWithVariant(
         mode,
         enabled: debugRenderModeBadge,
         watermarkEnabled: exportWatermarkEnabled,
+        watermarkInputLabel,
       }),
     );
     lines.push(
@@ -966,6 +973,9 @@ async function renderVinylVideoWithVariant(
     audioTrimStartSec: number,
     audioTrimEndSec: number,
   ) => {
+    const watermarkInputLabel = exportWatermarkEnabled
+      ? `[${audioInputIndex + 1}:v]`
+      : null;
     const lines: string[] = [];
     if (hasBackgroundImage) {
       const blurFilter =
@@ -1006,6 +1016,7 @@ async function renderVinylVideoWithVariant(
           mode: "safe_fallback",
           enabled: debugRenderModeBadge,
           watermarkEnabled: exportWatermarkEnabled,
+          watermarkInputLabel,
         }),
         `[${audioInputIndex}:a]atrim=start=${audioTrimStartSec}:end=${audioTrimEndSec},asetpts=PTS-STARTPTS[audio_out]`,
       );
@@ -1037,6 +1048,7 @@ async function renderVinylVideoWithVariant(
         mode: "safe_fallback",
         enabled: debugRenderModeBadge,
         watermarkEnabled: exportWatermarkEnabled,
+        watermarkInputLabel,
       }),
       `[${audioInputIndex}:a]atrim=start=${audioTrimStartSec}:end=${audioTrimEndSec},asetpts=PTS-STARTPTS[audio_out]`,
     );
@@ -1046,6 +1058,7 @@ async function renderVinylVideoWithVariant(
   const buildPrimaryCommand = (
     audioInputUri: string,
     backgroundInputUri: string | null,
+    watermarkOverlayUri: string | null,
     audioTrimStartSec: number,
     audioTrimEndSec: number,
     mode: RenderPath,
@@ -1073,6 +1086,11 @@ async function renderVinylVideoWithVariant(
     args.push(
       "-i",
       audioInputUri,
+    );
+    if (watermarkOverlayUri) {
+      args.push("-i", watermarkOverlayUri);
+    }
+    args.push(
       "-filter_complex",
       buildPrimaryFilterComplex(audioTrimStartSec, audioTrimEndSec, mode),
       "-map",
@@ -1097,6 +1115,7 @@ async function renderVinylVideoWithVariant(
   const buildSafeFallbackCommand = (
     audioInputUri: string,
     backgroundInputUri: string | null,
+    watermarkOverlayUri: string | null,
     audioTrimStartSec: number,
     audioTrimEndSec: number,
   ) => {
@@ -1122,6 +1141,11 @@ async function renderVinylVideoWithVariant(
     args.push(
       "-i",
       audioInputUri,
+    );
+    if (watermarkOverlayUri) {
+      args.push("-i", watermarkOverlayUri);
+    }
+    args.push(
       "-filter_complex",
       buildSafeFallbackFilterComplex(audioTrimStartSec, audioTrimEndSec),
       "-map",
@@ -1169,15 +1193,10 @@ async function renderVinylVideoWithVariant(
 
   try {
     const { FFmpegKit, ReturnCode } = await getFFmpegKit();
-    exportWatermarkEnabled = await supportsDrawtextWatermark({
-      FFmpegKit,
-      ReturnCode,
-    });
-    if (__DEV__ && ENABLE_BETA_WATERMARK && !exportWatermarkEnabled) {
-      console.warn(
-        "[renderVinylVideoWithVariant] Beta watermark disabled for export because FFmpeg drawtext is unavailable on this build.",
-      );
+    if (ENABLE_BETA_WATERMARK) {
+      watermarkInputUri = await getBetaWatermarkOverlayInputUri();
     }
+    exportWatermarkEnabled = Boolean(watermarkInputUri);
 
     const runCommand = async (
       commandArguments: string[],
@@ -1298,6 +1317,7 @@ async function renderVinylVideoWithVariant(
     const primaryCommand = buildPrimaryCommand(
       audioInputUri,
       preparedBackgroundUri,
+      watermarkInputUri,
       audioTrimStartForRender,
       audioTrimEndForRender,
       "primary",
@@ -1306,6 +1326,7 @@ async function renderVinylVideoWithVariant(
     const fallbackCommand = buildPrimaryCommand(
       audioInputUri,
       preparedBackgroundUri,
+      watermarkInputUri,
       audioTrimStartForRender,
       audioTrimEndForRender,
       "fallback",
@@ -1314,6 +1335,7 @@ async function renderVinylVideoWithVariant(
     const safeFallbackCommand = buildSafeFallbackCommand(
       audioInputUri,
       preparedBackgroundUri,
+      watermarkInputUri,
       audioTrimStartForRender,
       audioTrimEndForRender,
     );

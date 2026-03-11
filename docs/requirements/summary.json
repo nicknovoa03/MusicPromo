@@ -7,7 +7,7 @@
     "auth": "Clerk",
     "backend": "Convex",
     "analytics": "PostHog",
-    "video_rendering": "On-device via renderer abstraction (shared template composition; FFmpeg active backend; remotion-local feature-flag path currently falls back to FFmpeg until native runtime + quality gates pass)",
+    "video_rendering": "On-device via renderer abstraction (shared template composition; FFmpeg active backend via ffmpeg-kit-react-native-alt alias; remotion-local feature-flag path currently falls back to FFmpeg until native runtime + quality gates pass; beta watermark export uses drawtext only when supported)",
     "notifications": "Expo Push Notifications",
     "sharing": "Native share intents (expo-sharing)"
   },
@@ -44,7 +44,8 @@
       "name": "Template",
       "storage": "Convex",
       "key_fields": ["id", "name", "description", "previewImageUrl", "type", "config"],
-      "v1_entries": ["simple-spin", "graphic-pop"]
+      "v1_entries": ["whole", "cd", "vinyl"],
+      "legacy_aliases": ["graphic-pop->cd", "simple-spin->vinyl", "hybrid->whole"]
     },
     {
       "name": "Push Token",

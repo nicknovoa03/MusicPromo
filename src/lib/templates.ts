@@ -49,7 +49,7 @@ export const DEFAULT_TEMPLATE_TWEAKS: TemplateTweaks = {
 };
 
 export interface TemplateTweaksRoutePayload {
-  v: 1 | 2 | 3 | 4 | 5;
+  v: 1 | 2 | 3 | 4 | 5 | 6;
   spinSpeed: number;
   recordSize?: number;
   artworkScale?: number;
@@ -154,7 +154,7 @@ export function normalizeTemplateTweaks(
 export function serializeTemplateTweaksParam(value: TemplateTweaks): string {
   const normalized = normalizeTemplateTweaks(value);
   const payload: TemplateTweaksRoutePayload = {
-    v: 5,
+    v: 6,
     spinSpeed: normalized.spinSpeed,
     recordSize: normalized.recordSize,
     artworkScale: normalized.artworkScale,
@@ -175,13 +175,31 @@ export function parseTemplateTweaksParam(
   try {
     const decoded = decodeURIComponent(rawParam);
     const parsed = JSON.parse(decoded) as Partial<TemplateTweaksRoutePayload>;
-    if (!parsed || (parsed.v !== 1 && parsed.v !== 2 && parsed.v !== 3 && parsed.v !== 4 && parsed.v !== 5)) {
+    if (
+      !parsed ||
+      (parsed.v !== 1 &&
+        parsed.v !== 2 &&
+        parsed.v !== 3 &&
+        parsed.v !== 4 &&
+        parsed.v !== 5 &&
+        parsed.v !== 6)
+    ) {
       return null;
     }
+
+    // Legacy payloads used 1.5 as the default baseline.
+    // Rebase that prior default to the new normal (3 -> shown as 1x).
+    const normalizedLegacyArtworkScale =
+      parsed.v <= 5 && Number.isFinite(parsed.artworkScale)
+        ? Math.abs((parsed.artworkScale ?? 0) - 1.5) < 0.001
+          ? 3
+          : parsed.artworkScale
+        : parsed.artworkScale;
+
     return normalizeTemplateTweaks({
       spinSpeed: parsed.spinSpeed,
       recordSize: parsed.recordSize,
-      artworkScale: parsed.artworkScale,
+      artworkScale: normalizedLegacyArtworkScale,
       recordTransparency: parsed.recordTransparency,
       recordOpacity: parsed.recordOpacity,
       backgroundBlur: parsed.backgroundBlur,

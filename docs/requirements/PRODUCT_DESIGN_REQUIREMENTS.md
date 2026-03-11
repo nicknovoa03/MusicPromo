@@ -5,8 +5,8 @@
 - Product name: MusicPromo
 - Doc owner: Nick
 - Stakeholders: Nick (sole developer / product owner)
-- Last updated (YYYY-MM-DD): 2026-03-07
-- Version: 1.6 (Phase 5 iOS-native rollout in progress)
+- Last updated (YYYY-MM-DD): 2026-03-11
+- Version: 1.7 (Phase 5 iOS-native rollout in progress)
 - Links: GitHub repo at `/home/nick/MusicPromo`
 
 ## 1) Product Summary
@@ -61,6 +61,7 @@
   - Data store: Convex (existing boilerplate in repo)
   - Realtime needs: Minimal — project metadata CRUD, user profile
   - File/media storage: On-device only (no cloud file storage for v1)
+  - Video rendering runtime: `ffmpeg-kit-react-native-alt` (aliased as `ffmpeg-kit-react-native`)
 - **Environments:**
   - Local: Expo Dev Client
   - Staging: N/A for POC
@@ -82,7 +83,7 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 
 - **Global navigation pattern:** Bottom tab bar, 3 tabs: Home, Create, Profile
 - **Global primary action:** "+" FAB button (black rounded square, bottom-right on Home screen)
-- **Color theme strategy:** System color-scheme adaptive surfaces with brand-green accents; create/edit/export screens preserve dark-first readability
+- **Color theme strategy:** System color-scheme adaptive surfaces with high-contrast neutral accents; create/edit/export screens preserve dark-first readability
 
 ### App-Level Screens
 
@@ -90,10 +91,10 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 2. **Onboarding** — 1-2 walkthrough screens for first-time users. Design TBD.
 3. **Home / Projects** — White background. "Projects" header, multi-select toggle, profile icon top-right. 2-column grid of project thumbnails with title + metadata. Black "+" FAB bottom-right in browse mode. In multi-select mode, cards show check markers and a bottom-centered action that shows `Delete (N)` when projects are selected and `Cancel` when selection mode is empty, with haptic feedback on selection interactions.
 4. **Create — Media Picker** — Light background. Single-screen selector with stacked full-width square cards: audio on top, photo on bottom. Cancel top-left, Add top-right. Audio artwork quick-fill for photo when available.
-5. **Create — Editor/Trimmer** — Dark background. Large preview with overlay controls (settings, template-info toggle, `Edit Template`), bottom-right aspect-ratio toggle, centered "Trim Audio" section, and top-right "Export" button.
+5. **Create — Editor/Trimmer** — Dark background. Large preview with overlay controls (settings, trim toggle, template-info toggle), top-right aspect-ratio badge, collapsible "Trim Audio" section, and top-right "Export" button. Settings opens a unified template customization surface (Layout, Style, Backdrop, Motion, Media).
 6. **Post-Export — Rendering** — Dark background. X top-left. Percentage text. Video preview with gradient border. "Please don't close" messaging. Stage layout responsively scales from window dimensions + safe-area insets.
-7. **Post-Export — Share** — Dark background. X top-left. "Ready to share" heading. Video preview. "Share to Instagram" gradient button. "Share to TikTok" button. "Saved to camera roll" confirmation.
-8. **Profile / Settings** — Hero-first dark profile surface with cinematic banner, oversized overlapping avatar, and large artist name treatment. `Edit Profile` opens a light slide-in editing surface for avatar, banner, and name updates. Sign out + delete account remain grouped at bottom.
+7. **Post-Export — Share** — Dark background. X top-left. "Ready to share" heading. Video preview (with optional template-info and beta watermark overlays), responsive compact-height layout, "Share to Instagram" gradient button, "Share to TikTok" button, and "Saved to camera roll" confirmation.
+8. **Profile / Settings** — Hero-first dark profile surface with cinematic banner, oversized overlapping avatar, and large artist name treatment. `Edit Profile` opens a light slide-in editing surface (React Native canonical path) for avatar, banner, and name updates with explicit back/done controls. Sign out + delete account remain grouped at bottom.
 
 ## 5) Core Entities (Conceptual Data Model)
 
@@ -120,7 +121,7 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 - Relationships: Referenced by Projects
 - Typical queries: List all templates
 - Permissions: Read-only for users, admin-managed
-- v1: Curated entries — `simple-spin` (Polished CD-style spinner) and `graphic-pop` (Graphic CD-style spinner)
+- v1: Curated entries — `whole` (default), `cd`, and `vinyl` with legacy alias support (`graphic-pop` → `cd`, `simple-spin` → `vinyl`, `hybrid` → `whole`)
 
 ### Push Token
 - Owner: User (per device)
@@ -171,9 +172,9 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
   - I can swap the photo without losing my audio selection (and vice versa)
   - I can choose between 9:16 (vertical) and 1:1 (square) aspect ratios
   - I can trim my audio to select which section plays
-- **Scope (v1):** Curated template switching (`simple-spin` + `graphic-pop`), on-device FFmpeg rendering, MP4 export
+- **Scope (v1):** Curated template switching (`whole`, `cd`, `vinyl`; legacy aliases supported), on-device FFmpeg rendering, MP4 export
 - **Non-goals:** AI generation, cloud rendering, open template marketplace
-- **Key screens/components:** Create flow (single-screen media picker with audio/photo selectors, editor preview/player, audio trimmer, aspect ratio selector, template controls, export button)
+- **Key screens/components:** Create flow (single-screen media picker with audio/photo selectors, editor preview/player, collapsible audio trimmer, aspect ratio selector, unified template customization controls, export button)
 - **Backend/data needs:** Project metadata saved to Convex after export
 - **Permissions/abuse risks:** Minimal — user's own content
 - **Analytics/events:** `create_started`, `photo_selected`, `audio_selected`, `preview_viewed`, `editor_controls_opened`, `template_selected_from_edit_media`, `media_swap_started_from_edit_media`, `template_tweak_changed`, `video_exported`
@@ -182,11 +183,13 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
   - User can select an audio file (MP3, WAV, M4A) from device
   - User can trim audio to select playback section
   - User can choose aspect ratio (9:16 or 1:1)
-  - User can open dedicated `Edit Template` and `Template Settings` control surfaces from the editor
-  - User can switch templates from the dedicated `Edit Template` template rail (tap + swipe with clear active state)
-  - User can change spin speed, record transparency, stage background color/photo, background blur, and rotation start/direction from dedicated `Template Settings` controls
+  - New create projects default to aspect ratio `9:16` unless an explicit aspect-ratio param is provided
+  - User can open one unified template customization surface from the editor with tabs for `Layout`, `Style`, `Backdrop`, `Motion`, and `Media`
+  - User can switch templates from the `Layout` tab template rail (tap + swipe with clear active state)
+  - User can change spin speed, record transparency, stage background color/photo, background blur, and rotation start/direction from the same customization surface
   - Template tweaks apply to preview immediately while editing and remain in effect through export
   - User can toggle template-info diagnostics in editor and keep that visibility preference through rendering/share screens for parity checks
+  - Beta watermark overlay can be enabled for preview/share/export through env configuration (`EXPO_PUBLIC_BETA_WATERMARK`)
   - Export duration respects the selected trim range (no unintended 3s clamp when fast mode is off)
   - Exported output matches preview styling for CD center geometry, disc edge detail, and background blur intent
   - User sees a preview of the CD-style spinning disc video with their photo and audio
@@ -213,6 +216,7 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
   - "Save to Camera Roll" saves the MP4 to device gallery
   - "Share to Instagram" opens Instagram via native share intent (Instagram's own Story/Post/Reel picker)
   - "Share to TikTok" opens TikTok via native share intent
+  - Share layout remains usable on compact-height devices via scroll + scaled preview sizing
   - "Done" returns to projects or home
 - **States:**
   - Loading: N/A (instant actions)
@@ -324,6 +328,7 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 - **Header:** Cancel (left), "Select Media" title (center), Add (right, enabled only when both photo+audio selected)
 - **Main sections:** Two stacked full-width square selector cards (Select Audio first, Select Photo second), selected-state cards with inline "Change" actions, optional album-artwork quick-fill card for photo
 - **Primary CTA:** "Add" button (top-right)
+- **Default behavior:** New create sessions initialize aspect ratio to `9:16` when no explicit ratio is passed in route params
 - **List behavior:** Static stacked layout that expands to available vertical space; tab-embedded mode applies bottom overlay compensation so controls remain visible above dock overlays
 - **Empty/loading/error:** Permission prompt for photos, document picker for audio, inline loading states per selector card
 - **Theme:** Light
@@ -334,13 +339,16 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 - **Route:** `/create/editor`
 - **Primary intent:** Preview, trim, and configure the promo video
 - **Header:** X/back (left), project name (center), "Export" button (right)
-- **Main sections:** Video preview (top, centered), in-preview control row (settings icon, template-info toggle, `Edit Template` button), bottom-right aspect-ratio toggle, centered audio trim/waveform section, dedicated modal surfaces for media/layout vs template polish
+- **Main sections:** Video preview (top, centered), in-preview control row (settings icon + trim toggle), separate top-left template-info toggle, top-right aspect-ratio badge toggle, animated/collapsible audio trim panel, and one unified template customization modal
 - **Primary CTA:** "Export" button (top-right)
-- **Secondary actions:** 
-  - `Edit Template` surface: aspect ratio pills (9:16 / 1:1), template selector rail (swipe + snap + tap), change audio, change photo
-  - `Template Settings` surface: spin speed, record transparency, stage background color/photo, background blur (only when custom photo selected), rotation start angle/direction with live preview updates
+- **Secondary actions:**
+  - `Template Settings` surface tabs:
+  - `Layout`: aspect ratio pills (9:16 / 1:1) + template selector rail (swipe + snap + tap)
+  - `Style`/`Backdrop`/`Motion`: spin speed, record transparency, stage background color/photo, background blur (only when custom photo selected), rotation start angle/direction with live preview updates
+  - `Media`: change audio + change photo without leaving editor context
   - Rotation start presets use 4 cardinal positions (0°, 90°, 180°, 270°) with direction control (CW / CCW)
   - Optional template-info badge overlay can be toggled in-editor for parity diagnostics
+  - Optional beta watermark overlay on preview stage when enabled
   - Play/pause preview, trim handles, media swap without destructive resets
 - **Empty/loading/error:** Preview loading skeleton, "Rendering failed" + retry
 - **Theme:** Dark/black
@@ -361,9 +369,10 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 - **Route:** `/create/share`
 - **Primary intent:** Save and share the finished video
 - **Header:** X button (left)
-- **Main sections:** "Ready to share" heading + subtitle, video preview, optional template-info parity badge, share buttons, confirmation text
+- **Main sections:** "Ready to share" heading + subtitle, video preview, optional template-info parity badge, optional beta watermark overlay, share buttons, confirmation text
 - **Primary CTA:** "Share to Instagram" (gradient button)
 - **Secondary actions:** "Share to TikTok" (outlined button), "Done" / X to return home
+- **Layout behavior:** Scrollable content + scaled preview variant on compact-height screens
 - **Theme:** Dark/black
 - **Analytics:** `video_exported`, `video_saved_to_camera_roll`, `share_tapped_instagram`, `share_tapped_tiktok`
 - **Reference:** `post-export/Edits iOS Exporting a video 2.png`
@@ -371,11 +380,11 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 ### Profile / Settings
 - **Route:** `/profile`
 - **Primary intent:** Present a brand-first artist profile while keeping account actions safe and accessible
-- **Header:** Hero-first layout on base screen (no classic settings header). Edit flow uses a dedicated "Edit profile" slide-in header with back/close action.
-- **Main sections:** 
+- **Header:** Hero-first layout on base screen (no classic settings header). Edit flow uses a dedicated "Edit profile" slide-in header with back + explicit done action.
+- **Main sections:**
   - Hero shell: top banner image/fallback, oversized overlapping avatar, large artist name
   - Hero quick action: `Edit Profile` CTA that opens slide-in editing surface
-  - Edit profile surface: avatar + banner pickers, name input with save-on-blur/submit, swipe-to-close gesture
+  - Edit profile surface: avatar + banner pickers, name input with save-on-blur/submit, swipe-to-close gesture, native iOS profile form path disabled pending rollout quality gates
   - Account actions: sign out and delete account grouped at bottom
 - **Primary CTA:** "Edit profile"
 - **Theme:** Dark cinematic hero (base screen) + light utility surface (edit profile modal)
@@ -427,30 +436,31 @@ Primary reference: Meta's Edits app. Secondary: Spotify (legacy profile patterns
 - **Color tokens:**
   - **Light theme (browsing):**
     - Background: `#FFFFFF`
-    - Surface: `#F3FAF4`
-    - Surface muted: `#EAF5EC`
-    - Text: `#102317`
-    - Text secondary: `#5D7064`
-    - Border: `#D6E6DA`
+    - Surface: `#F5F5F5`
+    - Surface muted: `#EEEEEE`
+    - Text: `#000000`
+    - Text secondary: `#4A4A4A`
+    - Border: `#D6D6D6`
   - **Dark theme (editing):**
     - Background: `#000000`
-    - Surface: `#18191C`
-    - Surface muted: `#23252A`
-    - Text: `#F8F9FB`
-    - Text secondary: `#B6BBC4`
-    - Border: `#343943`
+    - Surface: `#111111`
+    - Surface muted: `#1A1A1A`
+    - Text: `#FFFFFF`
+    - Text secondary: `#B3B3B3`
+    - Border: `#2A2A2A`
   - **Accents:**
-    - Primary CTA: `#1E9C53` (brand green)
-    - Primary muted: `#DDF4E5`
-    - On-primary text/icon: `#FFFFFF`
+    - Primary CTA: `#FFFFFF`
+    - Primary muted: `#E8E8E8`
+    - On-primary text/icon: `#000000`
     - Instagram gradient: orange → pink → purple
-    - Success: green
-    - Error: red
+    - Success: `#FFFFFF`
+    - Error: `#FFFFFF`
+    - Warning: `#FFFFFF`
     - FAB: black with white icon
   - **Overlay + brand helpers:**
     - Light overlay: `rgba(255,255,255,0.82)` / strong `rgba(255,255,255,0.92)`
     - Dark overlay: `rgba(0,0,0,0.26)` / strong `rgba(0,0,0,0.62)`
-    - Brand tint: `rgba(30,156,83,0.07)` / `0.12` / `0.18`
+    - Brand tint: `rgba(255,255,255,0.07)` / `0.12` / `0.18`
   - **Strategy:** Light for browsing (Home, Picker), dark for editing (Editor, Export, Share)
 - **Typography:**
   - Font family: SF Pro (iOS system) / Inter (cross-platform fallback)
@@ -461,7 +471,7 @@ Primary reference: Meta's Edits app. Secondary: Spotify (legacy profile patterns
     - Caption: 13pt regular (metadata, timestamps)
     - Button: 17pt semibold (CTAs)
 - **Components:**
-  - Buttons: Rounded rectangles. Primary = filled (brand green or gradient). Secondary = outlined/gray.
+  - Buttons: Rounded rectangles. Primary = filled high-contrast neutral (or Instagram gradient where required). Secondary = outlined/gray.
   - Cards: Rounded corners, thumbnail + text below (2-column project grid)
   - Tab bar: Bottom-fixed, icon + label, 3 tabs
   - Pickers: Full-screen with grid, tabs at top, action buttons in header
@@ -551,7 +561,7 @@ Primary reference: Meta's Edits app. Secondary: Spotify (legacy profile patterns
 
 ### Phase 1: MVP Core
 - Create flow (photo picker, audio picker, audio trim)
-- Curated CD-style template set (`simple-spin`, `graphic-pop`) with on-device rendering
+- Curated template set (`whole`, `cd`, `vinyl`) with on-device rendering
 - Aspect ratio selection (9:16 / 1:1)
 - Preview and export
 - Save to camera roll
@@ -573,12 +583,12 @@ Primary reference: Meta's Edits app. Secondary: Spotify (legacy profile patterns
 - Tighten copy, interaction polish, and regression coverage
 
 ### Phase 4: MVP Lock + Release Readiness (Current)
-- Freeze MVP scope to a curated two-template set and ship reliability over breadth
+- Freeze MVP scope to a curated three-template set and ship reliability over breadth
 - Keep local-only export architecture with FFmpeg as the active renderer
 - Defer broad template-library authoring/parity work until after MVP release
 - Phase 4 implementation status (2026-03-06):
   - Editor template selector is a dedicated centered rail (horizontal pills with snap-to-center behavior + active template label)
-  - Template resolution supports `simple-spin` and `graphic-pop` across picker, editor, and export routes
+  - Template resolution supports canonical IDs (`whole`, `cd`, `vinyl`) with legacy alias compatibility across picker, editor, and export routes
   - Disc visual treatment was updated to read as a CD (preview + export alignment pass, including edge-rim detail)
   - Template control surface now supports stage background image + blur and rotation start/direction
   - Template tweak model uses `recordTransparency` as canonical control naming (legacy `recordOpacity` input remains compatibility-normalized)
@@ -615,14 +625,25 @@ Primary reference: Meta's Edits app. Secondary: Spotify (legacy profile patterns
 - Preserve deterministic fallback paths to existing React Native components for Android and unsupported iOS capability paths
 - Keep create/export/share reliability unchanged while upgrading presentation and interaction fidelity
 - Validate rollout with explicit fallback matrix and migration analytics
-- Phase 5 implementation status (2026-03-07):
+- Phase 5 implementation status (2026-03-11):
   - Adopted dynamic color-token usage across sign-in, onboarding, tab shell, home/projects, profile, and create picker surfaces for light/dark parity
+  - Shifted app tokens to a high-contrast neutral palette for stronger cross-screen visual consistency
   - Updated tabs shell to use stable adaptive RN tab styling and removed the experimental iOS liquid-glass tab bar treatment
   - Added adaptive create-layout/picker background and status-bar behavior, including native summary/form color-scheme alignment where native surfaces are enabled
   - Simplified rendering screen progress UI to percentage-first display (native circular spinner removed) while preserving export lifecycle behavior
-  - Expanded template customization artwork-scale controls from `1x–1.5x` to `1x–5x` and improved label formatting/selection handling
+  - Rebased template customization presets for tighter ranges and clearer labels (`recordSize`: `0.8x/1x/1.2x`, `artworkScale`: `1.5/3/4.5` mapped to relative `0.5x/1x/1.5x`)
   - Improved photo-matched background color generation with ThumbHash-derived multi-swatch extraction for template settings
   - Aligned preview/export disc-hole behavior and artwork-scale interpolation across template stages and FFmpeg rendering path; hardened safe-fallback filter graph parsing on iOS FFmpeg kit
+  - Swapped FFmpeg dependency alias to `ffmpeg-kit-react-native-alt@6.0.6` for runtime compatibility while preserving the `ffmpeg-kit-react-native` import surface
+  - Unified editor controls into a single `TemplateCustomizeModal` (layout/style/backdrop/motion/media tabs), replacing split edit-media/template surfaces
+  - Added an animated collapsible trim panel (`Trim Audio` toggle) so stage sizing adapts dynamically while preserving trim workflow
+  - Simplified share actions to a React Native-first action stack and added compact-height responsive layout behavior (scroll + scaled preview)
+  - Disabled native iOS profile settings rendering path for now; React Native edit-profile sheet is the canonical flow with explicit back/done controls
+  - Standardized new create-session aspect-ratio default to `9:16` (no profile-preference inheritance) unless route params explicitly override
+  - Promoted canonical template defaults to `whole`/`cd`/`vinyl` ordering (`whole` default), while preserving legacy template-id alias resolution
+  - Introduced env-gated beta watermark support (`EXPO_PUBLIC_BETA_WATERMARK`) with reusable overlay component on stage/share previews
+  - Added export-side watermark rendering via FFmpeg `drawtext` with capability probing and automatic fallback when drawtext is unavailable
+  - Added `showWatermark` template-stage control so contexts like home thumbnails can intentionally suppress watermark overlays
 
 ### Phase 6: Template System + Export Standardization (Post-Phase 5)
 - Standardize template authoring around one canonical template contract
