@@ -442,14 +442,19 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
     : colors.light.textSecondary;
   const pickerBorderColor = isDarkMode ? colors.dark.border : colors.light.border;
   const selectionActionBackgroundColor = isDarkMode
-    ? "rgba(30,156,83,0.22)"
+    ? "rgba(255,255,255,0.18)"
     : colors.accent.primaryMuted;
   const quickFillBackgroundColor = isDarkMode
-    ? "rgba(30,156,83,0.2)"
+    ? "rgba(255,255,255,0.12)"
     : colors.brand.tintSoft;
   const quickFillBorderColor = isDarkMode
-    ? "rgba(30,156,83,0.4)"
+    ? "rgba(255,255,255,0.32)"
     : colors.brand.tintStrong;
+  const pickerIconColor = pickerTextColor;
+  const pickerIconBackgroundColor = isDarkMode
+    ? colors.dark.surface
+    : colors.light.surfaceMuted;
+  const pickerIconBorderColor = isDarkMode ? colors.dark.border : colors.light.border;
   const statusBarStyle = isDarkMode ? "light" : "dark";
   const activeAspectRatio = aspectRatio ?? preferredAspectRatio;
   const dockOverlayCompensation = tabEmbedded ? 82 : 0;
@@ -566,7 +571,7 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
                   <Ionicons
                     name="musical-note"
                     size={32}
-                    color={colors.accent.primary}
+                    color={pickerIconColor}
                   />
                 )}
               </View>
@@ -603,14 +608,22 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
               accessibilityRole="button"
             >
               {isPickingAudio ? (
-                <ActivityIndicator color={colors.accent.primary} size="large" />
+                <ActivityIndicator color={pickerIconColor} size="large" />
               ) : (
                 <>
-                  <View style={styles.pickIcon}>
+                  <View
+                    style={[
+                      styles.pickIcon,
+                      {
+                        backgroundColor: pickerIconBackgroundColor,
+                        borderColor: pickerIconBorderColor,
+                      },
+                    ]}
+                  >
                     <Ionicons
                       name="musical-note-outline"
                       size={34}
-                      color={colors.accent.primary}
+                      color={pickerIconColor}
                     />
                   </View>
                   <Text style={[styles.pickTitle, { color: pickerTextColor }]}>Select Audio</Text>
@@ -678,14 +691,22 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
                 accessibilityRole="button"
               >
                 {isPickingPhoto ? (
-                  <ActivityIndicator color={colors.accent.primary} size="large" />
+                  <ActivityIndicator color={pickerIconColor} size="large" />
                 ) : (
                   <>
-                    <View style={styles.pickIcon}>
+                    <View
+                      style={[
+                        styles.pickIcon,
+                        {
+                          backgroundColor: pickerIconBackgroundColor,
+                          borderColor: pickerIconBorderColor,
+                        },
+                      ]}
+                    >
                       <Ionicons
                         name="image-outline"
                         size={34}
-                        color={colors.accent.primary}
+                        color={pickerIconColor}
                       />
                     </View>
                     <Text style={[styles.pickTitle, { color: pickerTextColor }]}>
@@ -727,7 +748,7 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
                       Reuse the track artwork as your photo in one tap.
                     </Text>
                   </View>
-                  <Ionicons name="flash" size={18} color={colors.accent.primary} />
+                  <Ionicons name="flash" size={18} color={pickerIconColor} />
                 </Pressable>
               ) : null}
             </View>

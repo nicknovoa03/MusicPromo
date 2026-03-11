@@ -833,10 +833,8 @@ export default function ProfileScreen() {
       "Button" in expoSwiftUIAny &&
       "Text" in expoSwiftUIAny,
   );
-  const canUseNativeProfileSettings =
-    nativeProfileEnabledByContract &&
-    expoSwiftUI !== null &&
-    hasNativeProfileComponents;
+  const canUseNativeProfileSettings = false;
+  const primaryEmail = clerkUser?.primaryEmailAddress?.emailAddress ?? null;
 
   const heroHeight = Math.max(380, Math.min(Math.round(windowHeight * 0.5), 560));
   const heroBannerHeight = Math.max(
@@ -866,7 +864,6 @@ export default function ProfileScreen() {
     extrapolate: "clamp",
   });
   const heroArtistName = artistNameDraft.trim() || "Tap to add artist name";
-  const primaryEmail = clerkUser?.primaryEmailAddress?.emailAddress ?? null;
   const actionsDisabled = isSigningOut || isDeleting;
   const profileInputsDisabled =
     isProfileLoading ||
@@ -1041,9 +1038,20 @@ export default function ProfileScreen() {
                       accessibilityLabel="Close edit profile"
                       accessibilityRole="button"
                     >
-                      <Ionicons name="chevron-back" size={24} color={profileTextColor} />
+                      <Ionicons name="chevron-back" size={22} color={profileTextColor} />
                     </Pressable>
                     <Text style={styles.profileSettingsHeaderTitle}>Edit profile</Text>
+                    <Pressable
+                      onPress={handleCloseProfileSettings}
+                      style={({ pressed }) => [
+                        styles.profileSettingsDoneButton,
+                        pressed && styles.profileSettingsDoneButtonPressed,
+                      ]}
+                      accessibilityLabel="Done editing profile"
+                      accessibilityRole="button"
+                    >
+                      <Text style={styles.profileSettingsDoneText}>Done</Text>
+                    </Pressable>
                   </View>
                   {canUseNativeProfileSettings && expoSwiftUI ? (
                     <expoSwiftUI.Host
@@ -1183,16 +1191,16 @@ export default function ProfileScreen() {
                       contentContainerStyle={styles.profileSettingsContent}
                       keyboardShouldPersistTaps="handled"
                     >
-                      <View style={styles.profileSettingsAvatarSection}>
-                        <View style={styles.profileSettingsMediaRow}>
-                          <View style={styles.profileSettingsMediaColumn}>
+                      <View style={styles.profileSettingsIdentitySection}>
+                        <View style={styles.profileSettingsAvatarRow}>
+                          <View style={styles.profileSettingsAvatarOption}>
                             <Pressable
                               onPress={() => {
                                 void handlePickAvatar();
                               }}
                               disabled={profileSettingsDisabled}
                               style={({ pressed }) => [
-                                styles.profileSettingsMediaCircle,
+                                styles.profileSettingsAvatarButton,
                                 profileSettingsDisabled && styles.heroActionDisabled,
                                 pressed && !profileSettingsDisabled && styles.optionChipPressed,
                               ]}
@@ -1205,38 +1213,21 @@ export default function ProfileScreen() {
                                   style={styles.profileSettingsMediaImage}
                                 />
                               ) : (
-                                <Ionicons name="person" size={44} color={colors.light.textSecondary} />
+                                <Ionicons name="person" size={42} color={colors.light.textSecondary} />
                               )}
                             </Pressable>
-                            <Text style={styles.profileSettingsMediaLabel}>Avatar</Text>
-                            <Pressable
-                              onPress={() => {
-                                void handlePickAvatar();
-                              }}
-                              disabled={profileSettingsDisabled}
-                              style={({ pressed }) => [
-                                styles.profileSettingsMediaCtaButton,
-                                pressed && !profileSettingsDisabled && styles.optionChipPressed,
-                              ]}
-                              accessibilityLabel="Edit avatar"
-                              accessibilityRole="button"
-                            >
-                              {isPickingAvatar ? (
-                                <ActivityIndicator size="small" color={colors.accent.primary} />
-                              ) : (
-                                <Text style={styles.profileSettingsMediaCtaText}>Edit avatar</Text>
-                              )}
-                            </Pressable>
+                            <Text style={styles.profileSettingsAvatarLabel}>Profile</Text>
                           </View>
 
-                          <View style={styles.profileSettingsMediaColumn}>
+                          <View style={styles.profileSettingsAvatarOption}>
                             <Pressable
                               onPress={() => {
                                 void handlePickHero();
                               }}
                               disabled={profileSettingsDisabled}
                               style={({ pressed }) => [
-                                styles.profileSettingsMediaCircle,
+                                styles.profileSettingsAvatarButton,
+                                styles.profileSettingsAvatarButtonSecondary,
                                 profileSettingsDisabled && styles.heroActionDisabled,
                                 pressed && !profileSettingsDisabled && styles.optionChipPressed,
                               ]}
@@ -1249,35 +1240,17 @@ export default function ProfileScreen() {
                                   style={styles.profileSettingsMediaImage}
                                 />
                               ) : (
-                                <Ionicons name="image-outline" size={40} color={colors.light.textSecondary} />
+                                <Ionicons name="image-outline" size={34} color={colors.light.textSecondary} />
                               )}
                             </Pressable>
-                            <Text style={styles.profileSettingsMediaLabel}>Banner</Text>
-                            <Pressable
-                              onPress={() => {
-                                void handlePickHero();
-                              }}
-                              disabled={profileSettingsDisabled}
-                              style={({ pressed }) => [
-                                styles.profileSettingsMediaCtaButton,
-                                pressed && !profileSettingsDisabled && styles.optionChipPressed,
-                              ]}
-                              accessibilityLabel="Edit banner"
-                              accessibilityRole="button"
-                            >
-                              {isPickingHero ? (
-                                <ActivityIndicator size="small" color={colors.accent.primary} />
-                              ) : (
-                                <Text style={styles.profileSettingsMediaCtaText}>Edit banner</Text>
-                              )}
-                            </Pressable>
+                            <Text style={styles.profileSettingsAvatarLabel}>Banner</Text>
                           </View>
                         </View>
                       </View>
 
-                      <View style={styles.profileSettingsCard}>
-                        <View style={styles.profileSettingsRow}>
-                          <Text style={styles.profileSettingsRowLabel}>Name</Text>
+                      <View style={styles.profileSettingsList}>
+                        <View style={styles.profileSettingsListRow}>
+                          <Text style={styles.profileSettingsListLabel}>Name</Text>
                           <TextInput
                             value={artistNameDraft}
                             onChangeText={setArtistNameDraft}
@@ -1290,7 +1263,7 @@ export default function ProfileScreen() {
                             onBlur={() => {
                               void saveProfile({ includeLinks: false });
                             }}
-                            style={styles.profileSettingsNameInput}
+                            style={styles.profileSettingsListValueInput}
                             autoCapitalize="words"
                             autoCorrect={false}
                             returnKeyType="done"
@@ -1390,7 +1363,7 @@ export default function ProfileScreen() {
                   )}
                 </View>
                 <View style={styles.heroAvatarPlaceholder}>
-                  <Ionicons name="camera-outline" size={14} color={profileTextColor} />
+                  <Ionicons name="camera-outline" size={14} color={colors.dark.text} />
                 </View>
               </View>
             </Pressable>
@@ -1521,11 +1494,13 @@ export default function ProfileScreen() {
                   accessibilityRole="button"
                 >
                   <View style={styles.actionRowLeft}>
-                    <Ionicons name="trash-outline" size={20} color={colors.accent.error} />
-                    <Text style={styles.deleteText}>Delete Account</Text>
+                    <Ionicons name="trash-outline" size={20} color={profileTextColor} />
+                    <Text style={[styles.deleteText, { color: profileTextColor }]}>
+                      Delete Account
+                    </Text>
                   </View>
                   {isDeleting ? (
-                    <ActivityIndicator size="small" color={colors.accent.error} />
+                    <ActivityIndicator size="small" color={profileTextColor} />
                   ) : (
                     <Ionicons name="chevron-forward" size={16} color={profileTextSecondaryColor} />
                   )}
@@ -1575,7 +1550,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: spacing.sm,
-    justifyContent: "flex-start",
+    justifyContent: "space-between",
   },
   profileSettingsBackButton: {
     width: 38,
@@ -1587,6 +1562,22 @@ const styles = StyleSheet.create({
   profileSettingsBackButtonPressed: {
     backgroundColor: colors.light.surface,
   },
+  profileSettingsDoneButton: {
+    minHeight: 34,
+    minWidth: 52,
+    borderRadius: radius.full,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: spacing.sm,
+  },
+  profileSettingsDoneButtonPressed: {
+    backgroundColor: colors.light.surface,
+  },
+  profileSettingsDoneText: {
+    ...typography.body,
+    color: colors.light.text,
+    fontWeight: "600",
+  },
   profileSettingsHeaderTitle: {
     ...typography.h2,
     color: colors.light.text,
@@ -1596,89 +1587,78 @@ const styles = StyleSheet.create({
     right: 56,
   },
   profileSettingsContent: {
-    paddingBottom: 36,
+    paddingBottom: spacing.xl,
+    backgroundColor: colors.light.background,
   },
-  profileSettingsAvatarSection: {
-    borderBottomWidth: 1,
-    borderBottomColor: colors.light.border,
+  profileSettingsIdentitySection: {
     paddingTop: spacing.lg,
-    paddingBottom: spacing.md,
-    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
+    paddingHorizontal: spacing.md,
     alignItems: "center",
   },
-  profileSettingsMediaRow: {
-    width: "100%",
+  profileSettingsAvatarRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
+    justifyContent: "center",
+    alignItems: "center",
     gap: spacing.md,
   },
-  profileSettingsMediaColumn: {
-    flex: 1,
+  profileSettingsAvatarOption: {
     alignItems: "center",
     gap: spacing.xs,
   },
-  profileSettingsMediaCircle: {
-    width: 96,
-    height: 96,
+  profileSettingsAvatarButton: {
+    width: 78,
+    height: 78,
     borderRadius: radius.full,
-    backgroundColor: colors.light.surfaceMuted,
+    backgroundColor: colors.light.surface,
     borderWidth: 1,
     borderColor: colors.light.border,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
   },
+  profileSettingsAvatarButtonSecondary: {
+    backgroundColor: colors.light.background,
+  },
   profileSettingsMediaImage: {
     width: "100%",
     height: "100%",
   },
-  profileSettingsMediaLabel: {
+  profileSettingsAvatarLabel: {
     ...typography.caption,
     color: colors.light.textSecondary,
-    fontWeight: "700",
-    letterSpacing: 0.5,
-    textTransform: "uppercase",
-    marginTop: spacing.xs,
-  },
-  profileSettingsMediaCtaButton: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    minHeight: 28,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  profileSettingsMediaCtaText: {
-    ...typography.body,
-    color: colors.accent.primary,
     fontWeight: "600",
-    textAlign: "center",
   },
-  profileSettingsCard: {
+  profileSettingsList: {
+    marginTop: spacing.sm,
     backgroundColor: colors.light.background,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: colors.light.border,
   },
-  profileSettingsRow: {
+  profileSettingsListRow: {
     minHeight: 56,
     borderBottomWidth: 1,
     borderBottomColor: colors.light.border,
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.md,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: spacing.md,
   },
-  profileSettingsRowLabel: {
+  profileSettingsListLabel: {
     ...typography.body,
     color: colors.light.text,
     flexShrink: 0,
   },
-  profileSettingsNameInput: {
+  profileSettingsListValueInput: {
     ...typography.body,
     color: colors.light.text,
     textAlign: "right",
     flex: 1,
     minHeight: 36,
     paddingVertical: 0,
+    paddingHorizontal: 0,
   },
   heroShell: {
     width: "100%",

@@ -27,7 +27,6 @@ interface TemplateSwitcherProps {
 }
 
 type RailPresetId = "tight" | "balanced" | "spotlight";
-type TemplateVisualId = "vinyl" | "cd" | "whole" | "unknown";
 
 interface RailPreset {
   itemWidth: number;
@@ -74,22 +73,18 @@ const ACTIVE_RAIL_PRESET: RailPresetId = "balanced";
 
 const TEMPLATE_ICON_FALLBACK: ComponentProps<typeof Ionicons>["name"] = "shapes";
 
-const TEMPLATE_VISUAL_ID_BY_TEMPLATE_ID: Record<string, TemplateVisualId> = {
-  vinyl: "vinyl",
-  cd: "cd",
-  whole: "whole",
-  hybrid: "whole",
-  "simple-spin": "vinyl",
-  "graphic-pop": "cd",
+const TEMPLATE_ICONS: Record<string, ComponentProps<typeof Ionicons>["name"]> = {
+  vinyl: "disc",
+  cd: "disc-outline",
+  whole: "ellipse",
+  hybrid: "ellipse",
+  "simple-spin": "disc",
+  "graphic-pop": "disc-outline",
 };
 
 function clampIndex(index: number, maxIndex: number): number {
   if (maxIndex <= 0) return 0;
   return Math.max(0, Math.min(index, maxIndex));
-}
-
-function getTemplateVisualId(templateId: string): TemplateVisualId {
-  return TEMPLATE_VISUAL_ID_BY_TEMPLATE_ID[templateId] ?? "unknown";
 }
 
 function TemplateGlyph({
@@ -101,176 +96,12 @@ function TemplateGlyph({
   size: number;
   selected: boolean;
 }) {
-  const visualId = getTemplateVisualId(templateId);
-  const shellSize = Math.max(size + 2, 18);
-  const shellRadius = shellSize / 2;
-  const vinylShellColor = selected ? "#0A101A" : "#121926";
-  const cdShellColor = selected ? "#E5EEF9" : "#D4DEEC";
-
-  if (visualId === "vinyl") {
-    return (
-      <View
-        style={[
-          styles.glyphShell,
-          {
-            width: shellSize,
-            height: shellSize,
-            borderRadius: shellRadius,
-            backgroundColor: vinylShellColor,
-            borderColor: selected ? "rgba(255,255,255,0.44)" : "rgba(255,255,255,0.22)",
-          },
-        ]}
-      >
-        <View
-          style={[
-            styles.glyphVinylRing,
-            {
-              width: shellSize * 0.74,
-              height: shellSize * 0.74,
-              borderRadius: shellSize * 0.37,
-              borderColor: selected ? "rgba(186,206,238,0.58)" : "rgba(206,224,255,0.38)",
-            },
-          ]}
-        />
-        <View
-          style={[
-            styles.glyphVinylRing,
-            {
-              width: shellSize * 0.56,
-              height: shellSize * 0.56,
-              borderRadius: shellSize * 0.28,
-              borderColor: selected ? "rgba(167,189,225,0.44)" : "rgba(179,199,232,0.3)",
-            },
-          ]}
-        />
-        <View
-          style={[
-            styles.glyphVinylLabel,
-            {
-              width: shellSize * 0.28,
-              height: shellSize * 0.28,
-              borderRadius: shellSize * 0.14,
-              backgroundColor: selected ? "#D0DCF1" : "#AFC0DE",
-            },
-          ]}
-        />
-        <View
-          style={[
-            styles.glyphVinylHole,
-            {
-              width: shellSize * 0.1,
-              height: shellSize * 0.1,
-              borderRadius: shellSize * 0.05,
-              backgroundColor: vinylShellColor,
-            },
-          ]}
-        />
-      </View>
-    );
-  }
-
-  if (visualId === "cd") {
-    return (
-      <View
-        style={[
-          styles.glyphShell,
-          {
-            width: shellSize,
-            height: shellSize,
-            borderRadius: shellRadius,
-            backgroundColor: cdShellColor,
-            borderColor: selected ? "rgba(16,24,38,0.4)" : "rgba(255,255,255,0.3)",
-          },
-        ]}
-      >
-        <View
-          style={[
-            styles.glyphCdRing,
-            {
-              width: shellSize * 0.78,
-              height: shellSize * 0.78,
-              borderRadius: shellSize * 0.39,
-              borderColor: selected ? "rgba(137,167,211,0.48)" : "rgba(146,172,213,0.4)",
-            },
-          ]}
-        />
-        <View
-          style={[
-            styles.glyphCdRing,
-            {
-              width: shellSize * 0.52,
-              height: shellSize * 0.52,
-              borderRadius: shellSize * 0.26,
-              borderColor: selected ? "rgba(255,255,255,0.62)" : "rgba(255,255,255,0.5)",
-            },
-          ]}
-        />
-        <View
-          style={[
-            styles.glyphCdStripeA,
-            {
-              width: shellSize * 0.72,
-              height: Math.max(shellSize * 0.08, 1.4),
-            },
-          ]}
-        />
-        <View
-          style={[
-            styles.glyphCdStripeB,
-            {
-              width: shellSize * 0.64,
-              height: Math.max(shellSize * 0.08, 1.4),
-            },
-          ]}
-        />
-        <View
-          style={[
-            styles.glyphCdHole,
-            {
-              width: shellSize * 0.18,
-              height: shellSize * 0.18,
-              borderRadius: shellSize * 0.09,
-              backgroundColor: cdShellColor,
-            },
-          ]}
-        />
-      </View>
-    );
-  }
-
-  if (visualId === "whole") {
-    return (
-      <View
-        style={[
-          styles.glyphShell,
-          {
-            width: shellSize,
-            height: shellSize,
-            borderRadius: shellRadius,
-            backgroundColor: selected ? "#E7ECF2" : "#D3DBE6",
-            borderColor: selected ? "rgba(17,26,41,0.42)" : "rgba(255,255,255,0.3)",
-          },
-        ]}
-      >
-        <View
-          style={{
-            width: shellSize * 0.78,
-            height: shellSize * 0.78,
-            borderRadius: shellSize * 0.39,
-            borderWidth: 1,
-            borderColor: selected ? "rgba(24,35,52,0.28)" : "rgba(255,255,255,0.42)",
-            backgroundColor: selected ? "rgba(255,255,255,0.26)" : "rgba(255,255,255,0.2)",
-          }}
-        />
-      </View>
-    );
-  }
-
+  const iconName = TEMPLATE_ICONS[templateId] ?? TEMPLATE_ICON_FALLBACK;
   return (
     <Ionicons
-      name={TEMPLATE_ICON_FALLBACK}
+      name={iconName}
       size={size}
-      color={selected ? colors.dark.text : "rgba(255,255,255,0.9)"}
+      color={selected ? colors.accent.onPrimary : "rgba(255,255,255,0.9)"}
     />
   );
 }

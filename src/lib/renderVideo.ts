@@ -742,9 +742,7 @@ async function renderVinylVideoWithVariant(
     const useSplitDiscSource = variantId !== "whole" && variant.useCenterLabelArtwork;
     if (useSplitDiscSource) {
       lines.push(
-        `[0:v]${buildPhotoScaleCropFilter(discSize, discSize)}[disc_raw_seed]`,
-        `[disc_raw_seed]split=2[disc_raw][label_artwork_raw]`,
-        `[disc_raw]format=rgba,geq='r=r(X,Y):g=g(X,Y):b=b(X,Y):a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${discRadius},2)),255,0)'[disc_photo_circle]`,
+        `[0:v]${buildPhotoScaleCropFilter(discSize, discSize)}[label_artwork_raw]`,
       );
     } else {
       lines.push(
@@ -890,9 +888,7 @@ async function renderVinylVideoWithVariant(
       variantId !== "whole" && variant.useCenterLabelArtwork;
     if (useSafeSplitDiscSource) {
       lines.push(
-        `[0:v]${buildPhotoScaleCropFilter(discSize, discSize)}[safe_disc_raw_seed]`,
-        `[safe_disc_raw_seed]split=2[safe_disc_raw][safe_label_artwork_raw]`,
-        `[safe_disc_raw]format=rgba,geq='r=r(X,Y):g=g(X,Y):b=b(X,Y):a=if(lte(pow(X-${discRadius},2)+pow(Y-${discRadius},2),pow(${discRadius},2)),255,0)'[safe_disc_photo]`,
+        `[0:v]${buildPhotoScaleCropFilter(discSize, discSize)}[safe_label_artwork_raw]`,
       );
     } else {
       lines.push(

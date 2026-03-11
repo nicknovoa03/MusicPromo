@@ -5,12 +5,13 @@ import {
   StyleSheet,
   Pressable,
   Alert,
+  ScrollView,
+  useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { usePostHog } from "posthog-react-native";
-import * as ExpoSwiftUI from "@expo/ui/swift-ui";
 import * as Sharing from "expo-sharing";
 import * as MediaLibrary from "expo-media-library";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
@@ -26,10 +27,6 @@ import {
   parseTemplateTweaksParam,
   resolveTemplateId,
 } from "@/lib/templates";
-import {
-  getIOSNativeUIPhase5Availability,
-  type ExpoSwiftUIModule,
-} from "@/lib/iosNativeUi";
 
 function firstParam(param: string | string[] | undefined) {
   return Array.isArray(param) ? param[0] : param;
@@ -38,6 +35,7 @@ function firstParam(param: string | string[] | undefined) {
 export default function ShareScreen() {
   const router = useRouter();
   const posthog = usePostHog();
+  const { height: windowHeight } = useWindowDimensions();
   const params = useLocalSearchParams<{
     videoUri: string;
     projectId: string;
@@ -58,24 +56,8 @@ export default function ShareScreen() {
   const isWholeTemplate = templateId === "whole" || templateId === "hybrid";
   const aspectRatio = firstParam(params.aspectRatio) === "1:1" ? "1:1" : "9:16";
   const showTemplateInfo = firstParam(params.showTemplateInfo) === "1";
-  const nativeShareAvailability = getIOSNativeUIPhase5Availability({
-    minIOSVersion: 16,
-  });
-  const nativeShareEnabledByContract = nativeShareAvailability.enabled;
-  const expoSwiftUI = nativeShareEnabledByContract
-    ? (ExpoSwiftUI as ExpoSwiftUIModule)
-    : null;
-  const expoSwiftUIAny = expoSwiftUI as Record<string, unknown> | null;
-  const hasNativeShareActionComponents = Boolean(
-    expoSwiftUIAny &&
-      "Host" in expoSwiftUIAny &&
-      "VStack" in expoSwiftUIAny &&
-      "Button" in expoSwiftUIAny,
-  );
-  const canUseNativeShareActions =
-    nativeShareEnabledByContract &&
-    expoSwiftUI !== null &&
-    hasNativeShareActionComponents;
+  const isCompactHeight = windowHeight < 760;
+  const previewSize = isCompactHeight ? 152 : 184;
 
   const [savedToRoll, setSavedToRoll] = useState(false);
   const [saveError, setSaveError] = useState<"permission" | "failed" | null>(
@@ -159,8 +141,14 @@ export default function ShareScreen() {
       </View>
 
       {/* Content */}
-      <View style={styles.content}>
-        <Text style={styles.heading}>Ready to share</Text>
+      <ScrollView
+        style={styles.contentScroll}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={[styles.heading, isCompactHeight && styles.headingCompact]}>
+          Ready to share
+        </Text>
 
         {/* Save status */}
         {savedToRoll && (
@@ -201,12 +189,17 @@ export default function ShareScreen() {
         )}
 
         {/* Video preview */}
-        <View style={styles.previewContainer}>
+        <View
+          style={[
+            styles.previewContainer,
+            isCompactHeight && styles.previewContainerCompact,
+          ]}
+        >
           {posterUri ? (
             isWholeTemplate ? (
               <CircularMediaPreview
                 imageUri={posterUri}
-                size={184}
+                size={previewSize}
                 spinning={false}
                 spinSpeed={templateTweaks.spinSpeed}
                 opacity={Math.min(Math.max(1 - templateTweaks.recordTransparency, 0.35), 1)}
@@ -216,7 +209,7 @@ export default function ShareScreen() {
             ) : (
               <VinylPreview
                 imageUri={posterUri}
-                size={184}
+                size={previewSize}
                 spinning={false}
                 tone={previewTone}
                 spinSpeed={templateTweaks.spinSpeed}
@@ -244,57 +237,34 @@ export default function ShareScreen() {
         </View>
 
         {/* Share buttons */}
-        {canUseNativeShareActions && expoSwiftUI ? (
-          <View style={styles.nativeActionsWrap}>
-            <expoSwiftUI.Host style={styles.nativeActionsHost} colorScheme="dark">
-              <expoSwiftUI.VStack spacing={10}>
-                <expoSwiftUI.Button
-                  variant="borderedProminent"
-                  systemImage="camera"
-                  onPress={handleShareInstagram}
-                >
-                  Share to Instagram
-                </expoSwiftUI.Button>
-                <expoSwiftUI.Button
-                  variant="bordered"
-                  systemImage="music.note"
-                  onPress={handleShareTikTok}
-                >
-                  Share to TikTok
-                </expoSwiftUI.Button>
-              </expoSwiftUI.VStack>
-            </expoSwiftUI.Host>
-          </View>
-        ) : (
-          <View style={styles.actions}>
-            <Pressable
-              onPress={handleShareInstagram}
-              style={({ pressed }) => [
-                styles.instagramButton,
-                pressed && styles.buttonPressed,
-              ]}
-              accessibilityLabel="Share to Instagram"
-              accessibilityRole="button"
-            >
-              <Ionicons name="logo-instagram" size={20} color="#FFFFFF" />
-              <Text style={styles.instagramText}>Share to Instagram</Text>
-            </Pressable>
+        <View style={styles.actions}>
+          <Pressable
+            onPress={handleShareInstagram}
+            style={({ pressed }) => [
+              styles.instagramButton,
+              pressed && styles.buttonPressed,
+            ]}
+            accessibilityLabel="Share to Instagram"
+            accessibilityRole="button"
+          >
+            <Ionicons name="logo-instagram" size={20} color="#FFFFFF" />
+            <Text style={styles.instagramText}>Share to Instagram</Text>
+          </Pressable>
 
-            <Pressable
-              onPress={handleShareTikTok}
-              style={({ pressed }) => [
-                styles.tiktokButton,
-                pressed && styles.buttonPressed,
-              ]}
-              accessibilityLabel="Share to TikTok"
-              accessibilityRole="button"
-            >
-              <Ionicons name="musical-notes" size={20} color={colors.dark.text} />
-              <Text style={styles.tiktokText}>Share to TikTok</Text>
-            </Pressable>
-          </View>
-        )}
-      </View>
+          <Pressable
+            onPress={handleShareTikTok}
+            style={({ pressed }) => [
+              styles.tiktokButton,
+              pressed && styles.buttonPressed,
+            ]}
+            accessibilityLabel="Share to TikTok"
+            accessibilityRole="button"
+          >
+            <Ionicons name="musical-notes" size={20} color={colors.dark.text} />
+            <Text style={styles.tiktokText}>Share to TikTok</Text>
+          </Pressable>
+        </View>
+      </ScrollView>
 
       {/* Done button */}
       <View style={styles.footer}>
@@ -337,15 +307,22 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    flex: 1,
+    flexGrow: 1,
     alignItems: "center",
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.lg,
+    paddingBottom: spacing.lg,
+  },
+  contentScroll: {
+    flex: 1,
   },
   heading: {
     ...typography.h1,
     color: colors.dark.text,
     marginBottom: spacing.sm,
+  },
+  headingCompact: {
+    marginBottom: spacing.xs,
   },
   savedBadge: {
     flexDirection: "row",
@@ -365,8 +342,13 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: spacing.xl,
+    marginBottom: spacing.lg,
     position: "relative",
+  },
+  previewContainerCompact: {
+    width: 168,
+    height: 168,
+    marginBottom: spacing.md,
   },
   shareTemplateInfoBadge: {
     position: "absolute",
@@ -377,15 +359,7 @@ const styles = StyleSheet.create({
   actions: {
     width: "100%",
     gap: spacing.md,
-  },
-  nativeActionsWrap: {
-    width: "100%",
-  },
-  nativeActionsHost: {
-    borderRadius: radius.md,
-    overflow: "hidden",
-    backgroundColor: colors.dark.surface,
-    padding: spacing.sm,
+    marginTop: spacing.sm,
   },
   instagramButton: {
     flexDirection: "row",

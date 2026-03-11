@@ -22,23 +22,43 @@ import { Image as ExpoImage } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { toByteArray } from "base64-js";
+import { type AspectRatio } from "@/components/create/AspectRatioToggle";
 import { TemplateInfoBadge } from "@/components/create/TemplateInfoBadge";
+import {
+  TemplateSwitcher,
+  type TemplateSwitcherOption,
+} from "@/components/create/TemplateSwitcher";
 import { colors, radius, spacing, typography } from "@/constants/tokens";
 import {
   getIOSNativeUIPhase5Availability,
   type ExpoSwiftUIModule,
 } from "@/lib/iosNativeUi";
 import { persistPickedMediaFile } from "@/lib/mediaStorage";
-import { getTemplateDefinition, type TemplateTweaks } from "@/lib/templates";
+import {
+  getTemplateDefinition,
+  type TemplateDefinition,
+  type TemplateTweaks,
+} from "@/lib/templates";
 
 interface TemplateCustomizeModalProps {
   visible: boolean;
+  aspectRatio: AspectRatio;
   templateId: string;
+  templateDefinitions: TemplateDefinition[];
   photoUri?: string | null;
+  photoLabel: string;
+  audioLabel: string;
   value: TemplateTweaks;
   showTemplateInfo?: boolean;
+  onTemplateSelectionChanged?: (nextTemplateId: string) => void;
+  onSwapPhoto: () => void;
+  onSwapAudio: () => void;
   onClose: () => void;
-  onApply: (next: TemplateTweaks) => void;
+  onApply: (next: {
+    tweaks: TemplateTweaks;
+    aspectRatio: AspectRatio;
+    templateId: string;
+  }) => void;
 }
 
 interface BackgroundOption {
@@ -48,13 +68,21 @@ interface BackgroundOption {
   swatch: string;
 }
 
-type TemplateControlTab = "quickTune" | "background" | "advancedMotion";
+type TemplateControlTab =
+  | "layout"
+  | "quickTune"
+  | "background"
+  | "advancedMotion"
+  | "media";
 
 const TEMPLATE_CONTROL_TABS: Array<{ id: TemplateControlTab; label: string }> = [
+  { id: "layout", label: "Layout" },
   { id: "quickTune", label: "Style" },
-  { id: "background", label: "Background" },
+  { id: "background", label: "Backdrop" },
   { id: "advancedMotion", label: "Motion" },
+  { id: "media", label: "Media" },
 ];
+const ASPECT_OPTIONS: AspectRatio[] = ["9:16", "1:1"];
 
 function isPresetBackgroundColor(
   color: string | null | undefined,
@@ -704,18 +732,12 @@ function PaletteStrip({
                       styles.paletteDotWrap,
                       selected && styles.paletteDotWrapSelected,
                       disabled && styles.paletteDotWrapDisabled,
+                      { backgroundColor: swatch.hex },
                     ]}
                     accessibilityLabel={`${section.label} ${swatch.label}`}
                     accessibilityRole="button"
                     accessibilityState={{ selected, disabled }}
-                  >
-                    <View
-                      style={[
-                        styles.paletteDot,
-                        { backgroundColor: swatch.hex },
-                      ]}
-                    />
-                  </Pressable>
+                  />
                 );
               })}
             </View>
@@ -759,10 +781,17 @@ async function triggerSelectionHaptic() {
 
 export function TemplateCustomizeModal({
   visible,
+  aspectRatio,
   templateId,
+  templateDefinitions,
   photoUri,
+  photoLabel,
+  audioLabel,
   value,
   showTemplateInfo = false,
+  onTemplateSelectionChanged,
+  onSwapPhoto,
+  onSwapAudio,
   onClose,
   onApply,
 }: TemplateCustomizeModalProps) {
@@ -777,13 +806,15 @@ export function TemplateCustomizeModal({
   const closeRequestedRef = useRef(false);
   const closeAnimationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [draft, setDraft] = useState<TemplateTweaks>(value);
+  const [draftAspectRatio, setDraftAspectRatio] = useState<AspectRatio>(aspectRatio);
+  const [draftTemplateId, setDraftTemplateId] = useState<string>(templateId);
   const [customHue, setCustomHue] = useState(DEFAULT_CUSTOM_HUE);
   const [customSaturation, setCustomSaturation] = useState(DEFAULT_CUSTOM_SATURATION);
   const [customLightness, setCustomLightness] = useState(DEFAULT_CUSTOM_LIGHTNESS);
   const [isCustomColorEnabled, setIsCustomColorEnabled] = useState(false);
   const [isBackgroundPhotoLoading, setIsBackgroundPhotoLoading] = useState(false);
   const [activeControlTab, setActiveControlTab] = useState<TemplateControlTab>(
-    "quickTune",
+    "layout",
   );
   const [lastPresetBackgroundColor, setLastPresetBackgroundColor] = useState<
     string | null
@@ -832,7 +863,7 @@ export function TemplateCustomizeModal({
       }
       openAnimationRef.current = null;
     });
-    setActiveControlTab("quickTune");
+    setActiveControlTab("layout");
   }, [visible, sheetTranslateY]);
 
   useEffect(
@@ -867,6 +898,8 @@ export function TemplateCustomizeModal({
   useEffect(() => {
     if (!visible) return;
     setDraft(value);
+    setDraftAspectRatio(aspectRatio);
+    setDraftTemplateId(templateId);
     const hasBackgroundPhoto = Boolean(value.stageBackgroundImageUri);
     const isPreset = isPresetBackgroundColor(
       value.stageBackgroundColor,
@@ -891,10 +924,10 @@ export function TemplateCustomizeModal({
     setCustomHue(DEFAULT_CUSTOM_HUE);
     setCustomSaturation(DEFAULT_CUSTOM_SATURATION);
     setCustomLightness(DEFAULT_CUSTOM_LIGHTNESS);
-  }, [value, visible]);
+  }, [aspectRatio, backgroundOptions, templateId, value, visible]);
 
   const isBackgroundPhotoSelected = Boolean(draft.stageBackgroundImageUri);
-  const templateDefinition = getTemplateDefinition(templateId);
+  const templateDefinition = getTemplateDefinition(draftTemplateId);
   const TemplateStageComponent = templateDefinition.StageComponent;
   const isVinylTemplate = templateDefinition.parity.vinylTone === "simple-spin";
   const usesGenericSizeLabel =
@@ -953,6 +986,14 @@ export function TemplateCustomizeModal({
         TEMPLATE_CONTROL_TABS.findIndex((tab) => tab.id === activeControlTab),
       ),
     [activeControlTab],
+  );
+  const templateSwitcherOptions = useMemo<TemplateSwitcherOption[]>(
+    () =>
+      templateDefinitions.map((option) => ({
+        id: option.id,
+        name: option.name,
+      })),
+    [templateDefinitions],
   );
 
   const updateSpinSpeed = useCallback((spinSpeed: number, withHaptics = true) => {
@@ -1328,6 +1369,23 @@ export function TemplateCustomizeModal({
     },
     [activeControlTab],
   );
+  const handleAspectRatioSelect = useCallback(
+    (nextAspectRatio: AspectRatio) => {
+      if (nextAspectRatio === draftAspectRatio) return;
+      setDraftAspectRatio(nextAspectRatio);
+      void triggerSelectionHaptic();
+    },
+    [draftAspectRatio],
+  );
+  const handleTemplateSelect = useCallback(
+    (nextTemplateId: string) => {
+      if (nextTemplateId === draftTemplateId) return;
+      setDraftTemplateId(nextTemplateId);
+      onTemplateSelectionChanged?.(nextTemplateId);
+      void triggerSelectionHaptic();
+    },
+    [draftTemplateId, onTemplateSelectionChanged],
+  );
 
   return (
     <Modal
@@ -1482,21 +1540,6 @@ export function TemplateCustomizeModal({
 
                     {activeControlTab === "background" ? (
                       <>
-                        <expoSwiftUI.Picker
-                          label="Preset"
-                          options={backgroundOptionsLabels}
-                          selectedIndex={selectedBackgroundOptionIndex}
-                          variant="menu"
-                          onOptionSelected={(event) => {
-                            handleNativeBackgroundPresetSelect(event.nativeEvent.index);
-                          }}
-                        />
-                        <expoSwiftUI.ColorPicker
-                          label="Custom color"
-                          selection={draft.stageBackgroundColor ?? customColor}
-                          supportsOpacity={false}
-                          onValueChanged={handleNativeBackgroundColorChange}
-                        />
                         <expoSwiftUI.LabeledContent label="Photo background">
                           <expoSwiftUI.Text>
                             {draft.stageBackgroundImageUri ? "Selected" : "None"}
@@ -1523,6 +1566,21 @@ export function TemplateCustomizeModal({
                             Remove background photo
                           </expoSwiftUI.Button>
                         ) : null}
+                        <expoSwiftUI.ColorPicker
+                          label="Custom color"
+                          selection={draft.stageBackgroundColor ?? customColor}
+                          supportsOpacity={false}
+                          onValueChanged={handleNativeBackgroundColorChange}
+                        />
+                        <expoSwiftUI.Picker
+                          label="Preset"
+                          options={backgroundOptionsLabels}
+                          selectedIndex={selectedBackgroundOptionIndex}
+                          variant="menu"
+                          onOptionSelected={(event) => {
+                            handleNativeBackgroundPresetSelect(event.nativeEvent.index);
+                          }}
+                        />
                         {isBackgroundPhotoSelected ? (
                           <>
                             <expoSwiftUI.LabeledContent label="Background blur">
@@ -1611,6 +1669,29 @@ export function TemplateCustomizeModal({
                         />
                       </>
                     ) : null}
+
+                    {activeControlTab === "media" ? (
+                      <>
+                        <expoSwiftUI.LabeledContent label="Audio">
+                          <expoSwiftUI.Text>{audioLabel || "Current audio"}</expoSwiftUI.Text>
+                        </expoSwiftUI.LabeledContent>
+                        <expoSwiftUI.Button
+                          systemImage="music.note"
+                          onPress={onSwapAudio}
+                        >
+                          Change audio track
+                        </expoSwiftUI.Button>
+                        <expoSwiftUI.LabeledContent label="Photo">
+                          <expoSwiftUI.Text>{photoLabel || "Current image"}</expoSwiftUI.Text>
+                        </expoSwiftUI.LabeledContent>
+                        <expoSwiftUI.Button
+                          systemImage="photo"
+                          onPress={onSwapPhoto}
+                        >
+                          Change photo
+                        </expoSwiftUI.Button>
+                      </>
+                    ) : null}
                   </expoSwiftUI.Section>
                 </expoSwiftUI.Form>
               </expoSwiftUI.Host>
@@ -1622,35 +1703,100 @@ export function TemplateCustomizeModal({
               showsVerticalScrollIndicator={false}
             >
               <View style={styles.controlPanel}>
-                <View style={styles.controlTabRow}>
-                {TEMPLATE_CONTROL_TABS.map((tab) => {
-                  const selected = tab.id === activeControlTab;
-                  return (
-                    <Pressable
-                      key={tab.id}
-                      onPress={() => handleControlTabSelect(tab.id)}
-                      style={[
-                        styles.controlTabPill,
-                        selected && styles.controlTabPillSelected,
-                      ]}
-                      accessibilityLabel={`Show ${tab.label}`}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected }}
-                    >
-                      <Text
-                        style={[
-                          styles.controlTabPillText,
-                          selected && styles.controlTabPillTextSelected,
-                        ]}
-                      >
-                        {tab.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
+                <View style={styles.controlTabRowWrap}>
+                  <ScrollView
+                    horizontal
+                    nestedScrollEnabled
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.controlTabRow}
+                  >
+                    {TEMPLATE_CONTROL_TABS.map((tab) => {
+                      const selected = tab.id === activeControlTab;
+                      return (
+                        <Pressable
+                          key={tab.id}
+                          onPress={() => handleControlTabSelect(tab.id)}
+                          style={({ pressed }) => [
+                            styles.controlTabPill,
+                            selected && styles.controlTabPillSelected,
+                            pressed && styles.controlTabPillPressed,
+                          ]}
+                          accessibilityLabel={`Show ${tab.label}`}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected }}
+                        >
+                          <Text
+                            numberOfLines={1}
+                            style={[
+                              styles.controlTabPillText,
+                              selected && styles.controlTabPillTextSelected,
+                            ]}
+                          >
+                            {tab.label}
+                          </Text>
+                          <View
+                            style={[
+                              styles.controlTabUnderline,
+                              selected && styles.controlTabUnderlineActive,
+                            ]}
+                          />
+                        </Pressable>
+                      );
+                    })}
+                  </ScrollView>
                 </View>
 
                 <View style={styles.controlPanelBody}>
+              {activeControlTab === "layout" ? (
+                <>
+                  <View style={styles.controlSection}>
+                    <View style={styles.controlHeader}>
+                      <Text style={styles.controlLabel}>Template</Text>
+                    </View>
+                    <TemplateSwitcher
+                      options={templateSwitcherOptions}
+                      value={draftTemplateId}
+                      onChange={handleTemplateSelect}
+                    />
+                  </View>
+
+                  <View style={styles.controlSection}>
+                    <View style={styles.controlHeader}>
+                      <Text style={styles.controlLabel}>Aspect Ratio</Text>
+                    </View>
+                    <View style={styles.aspectRatioRow}>
+                      {ASPECT_OPTIONS.map((option) => {
+                        const selected = option === draftAspectRatio;
+                        return (
+                          <Pressable
+                            key={`layout-aspect-${option}`}
+                            onPress={() => handleAspectRatioSelect(option)}
+                            style={[
+                              styles.optionPill,
+                              styles.aspectRatioOption,
+                              selected && styles.optionPillSelected,
+                            ]}
+                            accessibilityLabel={`Aspect ratio ${option}`}
+                            accessibilityRole="button"
+                            accessibilityState={{ selected }}
+                          >
+                            <Text
+                              style={[
+                                styles.optionPillText,
+                                selected && styles.optionPillTextSelected,
+                              ]}
+                            >
+                              {option}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </View>
+
+                </>
+              ) : null}
+
               {activeControlTab === "background" ? (
                 <>
                   <View style={styles.controlSection}>
@@ -1663,58 +1809,6 @@ export function TemplateCustomizeModal({
                       showsHorizontalScrollIndicator={false}
                       contentContainerStyle={styles.backgroundRow}
                     >
-                      {backgroundOptions.map((option) => {
-                        const selected = option.color === draft.stageBackgroundColor;
-                        return (
-                          <Pressable
-                            key={option.id}
-                            onPress={() => {
-                              setIsCustomColorEnabled(false);
-                              setLastPresetBackgroundColor(option.color);
-                              updateBackground(option.color);
-                            }}
-                            style={[
-                              styles.backgroundSwatchWrap,
-                              selected && styles.backgroundSwatchWrapSelected,
-                            ]}
-                            accessibilityLabel={`Background ${option.label}`}
-                            accessibilityRole="button"
-                            accessibilityState={{ selected }}
-                          >
-                            <View
-                              style={[
-                                styles.backgroundSwatch,
-                                { backgroundColor: option.swatch },
-                              ]}
-                            />
-                          </Pressable>
-                        );
-                      })}
-                      <Pressable
-                        onPress={() => toggleCustomColorEnabled(!isCustomColorEnabled)}
-                        style={[
-                          styles.backgroundSwatchWrap,
-                          styles.customBackgroundToggleWrap,
-                          isCustomColorEnabled && styles.backgroundSwatchWrapSelected,
-                        ]}
-                        accessibilityLabel="Toggle custom background color"
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: isCustomColorEnabled }}
-                      >
-                        <View
-                          style={[
-                            styles.backgroundSwatch,
-                            styles.customBackgroundToggleInner,
-                            { backgroundColor: customColor },
-                          ]}
-                        />
-                        <Ionicons
-                          name="color-palette"
-                          size={11}
-                          color="#ffffff"
-                          style={styles.customBackgroundToggleIcon}
-                        />
-                      </Pressable>
                       <Pressable
                         onPress={handlePickBackgroundPhoto}
                         style={[
@@ -1749,6 +1843,46 @@ export function TemplateCustomizeModal({
                           </View>
                         )}
                       </Pressable>
+                      <Pressable
+                        onPress={() => toggleCustomColorEnabled(!isCustomColorEnabled)}
+                        style={[
+                          styles.backgroundSwatchWrap,
+                          styles.customBackgroundToggleWrap,
+                          isCustomColorEnabled && styles.backgroundSwatchWrapSelected,
+                          { backgroundColor: customColor },
+                        ]}
+                        accessibilityLabel="Toggle custom background color"
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: isCustomColorEnabled }}
+                      >
+                        <Ionicons
+                          name="color-palette"
+                          size={11}
+                          color="#ffffff"
+                          style={styles.customBackgroundToggleIcon}
+                        />
+                      </Pressable>
+                      {backgroundOptions.map((option) => {
+                        const selected = option.color === draft.stageBackgroundColor;
+                        return (
+                          <Pressable
+                            key={option.id}
+                            onPress={() => {
+                              setIsCustomColorEnabled(false);
+                              setLastPresetBackgroundColor(option.color);
+                              updateBackground(option.color);
+                            }}
+                            style={[
+                              styles.backgroundSwatchWrap,
+                              selected && styles.backgroundSwatchWrapSelected,
+                              { backgroundColor: option.swatch },
+                            ]}
+                            accessibilityLabel={`Background ${option.label}`}
+                            accessibilityRole="button"
+                            accessibilityState={{ selected }}
+                          />
+                        );
+                      })}
                     </ScrollView>
                     {isCustomColorEnabled ? (
                       <View style={styles.customColorCard}>
@@ -1795,18 +1929,12 @@ export function TemplateCustomizeModal({
                                     style={[
                                       styles.customToneSwatchWrap,
                                       selected && styles.customToneSwatchWrapSelected,
+                                      { backgroundColor: toneColor },
                                     ]}
                                     accessibilityLabel={`Color tone ${toneLabel}`}
                                     accessibilityRole="button"
                                     accessibilityState={{ selected }}
-                                  >
-                                    <View
-                                      style={[
-                                        styles.customToneSwatch,
-                                        { backgroundColor: toneColor },
-                                      ]}
-                                    />
-                                  </Pressable>
+                                  />
                                 );
                               })}
                             </ScrollView>
@@ -1892,40 +2020,6 @@ export function TemplateCustomizeModal({
                     </ScrollView>
                   </View>
 
-                  <View style={styles.controlSection}>
-                    <View style={styles.controlHeader}>
-                      <Text style={styles.controlLabel}>Transparency</Text>
-                    </View>
-                    <ScrollView
-                      horizontal
-                      nestedScrollEnabled
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={styles.optionRow}
-                    >
-                      {RECORD_TRANSPARENCY_OPTIONS.map((option) => {
-                        const selected = option === draft.recordTransparency;
-                        return (
-                          <Pressable
-                            key={String(option)}
-                            onPress={() => updateRecordTransparency(option)}
-                            style={[styles.optionPill, selected && styles.optionPillSelected]}
-                            accessibilityLabel={`Transparency ${Math.round(option * 100)}%`}
-                            accessibilityRole="button"
-                            accessibilityState={{ selected }}
-                          >
-                            <Text
-                              style={[
-                                styles.optionPillText,
-                                selected && styles.optionPillTextSelected,
-                              ]}
-                            >
-                              {`${Math.round(option * 100)}%`}
-                            </Text>
-                          </Pressable>
-                        );
-                      })}
-                      </ScrollView>
-                  </View>
                   {isVinylTemplate ? (
                     <View style={styles.controlSection}>
                       <View style={styles.controlHeader}>
@@ -1969,6 +2063,41 @@ export function TemplateCustomizeModal({
                       </ScrollView>
                     </View>
                   ) : null}
+
+                  <View style={styles.controlSection}>
+                    <View style={styles.controlHeader}>
+                      <Text style={styles.controlLabel}>Transparency</Text>
+                    </View>
+                    <ScrollView
+                      horizontal
+                      nestedScrollEnabled
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.optionRow}
+                    >
+                      {RECORD_TRANSPARENCY_OPTIONS.map((option) => {
+                        const selected = option === draft.recordTransparency;
+                        return (
+                          <Pressable
+                            key={String(option)}
+                            onPress={() => updateRecordTransparency(option)}
+                            style={[styles.optionPill, selected && styles.optionPillSelected]}
+                            accessibilityLabel={`Transparency ${Math.round(option * 100)}%`}
+                            accessibilityRole="button"
+                            accessibilityState={{ selected }}
+                          >
+                            <Text
+                              style={[
+                                styles.optionPillText,
+                                selected && styles.optionPillTextSelected,
+                              ]}
+                            >
+                              {`${Math.round(option * 100)}%`}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                      </ScrollView>
+                  </View>
                 </>
               ) : null}
 
@@ -2080,6 +2209,64 @@ export function TemplateCustomizeModal({
                   </View>
                 </>
               ) : null}
+
+              {activeControlTab === "media" ? (
+                <View style={styles.controlSection}>
+                  <View style={styles.controlHeader}>
+                    <Text style={styles.controlLabel}>Audio & Photo</Text>
+                  </View>
+                  <Pressable
+                    onPress={onSwapAudio}
+                    style={styles.mediaActionRow}
+                    accessibilityLabel="Change audio"
+                    accessibilityRole="button"
+                  >
+                    <View style={styles.mediaActionLeft}>
+                      <Ionicons
+                        name="musical-notes-outline"
+                        size={17}
+                        color={colors.accent.primary}
+                      />
+                      <View style={styles.mediaActionTextWrap}>
+                        <Text style={styles.mediaActionTitle}>Change Audio Track</Text>
+                        <Text style={styles.mediaActionMeta} numberOfLines={1}>
+                          {audioLabel || "Current audio"}
+                        </Text>
+                      </View>
+                    </View>
+                    <Ionicons
+                      name="chevron-forward"
+                      size={17}
+                      color={colors.dark.textSecondary}
+                    />
+                  </Pressable>
+                  <Pressable
+                    onPress={onSwapPhoto}
+                    style={styles.mediaActionRow}
+                    accessibilityLabel="Change photo"
+                    accessibilityRole="button"
+                  >
+                    <View style={styles.mediaActionLeft}>
+                      <Ionicons
+                        name="camera-outline"
+                        size={17}
+                        color={colors.accent.primary}
+                      />
+                      <View style={styles.mediaActionTextWrap}>
+                        <Text style={styles.mediaActionTitle}>Change Photo</Text>
+                        <Text style={styles.mediaActionMeta} numberOfLines={1}>
+                          {photoLabel || "Current image"}
+                        </Text>
+                      </View>
+                    </View>
+                    <Ionicons
+                      name="chevron-forward"
+                      size={17}
+                      color={colors.dark.textSecondary}
+                    />
+                  </Pressable>
+                </View>
+              ) : null}
                 </View>
               </View>
             </ScrollView>
@@ -2087,12 +2274,23 @@ export function TemplateCustomizeModal({
 
         <View style={styles.footer}>
           <Pressable
-            onPress={() => onApply(draft)}
-            style={styles.applyButton}
+            onPress={() =>
+              onApply({
+                tweaks: draft,
+                aspectRatio: draftAspectRatio,
+                templateId: draftTemplateId,
+              })
+            }
+            style={({ pressed }) => [
+              styles.applyButton,
+              pressed && styles.applyButtonPressed,
+            ]}
             accessibilityLabel="Apply template controls"
             accessibilityRole="button"
           >
-            <Text style={styles.applyButtonText}>Apply Changes</Text>
+            <View style={styles.applyButtonContent}>
+              <Text style={styles.applyButtonText}>Apply Changes</Text>
+            </View>
           </Pressable>
         </View>
           </SafeAreaView>
@@ -2171,51 +2369,74 @@ const styles = StyleSheet.create({
   },
   controlPanel: {
     borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.12)",
-    backgroundColor: "rgba(255,255,255,0.03)",
-    overflow: "hidden",
+    borderWidth: 0,
+    borderColor: "transparent",
+    backgroundColor: "transparent",
+    overflow: "visible",
+  },
+  controlTabRowWrap: {
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "transparent",
+    marginHorizontal: -spacing.lg,
   },
   controlTabRow: {
     flexDirection: "row",
     alignItems: "center",
+    width: "100%",
     gap: spacing.xs,
     paddingHorizontal: spacing.sm,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.09)",
-    backgroundColor: "rgba(255,255,255,0.015)",
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.xs,
   },
   controlPanelBody: {
-    paddingHorizontal: spacing.sm,
-    paddingTop: spacing.xs,
-    paddingBottom: spacing.sm,
+    paddingHorizontal: 0,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
     gap: spacing.md,
   },
   controlTabPill: {
     flex: 1,
-    minHeight: 34,
-    borderRadius: radius.full,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
-    backgroundColor: "rgba(255,255,255,0.04)",
+    minHeight: 36,
+    minWidth: 0,
+    borderRadius: radius.sm,
+    borderWidth: 0,
+    borderColor: "transparent",
+    backgroundColor: "transparent",
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: spacing.sm,
+    paddingTop: spacing.xs,
+    paddingBottom: 3,
   },
   controlTabPillSelected: {
-    borderColor: colors.accent.primary,
-    backgroundColor: colors.accent.primary,
+    borderColor: "transparent",
+    backgroundColor: "transparent",
+  },
+  controlTabPillPressed: {
+    opacity: 0.7,
   },
   controlTabPillText: {
     ...typography.caption,
+    fontSize: 12,
     color: colors.dark.textSecondary,
-    fontWeight: "700",
-    letterSpacing: 0.2,
+    fontWeight: "600",
+    letterSpacing: 0.08,
+    textAlign: "center",
   },
   controlTabPillTextSelected: {
     color: colors.dark.text,
+    fontWeight: "700",
+  },
+  controlTabUnderline: {
+    marginTop: 6,
+    width: "100%",
+    height: 2,
+    borderRadius: radius.full,
+    backgroundColor: "transparent",
+  },
+  controlTabUnderlineActive: {
+    backgroundColor: colors.accent.primary,
   },
   previewCard: {
     minHeight: 300,
@@ -2230,6 +2451,13 @@ const styles = StyleSheet.create({
     right: spacing.xs,
   },
   controlSection: {
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "rgba(255,255,255,0.03)",
+    paddingHorizontal: spacing.sm,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.sm,
     gap: spacing.sm,
   },
   controlHeader: {
@@ -2240,57 +2468,105 @@ const styles = StyleSheet.create({
   controlLabel: {
     ...typography.caption,
     color: colors.dark.textSecondary,
-    textTransform: "uppercase",
-    letterSpacing: 0.4,
-    fontWeight: "700",
+    textTransform: "none",
+    letterSpacing: 0.16,
+    fontWeight: "600",
   },
   optionRow: {
     flexDirection: "row",
     flexWrap: "nowrap",
     alignItems: "center",
     gap: spacing.sm,
-    paddingRight: spacing.lg,
+    paddingRight: spacing.sm,
+  },
+  aspectRatioRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    width: "100%",
   },
   optionPill: {
-    minHeight: 34,
-    minWidth: 64,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radius.full,
+    minHeight: 36,
+    minWidth: 66,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.11)",
-    backgroundColor: colors.dark.surface,
+    borderColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(255,255,255,0.04)",
     alignItems: "center",
     justifyContent: "center",
   },
+  aspectRatioOption: {
+    flex: 1,
+    minWidth: 0,
+  },
   optionPillSelected: {
     borderColor: colors.accent.primary,
-    backgroundColor: colors.accent.primary,
+    backgroundColor: "rgba(255,255,255,0.12)",
   },
   optionPillText: {
     ...typography.caption,
     color: colors.dark.textSecondary,
-    fontWeight: "700",
+    fontWeight: "600",
+    letterSpacing: 0.12,
   },
   optionPillTextSelected: {
     color: colors.dark.text,
+    fontWeight: "700",
+  },
+  mediaActionRow: {
+    minHeight: 54,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  mediaActionLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    flex: 1,
+    minWidth: 0,
+  },
+  mediaActionTextWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  mediaActionTitle: {
+    ...typography.caption,
+    color: colors.dark.text,
+    fontWeight: "600",
+  },
+  mediaActionMeta: {
+    ...typography.caption,
+    color: colors.dark.textSecondary,
+    marginTop: 1,
   },
   backgroundRow: {
     flexDirection: "row",
     flexWrap: "nowrap",
     alignItems: "center",
     gap: spacing.sm,
-    paddingRight: spacing.lg,
+    paddingRight: spacing.sm,
   },
   backgroundSwatchWrap: {
-    width: 34,
-    height: 34,
-    borderRadius: radius.full,
-    borderWidth: 1.5,
-    borderColor: "rgba(255,255,255,0.18)",
+    width: 38,
+    height: 38,
+    borderRadius: radius.md,
+    borderWidth: 0,
+    borderColor: "transparent",
+    backgroundColor: "transparent",
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
   },
   backgroundSwatchWrapSelected: {
+    borderWidth: 2,
     borderColor: colors.accent.primary,
     shadowColor: colors.accent.primary,
     shadowOffset: { width: 0, height: 0 },
@@ -2298,21 +2574,19 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
   },
   backgroundSwatch: {
-    width: 24,
-    height: 24,
-    borderRadius: radius.full,
+    width: "100%",
+    height: "100%",
+    borderRadius: radius.md,
   },
   customBackgroundToggleWrap: {
-    borderColor: "rgba(255,255,255,0.3)",
-  },
-  customBackgroundToggleInner: {
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.42)",
+    borderWidth: 0,
+    borderColor: "transparent",
   },
   customBackgroundToggleIcon: {
     position: "absolute",
   },
   photoBackgroundToggleWrap: {
+    borderWidth: 1.5,
     borderColor: "rgba(255,255,255,0.3)",
   },
   photoBackgroundPlaceholder: {
@@ -2327,8 +2601,8 @@ const styles = StyleSheet.create({
   customColorCard: {
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-    backgroundColor: "rgba(255,255,255,0.04)",
+    borderColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "rgba(255,255,255,0.03)",
     padding: spacing.sm,
     gap: spacing.sm,
   },
@@ -2359,9 +2633,9 @@ const styles = StyleSheet.create({
   customHueLabel: {
     ...typography.caption,
     color: colors.dark.textSecondary,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.35,
+    fontWeight: "600",
+    textTransform: "none",
+    letterSpacing: 0.16,
   },
   paletteStripScroll: {
     marginHorizontal: -spacing.xs,
@@ -2382,10 +2656,10 @@ const styles = StyleSheet.create({
   paletteSectionLabel: {
     ...typography.caption,
     color: colors.dark.textSecondary,
-    fontWeight: "700",
-    fontSize: 10,
-    letterSpacing: 0.4,
-    textTransform: "uppercase",
+    fontWeight: "600",
+    fontSize: 11,
+    letterSpacing: 0.14,
+    textTransform: "none",
     paddingHorizontal: spacing.xs,
   },
   paletteSectionSwatches: {
@@ -2396,29 +2670,35 @@ const styles = StyleSheet.create({
   paletteSectionDivider: {
     marginTop: spacing.xs,
     height: 1,
-    backgroundColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(255,255,255,0.08)",
     marginHorizontal: spacing.xs,
   },
   paletteDotWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: radius.full,
-    borderWidth: 1.5,
-    borderColor: "rgba(255,255,255,0.16)",
+    width: 38,
+    height: 38,
+    borderRadius: radius.md,
+    borderWidth: 0,
+    borderColor: "transparent",
+    backgroundColor: "transparent",
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
   },
   paletteDotWrapSelected: {
-    borderColor: colors.dark.text,
-    transform: [{ scale: 1.08 }],
+    borderWidth: 2,
+    borderColor: colors.accent.primary,
+    shadowColor: colors.accent.primary,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.45,
+    shadowRadius: 8,
   },
   paletteDotWrapDisabled: {
     opacity: 0.42,
   },
   paletteDot: {
-    width: 18,
-    height: 18,
-    borderRadius: radius.full,
+    width: "100%",
+    height: "100%",
+    borderRadius: radius.md,
   },
   palettePager: {
     flexDirection: "row",
@@ -2441,31 +2721,32 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "nowrap",
     alignItems: "center",
-    gap: spacing.xs,
+    gap: spacing.sm,
     paddingRight: spacing.sm,
   },
   customToneSwatchWrap: {
-    width: 34,
-    height: 34,
-    borderRadius: radius.full,
-    borderWidth: 1.5,
-    borderColor: "rgba(255,255,255,0.16)",
+    width: 38,
+    height: 38,
+    borderRadius: radius.md,
+    borderWidth: 0,
+    borderColor: "transparent",
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "transparent",
+    overflow: "hidden",
   },
   customToneSwatchWrapSelected: {
+    borderWidth: 2,
     borderColor: colors.accent.primary,
     shadowColor: colors.accent.primary,
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.4,
+    shadowOpacity: 0.45,
     shadowRadius: 8,
   },
   customToneSwatch: {
-    width: 24,
-    height: 24,
-    borderRadius: radius.full,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.36)",
+    width: "100%",
+    height: "100%",
+    borderRadius: radius.md,
   },
   footer: {
     paddingHorizontal: spacing.lg,
@@ -2473,15 +2754,35 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
   },
   applyButton: {
-    minHeight: 52,
-    borderRadius: radius.md,
+    minHeight: 54,
+    borderRadius: radius.full,
     backgroundColor: colors.accent.primary,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+    overflow: "hidden",
+    paddingHorizontal: spacing.md,
+    shadowColor: colors.accent.primary,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+  },
+  applyButtonPressed: {
+    opacity: 0.92,
+    transform: [{ scale: 0.99 }],
+  },
+  applyButtonContent: {
+    width: "100%",
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
   },
   applyButtonText: {
     ...typography.button,
-    color: colors.dark.text,
+    color: colors.accent.onPrimary,
     fontWeight: "700",
+    letterSpacing: 0.2,
   },
 });

@@ -624,7 +624,11 @@ export function EditMediaModal({
                             <Ionicons
                               name="crop"
                               size={14}
-                              color={selected ? colors.dark.text : colors.dark.textSecondary}
+                              color={
+                                selected
+                                  ? colors.accent.onPrimary
+                                  : colors.dark.textSecondary
+                              }
                             />
                             <Text
                               style={[
@@ -837,8 +841,8 @@ const styles = StyleSheet.create({
     marginRight: TEMPLATE_CARD_GAP,
   },
   templateCardSelected: {
-    backgroundColor: "rgba(30,156,83,0.18)",
-    borderColor: "rgba(30,156,83,0.62)",
+    backgroundColor: "rgba(255,255,255,0.14)",
+    borderColor: "rgba(255,255,255,0.52)",
     shadowColor: colors.accent.primary,
     shadowOpacity: 0.25,
     shadowRadius: 8,
@@ -915,7 +919,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   optionPillTextSelected: {
-    color: colors.dark.text,
+    color: colors.accent.onPrimary,
   },
   actionRow: {
     minHeight: 56,
@@ -965,7 +969,7 @@ const styles = StyleSheet.create({
   },
   applyButtonText: {
     ...typography.button,
-    color: colors.dark.text,
+    color: colors.accent.onPrimary,
     fontWeight: "700",
   },
 });
