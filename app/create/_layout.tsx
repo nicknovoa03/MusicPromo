@@ -26,6 +26,7 @@ export default function CreateLayout() {
         name="editor"
         options={{
           contentStyle: { backgroundColor: colors.dark.background },
+          animation: "fade",
           fullScreenGestureEnabled: Platform.OS === "ios",
           animationMatchesGesture: Platform.OS === "ios",
         }}

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -13,19 +13,12 @@ import {
   Alert,
   Modal,
 } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useConvex, useMutation, useQuery } from "convex/react";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import * as Haptics from "expo-haptics";
 import { usePostHog } from "posthog-react-native";
-import * as ExpoSwiftUI from "@expo/ui/swift-ui";
-import {
-  accessibilityLabel as swiftUIAccessibilityLabel,
-  onLongPressGesture as swiftUIOnLongPressGesture,
-  onTapGesture as swiftUIOnTapGesture,
-  opacity as swiftUIOpacity,
-} from "@expo/ui/swift-ui/modifiers";
 import { api } from "../../convex/_generated/api";
 import type { Doc } from "../../convex/_generated/dataModel";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
@@ -33,7 +26,8 @@ import type { EventName } from "@/lib/analytics";
 import {
   canUseIOSNativeUIPhase5,
   getIOSNativeUIPhase5Availability,
-  type ExpoSwiftUIModule,
+  loadExpoSwiftUIModifiersModule,
+  loadExpoSwiftUIModule,
 } from "@/lib/iosNativeUi";
 import { normalizeMediaUri } from "@/lib/mediaUri";
 import { getLocalArtistProfile } from "@/lib/localProfile";
@@ -224,7 +218,6 @@ async function triggerSelectionHaptic(type: "enter" | "toggle-on" | "toggle-off"
 export default function HomeScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme();
-  const insets = useSafeAreaInsets();
   const convex = useConvex();
   const posthog = usePostHog();
   const { isLocalGuest } = useLocalSession();
@@ -232,6 +225,10 @@ export default function HomeScreen() {
   const projectsQuery = useQuery(api.projects.listByUser);
   const deleteProject = useMutation(api.projects.remove);
   const [localProjects, setLocalProjects] = useState<LocalProject[] | null>(null);
+  const [cachedLocalProjects, setCachedLocalProjects] = useState<LocalProject[]>([]);
+  const [cachedServerProjects, setCachedServerProjects] = useState<Doc<"projects">[]>(
+    [],
+  );
   const [localAvatarUrl, setLocalAvatarUrl] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [actionProject, setActionProject] = useState<Project | null>(null);
@@ -252,6 +249,7 @@ export default function HomeScreen() {
   const homeOverlayStrongColor = isDarkMode
     ? "rgba(14,16,20,0.78)"
     : colors.overlay.lightStrong;
+  const homeDestructiveColor = "#C62828";
   const fabBackgroundColor = isDarkMode ? "#FFFFFF" : colors.accent.fab;
   const fabIconColor = isDarkMode ? "#000000" : colors.accent.fabIcon;
 
@@ -271,17 +269,31 @@ export default function HomeScreen() {
   const shouldLoadExpoSwiftUI =
     nativeProjectActionsEnabledByContract || nativeEmptyStateEnabledByContract;
   const expoSwiftUI = shouldLoadExpoSwiftUI
-    ? (ExpoSwiftUI as ExpoSwiftUIModule)
+    ? loadExpoSwiftUIModule()
+    : null;
+  const expoSwiftUIModifiers = shouldLoadExpoSwiftUI
+    ? loadExpoSwiftUIModifiersModule()
     : null;
   const expoSwiftUIAny = expoSwiftUI as Record<string, unknown> | null;
   const hasNativeProjectGestureComponents = Boolean(
     expoSwiftUIAny && "RoundedRectangle" in expoSwiftUIAny,
   );
+  const expoSwiftUIModifiersAny =
+    expoSwiftUIModifiers as Record<string, unknown> | null;
+  const hasNativeProjectGestureModifiers = Boolean(
+    expoSwiftUIModifiersAny &&
+      "opacity" in expoSwiftUIModifiersAny &&
+      "onTapGesture" in expoSwiftUIModifiersAny &&
+      "onLongPressGesture" in expoSwiftUIModifiersAny &&
+      "accessibilityLabel" in expoSwiftUIModifiersAny,
+  );
 
   const canUseNativeProjectGestures =
     nativeProjectActionsEnabledByContract &&
     expoSwiftUI !== null &&
-    hasNativeProjectGestureComponents;
+    hasNativeProjectGestureComponents &&
+    expoSwiftUIModifiers !== null &&
+    hasNativeProjectGestureModifiers;
   const canUseNativeEmptyState =
     nativeEmptyStateEnabledByContract && expoSwiftUI !== null;
 
@@ -289,6 +301,18 @@ export default function HomeScreen() {
     const projects = await listLocalProjects();
     setLocalProjects(projects);
   }, []);
+
+  useEffect(() => {
+    if (localProjects !== null) {
+      setCachedLocalProjects(localProjects);
+    }
+  }, [localProjects]);
+
+  useEffect(() => {
+    if (projectsQuery !== undefined) {
+      setCachedServerProjects(projectsQuery);
+    }
+  }, [projectsQuery]);
 
   useFocusEffect(
     useCallback(() => {
@@ -336,6 +360,8 @@ export default function HomeScreen() {
   const openProject = useCallback(
     (project: Project) => {
       const projectKey = getProjectId(project);
+      const projectPhotoUri = normalizeMediaUri(project.photoUri);
+      const projectAudioUri = normalizeMediaUri(project.audioUri);
       if (longPressProjectIdRef.current === projectKey) {
         longPressProjectIdRef.current = null;
         return;
@@ -352,16 +378,20 @@ export default function HomeScreen() {
       }
       if (deletingProjectId === projectKey) return;
       track("project_reopened", { projectId: projectKey });
+      if (projectPhotoUri && /^https?:\/\//i.test(projectPhotoUri)) {
+        void Image.prefetch(projectPhotoUri).catch(() => {});
+      }
 
       if (isLocalProject(project)) {
         router.push({
           pathname: "/create/editor",
           params: {
+            source: "home",
             localProjectId: project.id,
             title: project.title ?? "",
-            photoUri: encodeUriParam(project.photoUri ?? ""),
+            photoUri: encodeUriParam(projectPhotoUri ?? ""),
             photoName: project.photoName ?? "",
-            audioUri: encodeUriParam(project.audioUri ?? ""),
+            audioUri: encodeUriParam(projectAudioUri ?? ""),
             audioName: project.audioName ?? "",
             aspectRatio: project.aspectRatio,
             templateId: resolveTemplateId(project.templateId),
@@ -376,9 +406,12 @@ export default function HomeScreen() {
       router.push({
         pathname: "/create/editor",
         params: {
+          source: "home",
           projectId: String(project._id),
           title: project.title ?? "",
+          photoUri: encodeUriParam(projectPhotoUri ?? ""),
           photoName: project.photoName ?? "",
+          audioUri: encodeUriParam(projectAudioUri ?? ""),
           audioName: project.audioName ?? "",
           aspectRatio: project.aspectRatio,
           templateId: resolveTemplateId(project.templateId),
@@ -522,10 +555,18 @@ export default function HomeScreen() {
   );
 
   const stableProjects = useMemo(() => {
-    if (isLocalGuest) return localProjects ?? [];
-    return projectsQuery ?? [];
-  }, [isLocalGuest, localProjects, projectsQuery]);
-  const isLoading = isLocalGuest ? localProjects === null : projectsQuery === undefined;
+    if (isLocalGuest) return localProjects ?? cachedLocalProjects;
+    return projectsQuery ?? cachedServerProjects;
+  }, [
+    cachedLocalProjects,
+    cachedServerProjects,
+    isLocalGuest,
+    localProjects,
+    projectsQuery,
+  ]);
+  const isLoading = isLocalGuest
+    ? localProjects === null && cachedLocalProjects.length === 0
+    : projectsQuery === undefined && cachedServerProjects.length === 0;
   const hasProjects = stableProjects.length > 0;
   const selectedProjects = useMemo(
     () =>
@@ -668,15 +709,20 @@ export default function HomeScreen() {
             {cardContent}
           </Pressable>
 
-          {canRenderNativeProjectGestures && expoSwiftUI ? (
+          {canRenderNativeProjectGestures && expoSwiftUI && expoSwiftUIModifiers ? (
             <expoSwiftUI.Host style={styles.nativeCardContextMenuOverlay}>
               <expoSwiftUI.RoundedRectangle
                 cornerRadius={radius.md}
                 modifiers={[
-                  swiftUIOpacity(0.015),
-                  swiftUIOnTapGesture(() => openProject(item)),
-                  swiftUIOnLongPressGesture(() => handleProjectLongPress(item), 0.22),
-                  swiftUIAccessibilityLabel(`Open ${title}. Long press to multi-select.`),
+                  expoSwiftUIModifiers.opacity(0.015),
+                  expoSwiftUIModifiers.onTapGesture(() => openProject(item)),
+                  expoSwiftUIModifiers.onLongPressGesture(
+                    () => handleProjectLongPress(item),
+                    0.22,
+                  ),
+                  expoSwiftUIModifiers.accessibilityLabel(
+                    `Open ${title}. Long press to multi-select.`,
+                  ),
                 ]}
               />
             </expoSwiftUI.Host>
@@ -709,6 +755,7 @@ export default function HomeScreen() {
       canUseNativeProjectGestures,
       deletingProjectId,
       expoSwiftUI,
+      expoSwiftUIModifiers,
       handleProjectLongPress,
       homeOverlayStrongColor,
       homeSurfaceColor,
@@ -725,7 +772,7 @@ export default function HomeScreen() {
     !!actionProject && deletingProjectId === getProjectId(actionProject);
   const selectedCount = selectedProjectIds.length;
   const isCancelSelectionAction = selectedCount === 0;
-  const bulkDeleteBottom = Math.max(90, insets.bottom + 68);
+  const bulkDeleteBottom = Platform.select({ ios: 8, android: 6, default: 6 }) ?? 6;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: homeBackgroundColor }]} edges={["top"]}>
@@ -769,7 +816,7 @@ export default function HomeScreen() {
 
       {/* TODO: Add cursor pagination if project history grows beyond v1 size. */}
       <FlatList
-        data={isLoading ? [] : stableProjects}
+        data={stableProjects}
         keyExtractor={(item) => getProjectId(item)}
         renderItem={renderProjectCard}
         numColumns={2}
@@ -894,15 +941,17 @@ export default function HomeScreen() {
                   accessibilityState={{ disabled: isDeletingSelectedProject }}
                 >
                   {isDeletingSelectedProject ? (
-                    <ActivityIndicator size="small" color={colors.accent.error} />
+                    <ActivityIndicator size="small" color={homeDestructiveColor} />
                   ) : (
                     <Ionicons
                       name="trash-outline"
                       size={18}
-                      color={colors.accent.error}
+                      color={homeDestructiveColor}
                     />
                   )}
-                  <Text style={styles.actionsDeleteText}>Delete</Text>
+                  <Text style={[styles.actionsDeleteText, { color: homeDestructiveColor }]}>
+                    Delete
+                  </Text>
                 </Pressable>
               </View>
             </>

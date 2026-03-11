@@ -8,7 +8,6 @@ import {
   Easing,
   Image,
   Dimensions,
-  ActivityIndicator,
   Modal,
   TextInput,
   Alert,
@@ -16,11 +15,15 @@ import {
   Platform,
   type LayoutChangeEvent,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  initialWindowMetrics,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
+import Constants from "expo-constants";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { usePostHog } from "posthog-react-native";
-import * as ExpoSwiftUI from "@expo/ui/swift-ui";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { ConvexError } from "convex/values";
 import * as FileSystem from "expo-file-system/legacy";
@@ -54,7 +57,7 @@ import {
 } from "@/lib/templates";
 import {
   getIOSNativeUIPhase5Availability,
-  type ExpoSwiftUIModule,
+  loadExpoSwiftUIModule,
 } from "@/lib/iosNativeUi";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
@@ -239,7 +242,9 @@ function formatClock(seconds: number): string {
 export default function EditorScreen() {
   const router = useRouter();
   const posthog = usePostHog();
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{
+    source?: string;
     projectId?: string;
     localProjectId?: string;
     title?: string;
@@ -262,6 +267,7 @@ export default function EditorScreen() {
   }>();
 
   const projectId = firstParam(params.projectId);
+  const entrySource = firstParam(params.source);
   const initialLocalProjectId = firstParam(params.localProjectId) || null;
   const existingProjectId = asProjectId(projectId);
   const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
@@ -412,6 +418,11 @@ export default function EditorScreen() {
   }, [initialLocalProjectId]);
 
   useEffect(() => {
+    if (!photoUri || !/^https?:\/\//i.test(photoUri)) return;
+    void Image.prefetch(photoUri).catch(() => {});
+  }, [photoUri]);
+
+  useEffect(() => {
     setTemplateId(resolveTemplateId(firstParam(params.templateId)));
   }, [params.templateId]);
 
@@ -463,7 +474,7 @@ export default function EditorScreen() {
   });
   const nativeEditorEnabledByContract = nativeEditorAvailability.enabled;
   const expoSwiftUI = nativeEditorEnabledByContract
-    ? (ExpoSwiftUI as ExpoSwiftUIModule)
+    ? loadExpoSwiftUIModule()
     : null;
   const expoSwiftUIAny = expoSwiftUI as Record<string, unknown> | null;
   const hasNativeEditorControls = Boolean(
@@ -1298,10 +1309,15 @@ export default function EditorScreen() {
           await createDraftProject();
         }
       } finally {
+        if (entrySource === "home") {
+          router.back();
+          return;
+        }
         router.replace("/" as const);
       }
     })();
   }, [
+    entrySource,
     isLocalGuest,
     createLocalDraftProject,
     createDraftProject,
@@ -1314,6 +1330,7 @@ export default function EditorScreen() {
       router.push({
         pathname: "/create/picker",
         params: {
+          source: entrySource ?? "",
           projectId: currentProjectId ? String(currentProjectId) : "",
           localProjectId: currentLocalProjectId ?? "",
           title: projectTitle,
@@ -1347,6 +1364,7 @@ export default function EditorScreen() {
       showTemplateInfo,
       trimStart,
       trimEnd,
+      entrySource,
     ],
   );
 
@@ -1534,6 +1552,9 @@ export default function EditorScreen() {
       ) {
         track("template_tweak_changed", { control: "stage_background" });
       }
+      if (normalizedNext.showWatermark !== templateTweaks.showWatermark) {
+        track("template_tweak_changed", { control: "watermark" });
+      }
       setTemplateTweaks(normalizedNext);
       setIsTemplateCustomizeVisible(false);
     },
@@ -1586,10 +1607,17 @@ export default function EditorScreen() {
   }
   const canSaveProjectTitle =
     projectNameDraft.trim().length > 0;
+  const fallbackTopInset = Math.max(
+    initialWindowMetrics?.insets.top ?? 0,
+    Constants.statusBarHeight ?? 0,
+  );
+  const fallbackBottomInset = initialWindowMetrics?.insets.bottom ?? 0;
+  const stableTopInset = Math.max(insets.top, fallbackTopInset);
+  const stableBottomInset = Math.max(insets.bottom, fallbackBottomInset);
 
   return (
-    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
-      <View style={styles.header}>
+    <SafeAreaView style={[styles.container, { paddingBottom: stableBottomInset }]} edges={[]}>
+      <View style={[styles.header, { paddingTop: stableTopInset + spacing.sm }]}>
         <View style={[styles.headerSide, styles.headerSideLeft]}>
           <Pressable
             onPress={handleCloseEditor}
@@ -1630,11 +1658,7 @@ export default function EditorScreen() {
             accessibilityRole="button"
             accessibilityState={{ disabled: !canExport }}
           >
-            {isCheckingFiles ? (
-              <ActivityIndicator size="small" color={colors.accent.onPrimary} />
-            ) : (
-              <Text style={styles.exportText}>Export</Text>
-            )}
+            <Text style={styles.exportText}>Export</Text>
           </Pressable>
         </View>
       </View>
@@ -1747,6 +1771,7 @@ export default function EditorScreen() {
             subtitle={subtitle}
             templateTweaks={templateTweaks}
             onTogglePlay={handlePlayPause}
+            showWatermark={templateTweaks.showWatermark}
           />
           <View style={styles.previewActionRow}>
             <Pressable

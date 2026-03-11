@@ -12,8 +12,8 @@ export function BetaWatermark({
 }: BetaWatermarkProps) {
   if (!isBetaWatermarkEnabled()) return null;
 
-  const resolvedInset = inset ?? Math.max(8, Math.round(containerWidth * 0.042));
-  const fontSize = Math.max(10, Math.min(14, Math.round(containerWidth * 0.036)));
+  const resolvedInset = inset ?? Math.max(4, Math.round(containerWidth * 0.03));
+  const fontSize = Math.max(9, Math.min(13, Math.round(containerWidth * 0.033)));
 
   return (
     <View
@@ -35,9 +35,9 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   text: {
-    color: "rgba(255,255,255,0.76)",
+    color: "rgba(255,255,255,0.56)",
     fontWeight: "600",
-    textShadowColor: "rgba(0,0,0,0.6)",
+    textShadowColor: "rgba(0,0,0,0.45)",
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
     includeFontPadding: false,

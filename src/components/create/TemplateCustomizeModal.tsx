@@ -17,7 +17,6 @@ import {
 } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import * as Haptics from "expo-haptics";
-import * as ExpoSwiftUI from "@expo/ui/swift-ui";
 import { Image as ExpoImage } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -31,7 +30,7 @@ import {
 import { colors, radius, spacing, typography } from "@/constants/tokens";
 import {
   getIOSNativeUIPhase5Availability,
-  type ExpoSwiftUIModule,
+  loadExpoSwiftUIModule,
 } from "@/lib/iosNativeUi";
 import { persistPickedMediaFile } from "@/lib/mediaStorage";
 import {
@@ -91,7 +90,7 @@ function isPresetBackgroundColor(
   return options.some((option) => option.color === (color ?? null));
 }
 
-const SPIN_SPEED_OPTIONS = [0.5, 1, 1.5];
+const SPIN_SPEED_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5];
 const RECORD_SIZE_OPTIONS = [0.8, 1, 1.2];
 const ARTWORK_SCALE_OPTIONS = [1.5, 3, 4.5];
 const MIN_ARTWORK_SCALE = ARTWORK_SCALE_OPTIONS[0] ?? 1.5;
@@ -960,7 +959,7 @@ export function TemplateCustomizeModal({
   const nativeTemplateControlsEnabledByContract =
     nativeTemplateControlsAvailability.enabled;
   const expoSwiftUI = nativeTemplateControlsEnabledByContract
-    ? (ExpoSwiftUI as ExpoSwiftUIModule)
+    ? loadExpoSwiftUIModule()
     : null;
   const expoSwiftUIAny = expoSwiftUI as Record<string, unknown> | null;
   const hasNativeTemplateControlsComponents = Boolean(
@@ -973,7 +972,8 @@ export function TemplateCustomizeModal({
       "LabeledContent" in expoSwiftUIAny &&
       "Text" in expoSwiftUIAny &&
       "Button" in expoSwiftUIAny &&
-      "ColorPicker" in expoSwiftUIAny,
+      "ColorPicker" in expoSwiftUIAny &&
+      "Switch" in expoSwiftUIAny,
   );
   const canUseNativeTemplateControls =
     false &&
@@ -1049,6 +1049,14 @@ export function TemplateCustomizeModal({
       void triggerSelectionHaptic();
     }
   }, [draft.backgroundBlur]);
+
+  const updateShowWatermark = useCallback((showWatermark: boolean, withHaptics = true) => {
+    if (showWatermark === draft.showWatermark) return;
+    setDraft((prev) => ({ ...prev, showWatermark }));
+    if (withHaptics) {
+      void triggerSelectionHaptic();
+    }
+  }, [draft.showWatermark]);
 
   const updateRotationStartDeg = useCallback((
     rotationStartDeg: number,
@@ -1445,6 +1453,7 @@ export function TemplateCustomizeModal({
                 trackTitle="Template Preview"
                 subtitle="Template Controls"
                 templateTweaks={draft}
+                showWatermark={draft.showWatermark}
               />
               {showTemplateInfo ? (
                 <TemplateInfoBadge
@@ -1617,6 +1626,14 @@ export function TemplateCustomizeModal({
                             />
                           </>
                         ) : null}
+                        <expoSwiftUI.Switch
+                          label="Watermark"
+                          value={draft.showWatermark}
+                          variant="button"
+                          onValueChange={(nextValue) => {
+                            updateShowWatermark(nextValue, false);
+                          }}
+                        />
                       </>
                     ) : null}
 
@@ -1991,6 +2008,54 @@ export function TemplateCustomizeModal({
                       </ScrollView>
                     </View>
                   ) : null}
+
+                  <View style={styles.controlSection}>
+                    <View style={styles.controlHeader}>
+                      <Text style={styles.controlLabel}>Watermark</Text>
+                    </View>
+                    <View style={styles.motionOptionRow}>
+                      <Pressable
+                        onPress={() => updateShowWatermark(true)}
+                        style={[
+                          styles.optionPill,
+                          styles.motionOption,
+                          draft.showWatermark && styles.optionPillSelected,
+                        ]}
+                        accessibilityLabel="Enable watermark"
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: draft.showWatermark }}
+                      >
+                        <Text
+                          style={[
+                            styles.optionPillText,
+                            draft.showWatermark && styles.optionPillTextSelected,
+                          ]}
+                        >
+                          On
+                        </Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => updateShowWatermark(false)}
+                        style={[
+                          styles.optionPill,
+                          styles.motionOption,
+                          !draft.showWatermark && styles.optionPillSelected,
+                        ]}
+                        accessibilityLabel="Disable watermark"
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: !draft.showWatermark }}
+                      >
+                        <Text
+                          style={[
+                            styles.optionPillText,
+                            !draft.showWatermark && styles.optionPillTextSelected,
+                          ]}
+                        >
+                          Off
+                        </Text>
+                      </Pressable>
+                    </View>
+                  </View>
                 </>
               ) : null}
 
@@ -2116,7 +2181,12 @@ export function TemplateCustomizeModal({
                     <View style={styles.controlHeader}>
                       <Text style={styles.controlLabel}>Spin Speed</Text>
                     </View>
-                    <View style={styles.motionOptionRow}>
+                    <ScrollView
+                      horizontal
+                      nestedScrollEnabled
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={[styles.optionRow, styles.spinSpeedRow]}
+                    >
                       {SPIN_SPEED_OPTIONS.map((option) => {
                         const selected = option === draft.spinSpeed;
                         return (
@@ -2125,7 +2195,7 @@ export function TemplateCustomizeModal({
                             onPress={() => updateSpinSpeed(option)}
                             style={[
                               styles.optionPill,
-                              styles.motionOption,
+                              styles.spinSpeedOption,
                               selected && styles.optionPillSelected,
                             ]}
                             accessibilityLabel={`Spin speed ${formatSpeed(option)}`}
@@ -2133,8 +2203,12 @@ export function TemplateCustomizeModal({
                             accessibilityState={{ selected }}
                           >
                             <Text
+                              numberOfLines={1}
+                              adjustsFontSizeToFit
+                              minimumFontScale={0.9}
                               style={[
                                 styles.optionPillText,
+                                styles.spinSpeedOptionText,
                                 selected && styles.optionPillTextSelected,
                               ]}
                             >
@@ -2143,7 +2217,7 @@ export function TemplateCustomizeModal({
                           </Pressable>
                         );
                       })}
-                    </View>
+                    </ScrollView>
                   </View>
 
                   <View style={styles.controlSection}>
@@ -2503,6 +2577,9 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     width: "100%",
   },
+  spinSpeedRow: {
+    paddingRight: 0,
+  },
   aspectRatioRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -2536,6 +2613,12 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
+  spinSpeedOption: {
+    flexGrow: 0,
+    flexShrink: 0,
+    minWidth: 74,
+    paddingHorizontal: spacing.sm,
+  },
   optionPillSelected: {
     borderColor: colors.accent.primary,
     backgroundColor: "rgba(255,255,255,0.12)",
@@ -2545,6 +2628,9 @@ const styles = StyleSheet.create({
     color: colors.dark.textSecondary,
     fontWeight: "600",
     letterSpacing: 0.12,
+  },
+  spinSpeedOptionText: {
+    textAlign: "center",
   },
   optionPillTextSelected: {
     color: colors.dark.text,

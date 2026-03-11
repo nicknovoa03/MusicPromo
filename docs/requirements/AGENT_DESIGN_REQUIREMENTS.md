@@ -97,6 +97,7 @@
 - 2026-03-06: **Home project management now supports multi-select bulk delete** → Added explicit selection mode (header toggle + long-press entry) and a bottom-centered destructive CTA so users can clean up multiple drafts in one pass without card-by-card deletion.
 - 2026-03-06: **Editor actions were anchored directly on preview with modal sheet parity behavior** → Consolidated controls into preview overlays (`settings`, info toggle, `Edit Template`) and standardized template/media surfaces as partial-height sheets with outside-tap and swipe-down dismissal expectations.
 - 2026-03-06: **Roadmap sequencing updated to introduce an iOS-native UI adoption phase before broader post-MVP template expansion** → Phase 5 is now dedicated to iOS-native surface/liquid-glass adoption with explicit Android and unsupported-iOS fallbacks.
+- 2026-03-11: **Vinyl export path now prefers pre-baked shell compositing by artwork-size state** → Added `vinyl_shell_{small|normal|large}.png` overlays and explicit artwork-scale mapping in the FFmpeg pipeline to remove per-frame groove/rim synthesis on the Vinyl template while preserving procedural fallback reliability.
 
 ## 2) Guidance (Methodology for Evolving Prompts)
 

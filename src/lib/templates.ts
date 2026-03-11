@@ -34,6 +34,7 @@ export interface TemplateTweaks {
   rotationDirection: "cw" | "ccw";
   stageBackgroundColor?: string | null;
   stageBackgroundImageUri?: string | null;
+  showWatermark: boolean;
 }
 
 export const DEFAULT_TEMPLATE_TWEAKS: TemplateTweaks = {
@@ -46,10 +47,11 @@ export const DEFAULT_TEMPLATE_TWEAKS: TemplateTweaks = {
   rotationDirection: "cw",
   stageBackgroundColor: null,
   stageBackgroundImageUri: null,
+  showWatermark: true,
 };
 
 export interface TemplateTweaksRoutePayload {
-  v: 1 | 2 | 3 | 4 | 5 | 6;
+  v: 1 | 2 | 3 | 4 | 5 | 6 | 7;
   spinSpeed: number;
   recordSize?: number;
   artworkScale?: number;
@@ -60,6 +62,7 @@ export interface TemplateTweaksRoutePayload {
   rotationDirection?: "cw" | "ccw";
   stageBackgroundColor: string | null;
   stageBackgroundImageUri?: string | null;
+  showWatermark?: boolean;
 }
 
 const MIN_SPIN_SPEED = 0.25;
@@ -98,6 +101,10 @@ function sanitizeRotationDirection(
   value?: string | null,
 ): "cw" | "ccw" {
   return value === "ccw" ? "ccw" : "cw";
+}
+
+function sanitizeShowWatermark(value?: boolean | null): boolean {
+  return value !== false;
 }
 
 function opacityToTransparency(opacity: number): number {
@@ -148,13 +155,14 @@ export function normalizeTemplateTweaks(
     stageBackgroundImageUri: sanitizeBackgroundImageUri(
       input?.stageBackgroundImageUri,
     ),
+    showWatermark: sanitizeShowWatermark(input?.showWatermark),
   };
 }
 
 export function serializeTemplateTweaksParam(value: TemplateTweaks): string {
   const normalized = normalizeTemplateTweaks(value);
   const payload: TemplateTweaksRoutePayload = {
-    v: 6,
+    v: 7,
     spinSpeed: normalized.spinSpeed,
     recordSize: normalized.recordSize,
     artworkScale: normalized.artworkScale,
@@ -164,6 +172,7 @@ export function serializeTemplateTweaksParam(value: TemplateTweaks): string {
     rotationDirection: normalized.rotationDirection,
     stageBackgroundColor: normalized.stageBackgroundColor ?? null,
     stageBackgroundImageUri: normalized.stageBackgroundImageUri ?? null,
+    showWatermark: normalized.showWatermark,
   };
   return encodeURIComponent(JSON.stringify(payload));
 }
@@ -182,7 +191,8 @@ export function parseTemplateTweaksParam(
         parsed.v !== 3 &&
         parsed.v !== 4 &&
         parsed.v !== 5 &&
-        parsed.v !== 6)
+        parsed.v !== 6 &&
+        parsed.v !== 7)
     ) {
       return null;
     }
@@ -207,6 +217,7 @@ export function parseTemplateTweaksParam(
       rotationDirection: parsed.rotationDirection,
       stageBackgroundColor: parsed.stageBackgroundColor,
       stageBackgroundImageUri: parsed.stageBackgroundImageUri,
+      showWatermark: parsed.showWatermark,
     });
   } catch {
     return null;

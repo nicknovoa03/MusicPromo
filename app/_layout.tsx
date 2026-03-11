@@ -1,9 +1,14 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { Redirect, Slot, useSegments } from "expo-router";
 import { ClerkProvider, ClerkLoaded, useAuth } from "@clerk/clerk-expo";
-import { ConvexProviderWithClerk } from "convex/react-clerk";
+import { ConvexProviderWithAuth } from "convex/react";
 import { PostHogProvider } from "posthog-react-native";
 import { StatusBar } from "expo-status-bar";
+import { useColorScheme } from "react-native";
+import {
+  SafeAreaProvider,
+  initialWindowMetrics,
+} from "react-native-safe-area-context";
 import { tokenCache } from "@/lib/clerk";
 import { convex } from "@/lib/convex";
 import {
@@ -52,15 +57,17 @@ function AuthGate() {
 
 function AppStatusBar() {
   const segments = useSegments();
+  const colorScheme = useColorScheme();
   const root = segments[0];
   const child = segments[1];
+  const isDarkMode = colorScheme === "dark";
 
   const isDarkSurface =
     root === "create" &&
     (child === "editor" || child === "rendering" || child === "share");
   const isProfileSurface = root === "(tabs)" && child === "profile";
 
-  return <StatusBar style={isDarkSurface || isProfileSurface ? "light" : "dark"} />;
+  return <StatusBar style={isDarkMode || isDarkSurface || isProfileSurface ? "light" : "dark"} />;
 }
 
 function IOSNativeUIPhase5Bootstrap() {
@@ -92,13 +99,42 @@ function IOSNativeUIPhase5Bootstrap() {
   return null;
 }
 
+function useConvexAuthFromClerk() {
+  const { isLoaded, isSignedIn, getToken, orgId, orgRole } = useAuth();
+
+  const fetchAccessToken = useCallback(
+    async (_args: { forceRefreshToken: boolean }) => {
+      try {
+        // Intentionally avoid `skipCache` due Clerk API rejecting the
+        // debug query param currently used for forced refresh requests.
+        return await getToken({ template: "convex" });
+      } catch {
+        return null;
+      }
+    },
+    // Clerk's `getToken` is not memoized; keeping it out of deps avoids
+    // rebuilding the fetcher each render and thrashing Convex auth state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [orgId, orgRole]
+  );
+
+  return useMemo(
+    () => ({
+      isLoading: !isLoaded,
+      isAuthenticated: isSignedIn ?? false,
+      fetchAccessToken,
+    }),
+    [isLoaded, isSignedIn, fetchAccessToken]
+  );
+}
+
 function AppWithProviders() {
   return (
-    <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
+    <ConvexProviderWithAuth client={convex} useAuth={useConvexAuthFromClerk}>
       <AuthGate />
       <AppStatusBar />
       <IOSNativeUIPhase5Bootstrap />
-    </ConvexProviderWithClerk>
+    </ConvexProviderWithAuth>
   );
 }
 
@@ -106,13 +142,15 @@ export default function RootLayout() {
   const posthogEnabled = posthogApiKey && posthogHost;
 
   const inner = (
-    <LocalSessionProvider>
-      <ClerkProvider publishableKey={clerkPublishableKey} tokenCache={tokenCache}>
-        <ClerkLoaded>
-          <AppWithProviders />
-        </ClerkLoaded>
-      </ClerkProvider>
-    </LocalSessionProvider>
+    <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+      <LocalSessionProvider>
+        <ClerkProvider publishableKey={clerkPublishableKey} tokenCache={tokenCache}>
+          <ClerkLoaded>
+            <AppWithProviders />
+          </ClerkLoaded>
+        </ClerkProvider>
+      </LocalSessionProvider>
+    </SafeAreaProvider>
   );
 
   if (posthogEnabled) {

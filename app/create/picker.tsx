@@ -16,7 +16,6 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { StatusBar } from "expo-status-bar";
 import { useIsFocused } from "@react-navigation/native";
-import * as ExpoSwiftUI from "@expo/ui/swift-ui";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import { usePostHog } from "posthog-react-native";
@@ -34,7 +33,7 @@ import {
 } from "@/lib/templates";
 import {
   getIOSNativeUIPhase5Availability,
-  type ExpoSwiftUIModule,
+  loadExpoSwiftUIModule,
 } from "@/lib/iosNativeUi";
 
 type Tab = "photo" | "audio";
@@ -66,6 +65,7 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
   const isFocused = useIsFocused();
   const router = useRouter();
   const params = useLocalSearchParams<{
+    source?: string;
     projectId?: string;
     localProjectId?: string;
     title?: string;
@@ -89,6 +89,7 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
   }>();
   const posthog = usePostHog();
   const projectId = firstParam(params.projectId);
+  const source = firstParam(params.source);
   const localProjectId = firstParam(params.localProjectId);
   const title = firstParam(params.title);
   const aspectRatio = firstParam(params.aspectRatio);
@@ -133,7 +134,7 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
   });
   const nativePickerEnabledByContract = nativePickerAvailability.enabled;
   const expoSwiftUI = nativePickerEnabledByContract
-    ? (ExpoSwiftUI as ExpoSwiftUIModule)
+    ? loadExpoSwiftUIModule()
     : null;
   const expoSwiftUIAny = expoSwiftUI as Record<string, unknown> | null;
   const hasNativePickerSummaryComponents = Boolean(
@@ -300,6 +301,7 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
       };
 
       if (projectId) nextParams.projectId = projectId;
+      if (source) nextParams.source = source;
       if (localProjectId) nextParams.localProjectId = localProjectId;
       if (title) nextParams.title = title;
 
@@ -316,6 +318,7 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
       showTemplateInfoParam,
       templateId,
       projectId,
+      source,
       localProjectId,
       title,
       router,
@@ -354,6 +357,7 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
       router.replace({
         pathname: "/create/editor" as const,
         params: {
+          source: source ?? "",
           projectId: projectId ?? "",
           localProjectId: localProjectId ?? "",
           title: title ?? "",
@@ -378,6 +382,7 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
     returnToEditor,
     resetPickerState,
     router,
+    source,
     projectId,
     localProjectId,
     title,
@@ -422,13 +427,16 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
     ? colors.dark.surface
     : colors.light.surfaceMuted;
   const pickerIconBorderColor = isDarkMode ? colors.dark.border : colors.light.border;
+  const pickerHeaderPrimaryActionColor = isDarkMode ? colors.dark.text : colors.light.text;
+  const pickerHeaderSecondaryActionColor = isDarkMode
+    ? colors.dark.textSecondary
+    : colors.light.textSecondary;
   const statusBarStyle = isDarkMode ? "light" : "dark";
   const activeAspectRatio = aspectRatio ?? DEFAULT_NEW_PROJECT_ASPECT_RATIO;
-  const dockOverlayCompensation = tabEmbedded ? 82 : 0;
   const contentSidePadding = spacing.md;
   const contentHorizontalPadding = contentSidePadding * 2;
   const contentTopPadding = spacing.md;
-  const contentBottomPadding = spacing.lg + dockOverlayCompensation;
+  const contentBottomPadding = tabEmbedded ? spacing.md : spacing.lg;
   const cardGap = spacing.md;
   const availableWidth = Math.max(0, windowWidth - contentHorizontalPadding);
   const availableHeight = Math.max(
@@ -455,7 +463,9 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
           accessibilityLabel="Cancel"
           accessibilityRole="button"
         >
-          <Text style={styles.cancelText}>Cancel</Text>
+          <Text style={[styles.cancelText, { color: pickerHeaderSecondaryActionColor }]}>
+            Cancel
+          </Text>
         </Pressable>
 
         <Text style={[styles.headerTitle, { color: pickerTextColor }]}>Select Media</Text>
@@ -468,7 +478,17 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
           accessibilityRole="button"
           accessibilityState={{ disabled: !bothSelected }}
         >
-          <Text style={[styles.addText, !bothSelected && styles.addTextDisabled]}>
+          <Text
+            style={[
+              styles.addText,
+              {
+                color: bothSelected
+                  ? pickerHeaderPrimaryActionColor
+                  : pickerHeaderSecondaryActionColor,
+              },
+              !bothSelected && styles.addTextDisabled,
+            ]}
+          >
             Add
           </Text>
         </Pressable>
@@ -521,7 +541,6 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
           style={[
             styles.pickerCard,
             mediaCardStyle,
-            styles.photoCard,
             { borderColor: pickerBorderColor, backgroundColor: pickerSurfaceColor },
           ]}
         >
@@ -794,9 +813,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.light.surface,
     padding: spacing.md,
     overflow: "hidden",
-  },
-  photoCard: {
-    marginTop: spacing.xs,
   },
   pickAreaWrap: {
     flex: 1,

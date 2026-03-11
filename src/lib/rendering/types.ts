@@ -22,6 +22,7 @@ export interface RenderRequest {
   aspectRatio: RenderAspectRatio;
   debugRenderModeBadge?: boolean;
   fastMode?: boolean;
+  outputFileName?: string;
   onProgress?: (percent: number) => void;
   engine?: RenderEngine;
 }

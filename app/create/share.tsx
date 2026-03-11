@@ -16,9 +16,6 @@ import * as Sharing from "expo-sharing";
 import * as MediaLibrary from "expo-media-library";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
 import { TemplateInfoBadge } from "@/components/create/TemplateInfoBadge";
-import { CircularMediaPreview } from "@/components/create/CircularMediaPreview";
-import { VinylPreview } from "@/components/create/VinylPreview";
-import { BetaWatermark } from "@/components/create/BetaWatermark";
 import type { EventName } from "@/lib/analytics";
 import { decodeUriParam } from "@/lib/uri";
 import { normalizeMediaUri } from "@/lib/mediaUri";
@@ -53,8 +50,8 @@ export default function ShareScreen() {
     firstParam(params.templateTweaks),
   );
   const templateTweaks = parsedTemplateTweaks ?? normalizeTemplateTweaks();
-  const previewTone = getTemplateDefinition(templateId).parity.vinylTone;
-  const isWholeTemplate = templateId === "whole" || templateId === "hybrid";
+  const templateDefinition = getTemplateDefinition(templateId);
+  const TemplateStageComponent = templateDefinition.StageComponent;
   const aspectRatio = firstParam(params.aspectRatio) === "1:1" ? "1:1" : "9:16";
   const showTemplateInfo = firstParam(params.showTemplateInfo) === "1";
   const isCompactHeight = windowHeight < 760;
@@ -197,28 +194,18 @@ export default function ShareScreen() {
           ]}
         >
           {posterUri ? (
-            isWholeTemplate ? (
-              <CircularMediaPreview
-                imageUri={posterUri}
-                size={previewSize}
-                spinning={false}
-                spinSpeed={templateTweaks.spinSpeed}
-                opacity={Math.min(Math.max(1 - templateTweaks.recordTransparency, 0.35), 1)}
-                rotationStartDeg={templateTweaks.rotationStartDeg}
-                rotationDirection={templateTweaks.rotationDirection}
-              />
-            ) : (
-              <VinylPreview
-                imageUri={posterUri}
-                size={previewSize}
-                spinning={false}
-                tone={previewTone}
-                spinSpeed={templateTweaks.spinSpeed}
-                discOpacity={Math.min(Math.max(1 - templateTweaks.recordTransparency, 0.35), 1)}
-                rotationStartDeg={templateTweaks.rotationStartDeg}
-                rotationDirection={templateTweaks.rotationDirection}
-              />
-            )
+            <TemplateStageComponent
+              width={previewSize}
+              height={previewSize}
+              aspectRatio={aspectRatio}
+              photoUri={posterUri}
+              isPlaying={false}
+              playbackLabel="Share preview"
+              trackTitle="Preview"
+              subtitle={templateDefinition.name}
+              templateTweaks={templateTweaks}
+              showWatermark={false}
+            />
           ) : (
             <Ionicons
               name="videocam"
@@ -235,10 +222,6 @@ export default function ShareScreen() {
               style={styles.shareTemplateInfoBadge}
             />
           ) : null}
-          <BetaWatermark
-            containerWidth={isCompactHeight ? 168 : 200}
-            inset={showTemplateInfo ? 36 : undefined}
-          />
         </View>
 
         {/* Share buttons */}

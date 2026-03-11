@@ -8,6 +8,7 @@
     "start:go:tunnel": "expo start --go --tunnel",
     "start:dev-client:tunnel": "expo start --dev-client --tunnel --clear --scheme musicpromo",
     "start:dev-client:phase5": "EXPO_PUBLIC_IOS_NATIVE_UI_PHASE5=1 expo start --dev-client --tunnel --clear --scheme musicpromo",
+    "start:dev-client:phase5:lan": "EXPO_PUBLIC_IOS_NATIVE_UI_PHASE5=1 expo start --dev-client --host lan --clear --scheme musicpromo",
     "start:go:fast": "expo start --go --lan --no-dev --minify",
     "atlas:start": "EXPO_ATLAS=true expo start --go --lan",
     "atlas:export:ios": "EXPO_ATLAS=true npx expo export --platform ios",

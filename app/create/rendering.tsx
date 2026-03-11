@@ -7,7 +7,11 @@ import {
   Alert,
   useWindowDimensions,
 } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  initialWindowMetrics,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { usePostHog } from "posthog-react-native";
@@ -175,9 +179,16 @@ export default function RenderingScreen() {
   const trackTitle = displayMediaLabel(audioName, "Untitled track");
   const stageWidthRatio = aspectRatio === "9:16" ? 9 / 16 : 1;
   const maxStageWidth = Math.min(windowWidth - STAGE_HORIZONTAL_PADDING, 440);
+  const fallbackTopInset = Math.max(
+    initialWindowMetrics?.insets.top ?? 0,
+    Constants.statusBarHeight ?? 0,
+  );
+  const fallbackBottomInset = initialWindowMetrics?.insets.bottom ?? 0;
+  const stableTopInset = Math.max(insets.top, fallbackTopInset);
+  const stableBottomInset = Math.max(insets.bottom, fallbackBottomInset);
   const reservedVerticalSpace =
-    insets.top +
-    insets.bottom +
+    stableTopInset +
+    stableBottomInset +
     EXPORT_CONTENT_VERTICAL_OFFSET +
     48 + // header row
     32 + // "Exporting" label + top margin
@@ -324,6 +335,7 @@ export default function RenderingScreen() {
         aspectRatio,
         debugRenderModeBadge: ENABLE_RENDER_MODE_BADGE,
         fastMode: ENABLE_FAST_RENDER_MODE,
+        outputFileName: title?.trim() || audioName?.trim() || "MusicPromo Export",
         onProgress: (percent) => {
           setProgress(percent);
         },
@@ -443,6 +455,7 @@ export default function RenderingScreen() {
             trackTitle={trackTitle}
             subtitle={projectTitle}
             templateTweaks={templateTweaks}
+            showWatermark={templateTweaks.showWatermark}
           />
           {showTemplateInfo ? (
             <TemplateInfoBadge
@@ -472,9 +485,9 @@ export default function RenderingScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
+    <SafeAreaView style={styles.container} edges={[]}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: stableTopInset + spacing.xs }]}>
         <Pressable
           onPress={handleCancel}
           style={styles.headerButton}
@@ -487,7 +500,7 @@ export default function RenderingScreen() {
       </View>
 
       {/* Main content */}
-      <View style={styles.content}>
+      <View style={[styles.content, { paddingBottom: spacing.lg + stableBottomInset }]}>
         {renderState === "error" ? (
           <View style={styles.errorContainer}>
             <Ionicons

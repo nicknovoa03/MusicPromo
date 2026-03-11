@@ -5,6 +5,7 @@ export const IOS_NATIVE_UI_PHASE5_FLAG_NAME = "EXPO_PUBLIC_IOS_NATIVE_UI_PHASE5"
 
 type ExpoUINativeModule = Record<string, unknown>;
 export type ExpoSwiftUIModule = typeof import("@expo/ui/swift-ui");
+export type ExpoSwiftUIModifiersModule = typeof import("@expo/ui/swift-ui/modifiers");
 
 type IOSNativeUIPhase5AvailabilityOptions = {
   minIOSVersion?: number;
@@ -21,6 +22,8 @@ export type IOSNativeUIPhase5Availability = {
 };
 
 let cachedExpoUINativeModuleAvailable: boolean | undefined;
+let cachedExpoSwiftUIModule: ExpoSwiftUIModule | null | undefined;
+let cachedExpoSwiftUIModifiersModule: ExpoSwiftUIModifiersModule | null | undefined;
 
 function getIOSVersionMajor() {
   if (Platform.OS !== "ios") return null;
@@ -35,6 +38,42 @@ function getIOSVersionMajor() {
 
 function getExpoUINativeModule() {
   return requireOptionalNativeModule<ExpoUINativeModule>("ExpoUI");
+}
+
+export function loadExpoSwiftUIModule() {
+  if (cachedExpoSwiftUIModule !== undefined) {
+    return cachedExpoSwiftUIModule;
+  }
+  if (!isExpoUINativeModuleAvailable()) {
+    cachedExpoSwiftUIModule = null;
+    return cachedExpoSwiftUIModule;
+  }
+
+  try {
+    cachedExpoSwiftUIModule = require("@expo/ui/swift-ui") as ExpoSwiftUIModule;
+  } catch {
+    cachedExpoSwiftUIModule = null;
+  }
+
+  return cachedExpoSwiftUIModule;
+}
+
+export function loadExpoSwiftUIModifiersModule() {
+  if (cachedExpoSwiftUIModifiersModule !== undefined) {
+    return cachedExpoSwiftUIModifiersModule;
+  }
+  if (!isExpoUINativeModuleAvailable()) {
+    cachedExpoSwiftUIModifiersModule = null;
+    return cachedExpoSwiftUIModifiersModule;
+  }
+
+  try {
+    cachedExpoSwiftUIModifiersModule = require("@expo/ui/swift-ui/modifiers") as ExpoSwiftUIModifiersModule;
+  } catch {
+    cachedExpoSwiftUIModifiersModule = null;
+  }
+
+  return cachedExpoSwiftUIModifiersModule;
 }
 
 export function isIOSNativeUIPhase5FlagEnabled() {

@@ -29,7 +29,6 @@ import { useAuth, useUser } from "@clerk/clerk-expo";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import * as ImagePicker from "expo-image-picker";
-import * as ExpoSwiftUI from "@expo/ui/swift-ui";
 import { usePostHog } from "posthog-react-native";
 import { api } from "../../convex/_generated/api";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
@@ -51,7 +50,7 @@ import { useLocalSession } from "@/providers/localSession";
 import { persistPickedMediaFile } from "@/lib/mediaStorage";
 import {
   getIOSNativeUIPhase5Availability,
-  type ExpoSwiftUIModule,
+  loadExpoSwiftUIModule,
 } from "@/lib/iosNativeUi";
 import { sleep } from "@/lib/utils";
 
@@ -202,6 +201,9 @@ export default function ProfileScreen() {
     ? "rgba(255,255,255,0.12)"
     : "rgba(16,35,23,0.14)";
   const profileStatusBarStyle = isDarkMode ? "light" : "dark";
+  const profileSettingsPressColor = isDarkMode
+    ? "rgba(255,255,255,0.12)"
+    : profileSurfaceColor;
 
   useEffect(() => {
     let isActive = true;
@@ -819,7 +821,7 @@ export default function ProfileScreen() {
   });
   const nativeProfileEnabledByContract = nativeProfileAvailability.enabled;
   const expoSwiftUI = nativeProfileEnabledByContract
-    ? (ExpoSwiftUI as ExpoSwiftUIModule)
+    ? loadExpoSwiftUIModule()
     : null;
   const expoSwiftUIAny = expoSwiftUI as Record<string, unknown> | null;
   const hasNativeProfileComponents = Boolean(
@@ -1017,16 +1019,26 @@ export default function ProfileScreen() {
               <Animated.View
                 style={[
                   styles.profileSettingsAnimatedLayer,
+                  { backgroundColor: profileBackgroundColor },
                   { transform: [{ translateX: profileSettingsTranslateX }] },
                 ]}
               >
                 <SafeAreaView
-                  style={[styles.profileSettingsScreen, { paddingTop: modalTopInset }]}
+                  style={[
+                    styles.profileSettingsScreen,
+                    { paddingTop: modalTopInset, backgroundColor: profileBackgroundColor },
+                  ]}
                   edges={[]}
                 >
                   <StatusBar style={profileStatusBarStyle} />
                   <View
-                    style={styles.profileSettingsHeader}
+                    style={[
+                      styles.profileSettingsHeader,
+                      {
+                        backgroundColor: profileBackgroundColor,
+                        borderBottomColor: profileBorderColor,
+                      },
+                    ]}
                     {...(shouldUseRNSettingsGesture
                       ? profileSettingsPanResponder.panHandlers
                       : {})}
@@ -1035,29 +1047,40 @@ export default function ProfileScreen() {
                       onPress={handleCloseProfileSettings}
                       style={({ pressed }) => [
                         styles.profileSettingsBackButton,
-                        pressed && styles.profileSettingsBackButtonPressed,
+                        pressed && { backgroundColor: profileSettingsPressColor },
                       ]}
                       accessibilityLabel="Close edit profile"
                       accessibilityRole="button"
                     >
                       <Ionicons name="chevron-back" size={22} color={profileTextColor} />
                     </Pressable>
-                    <Text style={styles.profileSettingsHeaderTitle}>Edit profile</Text>
+                    <Text
+                      style={[styles.profileSettingsHeaderTitle, { color: profileTextColor }]}
+                    >
+                      Edit profile
+                    </Text>
                     <Pressable
                       onPress={handleCloseProfileSettings}
                       style={({ pressed }) => [
                         styles.profileSettingsDoneButton,
-                        pressed && styles.profileSettingsDoneButtonPressed,
+                        pressed && { backgroundColor: profileSettingsPressColor },
                       ]}
                       accessibilityLabel="Done editing profile"
                       accessibilityRole="button"
                     >
-                      <Text style={styles.profileSettingsDoneText}>Done</Text>
+                      <Text
+                        style={[styles.profileSettingsDoneText, { color: profileTextColor }]}
+                      >
+                        Done
+                      </Text>
                     </Pressable>
                   </View>
                   {canUseNativeProfileSettings && expoSwiftUI ? (
                     <expoSwiftUI.Host
-                      style={styles.nativeSettingsHost}
+                      style={[
+                        styles.nativeSettingsHost,
+                        { backgroundColor: profileBackgroundColor },
+                      ]}
                       useViewportSizeMeasurement
                       colorScheme={isDarkMode ? "dark" : "light"}
                     >
@@ -1190,7 +1213,10 @@ export default function ProfileScreen() {
                     </expoSwiftUI.Host>
                   ) : (
                     <ScrollView
-                      contentContainerStyle={styles.profileSettingsContent}
+                      contentContainerStyle={[
+                        styles.profileSettingsContent,
+                        { backgroundColor: profileBackgroundColor },
+                      ]}
                       keyboardShouldPersistTaps="handled"
                     >
                       <View style={styles.profileSettingsIdentitySection}>
@@ -1203,6 +1229,10 @@ export default function ProfileScreen() {
                               disabled={profileSettingsDisabled}
                               style={({ pressed }) => [
                                 styles.profileSettingsAvatarButton,
+                                {
+                                  backgroundColor: profileSurfaceColor,
+                                  borderColor: profileBorderColor,
+                                },
                                 avatarPickerVisualDisabled && styles.heroActionDisabled,
                                 pressed && !profileSettingsDisabled && styles.optionChipPressed,
                               ]}
@@ -1215,10 +1245,21 @@ export default function ProfileScreen() {
                                   style={styles.profileSettingsMediaImage}
                                 />
                               ) : (
-                                <Ionicons name="person" size={42} color={colors.light.textSecondary} />
+                                <Ionicons
+                                  name="person"
+                                  size={42}
+                                  color={profileTextSecondaryColor}
+                                />
                               )}
                             </Pressable>
-                            <Text style={styles.profileSettingsAvatarLabel}>Profile</Text>
+                            <Text
+                              style={[
+                                styles.profileSettingsAvatarLabel,
+                                { color: profileTextSecondaryColor },
+                              ]}
+                            >
+                              Profile
+                            </Text>
                           </View>
 
                           <View style={styles.profileSettingsAvatarOption}>
@@ -1230,6 +1271,10 @@ export default function ProfileScreen() {
                               style={({ pressed }) => [
                                 styles.profileSettingsAvatarButton,
                                 styles.profileSettingsAvatarButtonSecondary,
+                                {
+                                  backgroundColor: profileBackgroundColor,
+                                  borderColor: profileBorderColor,
+                                },
                                 heroPickerVisualDisabled && styles.heroActionDisabled,
                                 pressed && !profileSettingsDisabled && styles.optionChipPressed,
                               ]}
@@ -1242,22 +1287,53 @@ export default function ProfileScreen() {
                                   style={styles.profileSettingsMediaImage}
                                 />
                               ) : (
-                                <Ionicons name="image-outline" size={34} color={colors.light.textSecondary} />
+                                <Ionicons
+                                  name="image-outline"
+                                  size={34}
+                                  color={profileTextSecondaryColor}
+                                />
                               )}
                             </Pressable>
-                            <Text style={styles.profileSettingsAvatarLabel}>Banner</Text>
+                            <Text
+                              style={[
+                                styles.profileSettingsAvatarLabel,
+                                { color: profileTextSecondaryColor },
+                              ]}
+                            >
+                              Banner
+                            </Text>
                           </View>
                         </View>
                       </View>
 
-                      <View style={styles.profileSettingsList}>
-                        <View style={styles.profileSettingsListRow}>
-                          <Text style={styles.profileSettingsListLabel}>Name</Text>
+                      <View
+                        style={[
+                          styles.profileSettingsList,
+                          {
+                            backgroundColor: profileBackgroundColor,
+                            borderColor: profileBorderColor,
+                          },
+                        ]}
+                      >
+                        <View
+                          style={[
+                            styles.profileSettingsListRow,
+                            {
+                              backgroundColor: profileBackgroundColor,
+                              borderBottomColor: profileBorderColor,
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={[styles.profileSettingsListLabel, { color: profileTextColor }]}
+                          >
+                            Name
+                          </Text>
                           <TextInput
                             value={artistNameDraft}
                             onChangeText={setArtistNameDraft}
                             placeholder="Add name"
-                            placeholderTextColor={colors.light.textSecondary}
+                            placeholderTextColor={profileTextSecondaryColor}
                             editable={!profileSettingsDisabled}
                             onSubmitEditing={() => {
                               void saveProfile({ includeLinks: false });
@@ -1265,7 +1341,10 @@ export default function ProfileScreen() {
                             onBlur={() => {
                               void saveProfile({ includeLinks: false });
                             }}
-                            style={styles.profileSettingsListValueInput}
+                            style={[
+                              styles.profileSettingsListValueInput,
+                              { color: profileTextColor },
+                            ]}
                             autoCapitalize="words"
                             autoCorrect={false}
                             returnKeyType="done"
@@ -1363,9 +1442,6 @@ export default function ProfileScreen() {
                   ) : (
                     <Ionicons name="person" size={52} color={profileTextSecondaryColor} />
                   )}
-                </View>
-                <View style={styles.heroAvatarPlaceholder}>
-                  <Ionicons name="camera-outline" size={14} color={colors.dark.text} />
                 </View>
               </View>
             </Pressable>
@@ -1508,9 +1584,6 @@ export default function ProfileScreen() {
                   )}
                 </Pressable>
 
-                <Text style={[styles.warningText, { color: profileTextSecondaryColor }]}>
-                  Deleting deactivates your account for v1 while keeping records recoverable.
-                </Text>
               </>
             ) : null}
           </View>
@@ -1747,19 +1820,6 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
   },
-  heroAvatarPlaceholder: {
-    position: "absolute",
-    left: 6,
-    bottom: 6,
-    width: 34,
-    height: 34,
-    borderRadius: radius.full,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.38)",
-    backgroundColor: "rgba(0,0,0,0.68)",
-  },
   heroIdentityTextWrap: {
     gap: spacing.xs,
   },
@@ -1767,9 +1827,10 @@ const styles = StyleSheet.create({
     ...typography.h1,
     color: colors.dark.text,
     fontSize: 42,
-    lineHeight: 46,
+    lineHeight: 50,
     letterSpacing: 0.3,
     maxWidth: "88%",
+    paddingBottom: 2,
   },
   heroArtistNamePlaceholder: {
     color: colors.dark.textSecondary,
@@ -1963,11 +2024,5 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.accent.error,
     fontWeight: "600",
-  },
-  warningText: {
-    ...typography.caption,
-    color: colors.dark.textSecondary,
-    lineHeight: 18,
-    marginTop: spacing.xs,
   },
 });

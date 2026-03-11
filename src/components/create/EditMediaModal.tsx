@@ -17,12 +17,11 @@ import {
 } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import * as Haptics from "expo-haptics";
-import * as ExpoSwiftUI from "@expo/ui/swift-ui";
 import { colors, radius, spacing, typography } from "@/constants/tokens";
 import type { AspectRatio } from "@/components/create/AspectRatioToggle";
 import {
   getIOSNativeUIPhase5Availability,
-  type ExpoSwiftUIModule,
+  loadExpoSwiftUIModule,
 } from "@/lib/iosNativeUi";
 import type { TemplateDefinition } from "@/lib/templates";
 
@@ -153,7 +152,7 @@ export function EditMediaModal({
   });
   const nativeEditTemplateEnabledByContract = nativeEditTemplateAvailability.enabled;
   const expoSwiftUI = nativeEditTemplateEnabledByContract
-    ? (ExpoSwiftUI as ExpoSwiftUIModule)
+    ? loadExpoSwiftUIModule()
     : null;
   const expoSwiftUIAny = expoSwiftUI as Record<string, unknown> | null;
   const hasNativeEditTemplateComponents = Boolean(
