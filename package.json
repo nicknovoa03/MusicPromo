@@ -7,6 +7,8 @@
     "start:go:lan": "expo start --go --lan",
     "start:go:tunnel": "expo start --go --tunnel",
     "start:dev-client:tunnel": "expo start --dev-client --tunnel --clear --scheme musicpromo",
+    "start:dev-client:phase5": "EXPO_PUBLIC_IOS_NATIVE_UI_PHASE5=1 expo start --dev-client --tunnel --clear --scheme musicpromo",
+    "start:dev-client:phase5:lan": "EXPO_PUBLIC_IOS_NATIVE_UI_PHASE5=1 expo start --dev-client --host lan --clear --scheme musicpromo",
     "start:go:fast": "expo start --go --lan --no-dev --minify",
     "atlas:start": "EXPO_ATLAS=true expo start --go --lan",
     "atlas:export:ios": "EXPO_ATLAS=true npx expo export --platform ios",
@@ -24,11 +26,13 @@
     "preflight:release": "npx tsc --noEmit && npx tsc --noEmit -p convex/tsconfig.json && npx expo config --type public",
     "build:ios:development": "npx eas build -p ios --profile development",
     "build:ios:production": "npx eas build -p ios --profile production",
+    "build:android:preview": "npx eas build -p android --profile preview",
     "deploy:ios:testflight": "npx eas build -p ios --profile production --auto-submit",
     "submit:ios:production": "npx eas submit -p ios --profile production"
   },
   "dependencies": {
     "@clerk/clerk-expo": "^2.19.27",
+    "@expo/ui": "0.2.0-beta.9",
     "@expo/vector-icons": "^15.1.1",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-picker/picker": "2.11.1",

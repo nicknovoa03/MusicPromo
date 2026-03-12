@@ -1,11 +1,20 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { Redirect, Slot, useSegments } from "expo-router";
 import { ClerkProvider, ClerkLoaded, useAuth } from "@clerk/clerk-expo";
-import { ConvexProviderWithClerk } from "convex/react-clerk";
+import { ConvexProviderWithAuth } from "convex/react";
 import { PostHogProvider } from "posthog-react-native";
 import { StatusBar } from "expo-status-bar";
+import { useColorScheme } from "react-native";
+import {
+  SafeAreaProvider,
+  initialWindowMetrics,
+} from "react-native-safe-area-context";
 import { tokenCache } from "@/lib/clerk";
 import { convex } from "@/lib/convex";
+import {
+  getIOSNativeUIPhase5Availability,
+  IOS_NATIVE_UI_PHASE5_FLAG_NAME,
+} from "@/lib/iosNativeUi";
 import {
   LocalSessionProvider,
   useLocalSession,
@@ -48,23 +57,86 @@ function AuthGate() {
 
 function AppStatusBar() {
   const segments = useSegments();
+  const colorScheme = useColorScheme();
   const root = segments[0];
   const child = segments[1];
+  const isDarkMode = colorScheme === "dark";
 
   const isDarkSurface =
     root === "create" &&
     (child === "editor" || child === "rendering" || child === "share");
-  const isProfileSurface = root === "(tabs)" && child === "profile";
 
-  return <StatusBar style={isDarkSurface || isProfileSurface ? "light" : "dark"} />;
+  return <StatusBar style={isDarkMode || isDarkSurface ? "light" : "dark"} />;
+}
+
+function IOSNativeUIPhase5Bootstrap() {
+  useEffect(() => {
+    const availability = getIOSNativeUIPhase5Availability({ minIOSVersion: 14 });
+
+    if (!availability.isIOS) {
+      return;
+    }
+
+    if (
+      availability.flagValue !== undefined &&
+      availability.flagValue !== "0" &&
+      availability.flagValue !== "1"
+    ) {
+      console.warn(
+        `${IOS_NATIVE_UI_PHASE5_FLAG_NAME} must be set to "1" to enable the Phase 5 iOS-native UI path.`,
+      );
+      return;
+    }
+
+    if (availability.flagEnabled && !availability.runtimeAvailable) {
+      console.info(
+        "Phase 5 iOS-native UI flag is enabled, but Expo UI is unavailable in this runtime. Falling back to React Native surfaces.",
+      );
+    }
+  }, []);
+
+  return null;
+}
+
+function useConvexAuthFromClerk() {
+  const { isLoaded, isSignedIn, getToken, orgId, orgRole } = useAuth();
+
+  const fetchAccessToken = useCallback(
+    async (args: { forceRefreshToken: boolean }) => {
+      try {
+        // Convex sets forceRefreshToken when it needs a fresh JWT after
+        // rejecting a cached token.
+        return await getToken({
+          template: "convex",
+          skipCache: Boolean(args.forceRefreshToken),
+        });
+      } catch {
+        return null;
+      }
+    },
+    // Clerk's `getToken` is not memoized; keeping it out of deps avoids
+    // rebuilding the fetcher each render and thrashing Convex auth state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [orgId, orgRole]
+  );
+
+  return useMemo(
+    () => ({
+      isLoading: !isLoaded,
+      isAuthenticated: isSignedIn ?? false,
+      fetchAccessToken,
+    }),
+    [isLoaded, isSignedIn, fetchAccessToken]
+  );
 }
 
 function AppWithProviders() {
   return (
-    <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
+    <ConvexProviderWithAuth client={convex} useAuth={useConvexAuthFromClerk}>
       <AuthGate />
       <AppStatusBar />
-    </ConvexProviderWithClerk>
+      <IOSNativeUIPhase5Bootstrap />
+    </ConvexProviderWithAuth>
   );
 }
 
@@ -72,13 +144,15 @@ export default function RootLayout() {
   const posthogEnabled = posthogApiKey && posthogHost;
 
   const inner = (
-    <LocalSessionProvider>
-      <ClerkProvider publishableKey={clerkPublishableKey} tokenCache={tokenCache}>
-        <ClerkLoaded>
-          <AppWithProviders />
-        </ClerkLoaded>
-      </ClerkProvider>
-    </LocalSessionProvider>
+    <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+      <LocalSessionProvider>
+        <ClerkProvider publishableKey={clerkPublishableKey} tokenCache={tokenCache}>
+          <ClerkLoaded>
+            <AppWithProviders />
+          </ClerkLoaded>
+        </ClerkProvider>
+      </LocalSessionProvider>
+    </SafeAreaProvider>
   );
 
   if (posthogEnabled) {

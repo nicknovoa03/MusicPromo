@@ -5,6 +5,8 @@ import {
   StyleSheet,
   Pressable,
   Alert,
+  ScrollView,
+  useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -14,7 +16,6 @@ import * as Sharing from "expo-sharing";
 import * as MediaLibrary from "expo-media-library";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
 import { TemplateInfoBadge } from "@/components/create/TemplateInfoBadge";
-import { VinylPreview } from "@/components/create/VinylPreview";
 import type { EventName } from "@/lib/analytics";
 import { decodeUriParam } from "@/lib/uri";
 import { normalizeMediaUri } from "@/lib/mediaUri";
@@ -32,6 +33,7 @@ function firstParam(param: string | string[] | undefined) {
 export default function ShareScreen() {
   const router = useRouter();
   const posthog = usePostHog();
+  const { height: windowHeight } = useWindowDimensions();
   const params = useLocalSearchParams<{
     videoUri: string;
     projectId: string;
@@ -48,9 +50,12 @@ export default function ShareScreen() {
     firstParam(params.templateTweaks),
   );
   const templateTweaks = parsedTemplateTweaks ?? normalizeTemplateTweaks();
-  const previewTone = getTemplateDefinition(templateId).parity.vinylTone;
+  const templateDefinition = getTemplateDefinition(templateId);
+  const TemplateStageComponent = templateDefinition.StageComponent;
   const aspectRatio = firstParam(params.aspectRatio) === "1:1" ? "1:1" : "9:16";
   const showTemplateInfo = firstParam(params.showTemplateInfo) === "1";
+  const isCompactHeight = windowHeight < 760;
+  const previewSize = isCompactHeight ? 152 : 184;
 
   const [savedToRoll, setSavedToRoll] = useState(false);
   const [saveError, setSaveError] = useState<"permission" | "failed" | null>(
@@ -115,7 +120,7 @@ export default function ShareScreen() {
 
   const handleDone = useCallback(() => {
     router.dismissAll();
-    router.replace("/");
+    router.replace("/" as const);
   }, [router]);
 
   return (
@@ -134,8 +139,14 @@ export default function ShareScreen() {
       </View>
 
       {/* Content */}
-      <View style={styles.content}>
-        <Text style={styles.heading}>Ready to share</Text>
+      <ScrollView
+        style={styles.contentScroll}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={[styles.heading, isCompactHeight && styles.headingCompact]}>
+          Ready to share
+        </Text>
 
         {/* Save status */}
         {savedToRoll && (
@@ -176,17 +187,24 @@ export default function ShareScreen() {
         )}
 
         {/* Video preview */}
-        <View style={styles.previewContainer}>
+        <View
+          style={[
+            styles.previewContainer,
+            isCompactHeight && styles.previewContainerCompact,
+          ]}
+        >
           {posterUri ? (
-            <VinylPreview
-              imageUri={posterUri}
-              size={184}
-              spinning={false}
-              tone={previewTone}
-              spinSpeed={templateTweaks.spinSpeed}
-              discOpacity={Math.min(Math.max(1 - templateTweaks.recordTransparency, 0.35), 1)}
-              rotationStartDeg={templateTweaks.rotationStartDeg}
-              rotationDirection={templateTweaks.rotationDirection}
+            <TemplateStageComponent
+              width={previewSize}
+              height={previewSize}
+              aspectRatio={aspectRatio}
+              photoUri={posterUri}
+              isPlaying={false}
+              playbackLabel="Share preview"
+              trackTitle="Preview"
+              subtitle={templateDefinition.name}
+              templateTweaks={templateTweaks}
+              showWatermark={false}
             />
           ) : (
             <Ionicons
@@ -234,7 +252,7 @@ export default function ShareScreen() {
             <Text style={styles.tiktokText}>Share to TikTok</Text>
           </Pressable>
         </View>
-      </View>
+      </ScrollView>
 
       {/* Done button */}
       <View style={styles.footer}>
@@ -277,15 +295,22 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    flex: 1,
+    flexGrow: 1,
     alignItems: "center",
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.lg,
+    paddingBottom: spacing.lg,
+  },
+  contentScroll: {
+    flex: 1,
   },
   heading: {
     ...typography.h1,
     color: colors.dark.text,
     marginBottom: spacing.sm,
+  },
+  headingCompact: {
+    marginBottom: spacing.xs,
   },
   savedBadge: {
     flexDirection: "row",
@@ -305,8 +330,13 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: spacing.xl,
+    marginBottom: spacing.lg,
     position: "relative",
+  },
+  previewContainerCompact: {
+    width: 168,
+    height: 168,
+    marginBottom: spacing.md,
   },
   shareTemplateInfoBadge: {
     position: "absolute",
@@ -317,6 +347,7 @@ const styles = StyleSheet.create({
   actions: {
     width: "100%",
     gap: spacing.md,
+    marginTop: spacing.sm,
   },
   instagramButton: {
     flexDirection: "row",

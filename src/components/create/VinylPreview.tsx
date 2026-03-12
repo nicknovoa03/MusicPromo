@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Animated, Easing, Image, StyleSheet, View } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { colors } from "@/constants/tokens";
@@ -23,13 +23,14 @@ interface VinylPreviewProps {
   size: number;
   spinning?: boolean;
   tone?: VinylToneId;
+  holeColor?: string;
   spinSpeed?: number;
   discOpacity?: number;
+  artworkScale?: number;
   rotationStartDeg?: number;
   rotationDirection?: "cw" | "ccw";
 }
 
-const GROOVE_SCALES = [0.95, 0.89, 0.83, 0.77, 0.71, 0.65, 0.59, 0.53, 0.47];
 const CD_RING_SCALES = [0.93, 0.78, 0.62, 0.46];
 const CD_RING_COLORS = [
   "rgba(255,255,255,0.3)",
@@ -38,21 +39,39 @@ const CD_RING_COLORS = [
   "rgba(220,255,244,0.2)",
 ];
 const SPIN_DURATION_MS = 4200;
+const GROOVE_RING_COUNT = 18;
+const MIN_ARTWORK_SCALE = 1;
+const MAX_ARTWORK_SCALE = 5;
+
+function buildGrooveScales(size: number, labelSize: number): number[] {
+  const safeSize = Math.max(size, 1);
+  const innerScale = Math.max(Math.min((labelSize + safeSize * 0.04) / safeSize, 0.9), 0.3);
+  const outerScale = 0.96;
+  const range = outerScale - innerScale;
+  if (range <= 0.01) return [outerScale];
+  return Array.from({ length: GROOVE_RING_COUNT }, (_, index) => {
+    const t = index / (GROOVE_RING_COUNT - 1);
+    return outerScale - range * t;
+  });
+}
 
 export function VinylPreview({
   imageUri,
   size,
   spinning = true,
   tone = "simple-spin",
+  holeColor,
   spinSpeed = 1,
   discOpacity = 1,
+  artworkScale = 1,
   rotationStartDeg = 0,
   rotationDirection = "cw",
 }: VinylPreviewProps) {
   const spinProgress = useRef(new Animated.Value(0)).current;
   const toneSpec = getVinylToneSpec(tone);
-  const isCdStyleTone = toneSpec.id === "simple-spin";
+  const isVinylTone = toneSpec.id === "simple-spin";
   const isGraphicTone = toneSpec.id === "graphic-pop";
+  const usesCenterLabelArtwork = isVinylTone;
   const normalizedSpinSpeed = Math.min(Math.max(spinSpeed, 0.25), 4);
   const normalizedRotationStartDeg = Math.max(
     -180,
@@ -66,6 +85,13 @@ export function VinylPreview({
     400,
   );
   const normalizedDiscOpacity = Math.min(Math.max(discOpacity, 0.35), 1);
+  const normalizedArtworkScale = Math.min(
+    Math.max(artworkScale, MIN_ARTWORK_SCALE),
+    MAX_ARTWORK_SCALE,
+  );
+  const artworkScaleProgress =
+    (normalizedArtworkScale - MIN_ARTWORK_SCALE) /
+    (MAX_ARTWORK_SCALE - MIN_ARTWORK_SCALE);
 
   useEffect(() => {
     if (!spinning) {
@@ -103,6 +129,24 @@ export function VinylPreview({
   const labelSize = centerGeometry.labelDiameter;
   const holeSize = centerGeometry.holeDiameter;
   const spindleRingSize = Math.max(holeSize * (isGraphicTone ? 1.7 : 2.3), 14);
+  const baseCenterArtworkSize = Math.max(
+    holeSize * 2.2,
+    Math.round(labelSize - Math.max(size * 0.024, 7)),
+  );
+  const centerArtworkSizeMax = Math.max(
+    baseCenterArtworkSize,
+    Math.round(size * 0.68),
+  );
+  const centerArtworkSize = usesCenterLabelArtwork
+    ? Math.round(
+        baseCenterArtworkSize +
+          (centerArtworkSizeMax - baseCenterArtworkSize) * artworkScaleProgress,
+      )
+    : baseCenterArtworkSize;
+  const grooveScales = useMemo(
+    () => buildGrooveScales(size, Math.max(labelSize, centerArtworkSize)),
+    [centerArtworkSize, labelSize, size],
+  );
   const edgeGeometry = getVinylEdgeGeometry(size);
   const edgeSpec = getVinylEdgeSpec();
   const outerRimColor = toRgba(
@@ -128,6 +172,11 @@ export function VinylPreview({
     GRAPHIC_POP_CENTER_SHADOW_ALPHA_BYTE,
   );
   const iconSize = Math.max(size * 0.2, 32);
+  const centerIconSize = Math.max(Math.round(centerArtworkSize * 0.35), 14);
+  const artworkSource = useMemo(
+    () => (imageUri ? { uri: imageUri } : null),
+    [imageUri],
+  );
 
   return (
     <View
@@ -152,15 +201,15 @@ export function VinylPreview({
             transform: [{ rotate: rotation }],
             backgroundColor: isGraphicTone
               ? "#d4d9e0"
-              : isCdStyleTone
-                ? "#ced7e4"
+              : isVinylTone
+                ? "#121318"
                 : "#181818",
           },
         ]}
       >
-        {imageUri ? (
+        {usesCenterLabelArtwork ? null : artworkSource ? (
           <Image
-            source={{ uri: imageUri }}
+            source={artworkSource}
             style={styles.artwork}
             resizeMode="cover"
             accessibilityLabel="Vinyl artwork"
@@ -212,7 +261,7 @@ export function VinylPreview({
         />
         {toneSpec.showGroovesInPreview ? (
           <View style={styles.groovesLayer}>
-            {GROOVE_SCALES.map((scale, index) => {
+            {grooveScales.map((scale, index) => {
               const grooveSize = size * scale;
               return (
                 <View
@@ -224,9 +273,11 @@ export function VinylPreview({
                       height: grooveSize,
                       borderRadius: grooveSize / 2,
                       borderColor:
-                        index % 2 === 0
-                          ? "rgba(255,255,255,0.08)"
-                          : "rgba(0,0,0,0.22)",
+                        index % 3 === 0
+                          ? "rgba(255,255,255,0.13)"
+                          : index % 2 === 0
+                            ? "rgba(0,0,0,0.38)"
+                            : "rgba(255,255,255,0.07)",
                     },
                   ]}
                 />
@@ -234,7 +285,7 @@ export function VinylPreview({
             })}
           </View>
         ) : null}
-        {isCdStyleTone && toneSpec.showSheenInPreview ? (
+        {isVinylTone && toneSpec.showSheenInPreview ? (
           <View style={styles.cdRingsLayer}>
             {CD_RING_SCALES.map((scale, index) => {
               const ringSize = size * scale;
@@ -270,6 +321,37 @@ export function VinylPreview({
             },
           ]}
         />
+        {usesCenterLabelArtwork ? (
+          <View
+            style={[
+              styles.centerArtworkWrap,
+              {
+                width: centerArtworkSize,
+                height: centerArtworkSize,
+                borderRadius: centerArtworkSize / 2,
+                top: (size - centerArtworkSize) / 2,
+                left: (size - centerArtworkSize) / 2,
+              },
+            ]}
+          >
+            {artworkSource ? (
+              <Image
+                source={artworkSource}
+                style={styles.centerArtwork}
+                resizeMode="cover"
+                accessibilityLabel="Vinyl center label artwork"
+              />
+            ) : (
+              <View style={styles.centerArtworkPlaceholder}>
+                <Ionicons
+                  name="image-outline"
+                  size={centerIconSize}
+                  color="rgba(255,255,255,0.72)"
+                />
+              </View>
+            )}
+          </View>
+        ) : null}
         {isGraphicTone && toneSpec.showCenterTextureInPreview ? (
           <>
             <View
@@ -323,14 +405,13 @@ export function VinylPreview({
               width: holeSize,
               height: holeSize,
               borderRadius: holeSize / 2,
-              backgroundColor: toRgba(
-                toneSpec.holeHexColor,
-                toneSpec.holeAlphaByte,
-              ),
+              backgroundColor:
+                holeColor ??
+                toRgba(toneSpec.holeHexColor, toneSpec.holeAlphaByte),
             },
           ]}
         />
-        {isCdStyleTone && toneSpec.showSheenInPreview ? (
+        {isVinylTone && toneSpec.showSheenInPreview ? (
           <>
             <View style={styles.cdIridescentStripeA} />
             <View style={styles.cdIridescentStripeB} />
@@ -431,6 +512,22 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.18,
     shadowRadius: 4,
+  },
+  centerArtworkWrap: {
+    position: "absolute",
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.36)",
+    backgroundColor: "rgba(12,14,21,0.48)",
+  },
+  centerArtwork: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  centerArtworkPlaceholder: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(18,22,30,0.92)",
   },
   graphicInnerRing: {
     position: "absolute",

@@ -377,6 +377,7 @@ export function AudioTrimmer({
         visible={isDurationPickerVisible}
         transparent
         animationType="slide"
+        presentationStyle="overFullScreen"
         onRequestClose={() => setIsDurationPickerVisible(false)}
       >
         <View style={styles.durationModalRoot}>
@@ -572,7 +573,7 @@ const styles = StyleSheet.create({
   },
   durationModalBackdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.4)",
+    backgroundColor: "transparent",
   },
   durationModalSheet: {
     backgroundColor: "#020A15",
@@ -624,7 +625,7 @@ const styles = StyleSheet.create({
   },
   durationModalDoneText: {
     ...typography.button,
-    color: "#0A84FF",
+    color: colors.accent.primary,
     fontSize: 20,
     fontWeight: "700",
   },
@@ -665,7 +666,7 @@ const styles = StyleSheet.create({
     width: 14,
     height: 14,
     borderRadius: 7,
-    backgroundColor: "#F5C812",
+    backgroundColor: colors.accent.primary,
     borderWidth: 2,
     borderColor: "#10121A",
     marginLeft: -7,

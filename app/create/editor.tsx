@@ -4,9 +4,10 @@ import {
   Text,
   StyleSheet,
   Pressable,
+  Animated,
+  Easing,
   Image,
   Dimensions,
-  ActivityIndicator,
   Modal,
   TextInput,
   Alert,
@@ -14,8 +15,13 @@ import {
   Platform,
   type LayoutChangeEvent,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  initialWindowMetrics,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
+import Constants from "expo-constants";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { usePostHog } from "posthog-react-native";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
@@ -27,7 +33,6 @@ import type { Id } from "../../convex/_generated/dataModel";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
 import { AudioTrimmer } from "@/components/create/AudioTrimmer";
 import { type AspectRatio } from "@/components/create/AspectRatioToggle";
-import { EditMediaModal } from "@/components/create/EditMediaModal";
 import { TemplateCustomizeModal } from "@/components/create/TemplateCustomizeModal";
 import { TemplateInfoBadge } from "@/components/create/TemplateInfoBadge";
 import type { EventName } from "@/lib/analytics";
@@ -50,6 +55,10 @@ import {
   serializeTemplateTweaksParam,
   type TemplateTweaks,
 } from "@/lib/templates";
+import {
+  getIOSNativeUIPhase5Availability,
+  loadExpoSwiftUIModule,
+} from "@/lib/iosNativeUi";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const SCREEN_HEIGHT = Dimensions.get("window").height;
@@ -57,6 +66,10 @@ const STAGE_HORIZONTAL_PADDING = spacing.xs * 2;
 const FALLBACK_AUDIO_DURATION = 180;
 const DEFAULT_TRIM_DURATION = 5;
 const DEFAULT_PROJECT_TITLE = "New Project";
+const NATIVE_ASPECT_RATIO_OPTIONS: AspectRatio[] = ["9:16", "1:1"];
+const TRIM_PANEL_ANIMATION_DURATION_MS = 260;
+const TRIM_PANEL_MAX_HEIGHT = Math.max(260, Math.round(SCREEN_HEIGHT * 0.44));
+const audioDurationSecCache = new Map<string, number>();
 
 type MissingFilesState = {
   photo: boolean;
@@ -156,6 +169,8 @@ async function isMissingFile(uri?: string) {
 async function getAudioDurationSec(uri: string): Promise<number | null> {
   const normalizedUri = normalizeMediaUri(uri);
   if (!normalizedUri) return null;
+  const cachedDuration = audioDurationSecCache.get(normalizedUri);
+  if (cachedDuration !== undefined) return cachedDuration;
 
   if (normalizedUri.startsWith("file://")) {
     try {
@@ -177,7 +192,9 @@ async function getAudioDurationSec(uri: string): Promise<number | null> {
     sound = created.sound;
     const status = await sound.getStatusAsync();
     if (status.isLoaded && status.durationMillis) {
-      return status.durationMillis / 1000;
+      const durationSec = status.durationMillis / 1000;
+      audioDurationSecCache.set(normalizedUri, durationSec);
+      return durationSec;
     }
     return null;
   } catch {
@@ -230,7 +247,9 @@ function formatClock(seconds: number): string {
 export default function EditorScreen() {
   const router = useRouter();
   const posthog = usePostHog();
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{
+    source?: string;
     projectId?: string;
     localProjectId?: string;
     title?: string;
@@ -244,6 +263,8 @@ export default function EditorScreen() {
     trimStart?: string;
     trimEnd?: string;
     spinSpeed?: string;
+    recordSize?: string;
+    artworkScale?: string;
     recordTransparency?: string;
     stageBackgroundColor?: string;
     showTemplateInfo?: string;
@@ -251,6 +272,7 @@ export default function EditorScreen() {
   }>();
 
   const projectId = firstParam(params.projectId);
+  const entrySource = firstParam(params.source);
   const initialLocalProjectId = firstParam(params.localProjectId) || null;
   const existingProjectId = asProjectId(projectId);
   const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
@@ -289,6 +311,14 @@ export default function EditorScreen() {
     params.spinSpeed,
     DEFAULT_TEMPLATE_TWEAKS.spinSpeed,
   );
+  const initialRecordSize = parseNumberParam(
+    params.recordSize,
+    DEFAULT_TEMPLATE_TWEAKS.recordSize,
+  );
+  const initialArtworkScale = parseNumberParam(
+    params.artworkScale,
+    DEFAULT_TEMPLATE_TWEAKS.artworkScale,
+  );
   const initialRecordTransparency = parseNumberParam(
     params.recordTransparency,
     DEFAULT_TEMPLATE_TWEAKS.recordTransparency,
@@ -301,6 +331,8 @@ export default function EditorScreen() {
   const initialTemplateTweaks = normalizeTemplateTweaks(
     parsedTemplateTweaks ?? {
       spinSpeed: initialSpinSpeed,
+      recordSize: initialRecordSize,
+      artworkScale: initialArtworkScale,
       recordTransparency: initialRecordTransparency,
       stageBackgroundColor: initialStageBackgroundColor,
     },
@@ -325,9 +357,9 @@ export default function EditorScreen() {
     initialShowTemplateInfo,
   );
   const serializedTemplateTweaks = serializeTemplateTweaksParam(templateTweaks);
-  const [isEditMediaModalVisible, setIsEditMediaModalVisible] = useState(false);
   const [isTemplateCustomizeVisible, setIsTemplateCustomizeVisible] =
     useState(false);
+  const [isTrimPanelVisible, setIsTrimPanelVisible] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [trimStart, setTrimStart] = useState(initialTrimStart);
   const [trimEnd, setTrimEnd] = useState(initialTrimEnd);
@@ -365,6 +397,8 @@ export default function EditorScreen() {
   const previewSoundRef = useRef<Audio.Sound | null>(null);
   const previewAudioUriRef = useRef<string | null>(null);
   const playbackBusyRef = useRef(false);
+  const trimPanelHeightAnim = useRef(new Animated.Value(0)).current;
+  const trimPanelVisualAnim = useRef(new Animated.Value(0)).current;
   const shouldWaitForProjectMedia =
     !!currentProjectId &&
     !paramPhotoUri &&
@@ -387,6 +421,11 @@ export default function EditorScreen() {
     if (!initialLocalProjectId) return;
     setCurrentLocalProjectId(initialLocalProjectId);
   }, [initialLocalProjectId]);
+
+  useEffect(() => {
+    if (!photoUri || !/^https?:\/\//i.test(photoUri)) return;
+    void Image.prefetch(photoUri).catch(() => {});
+  }, [photoUri]);
 
   useEffect(() => {
     setTemplateId(resolveTemplateId(firstParam(params.templateId)));
@@ -435,6 +474,43 @@ export default function EditorScreen() {
 
   const templateDefinitions = listTemplateDefinitions();
   const TemplateStageComponent = getTemplateDefinition(templateId).StageComponent;
+  const nativeEditorAvailability = getIOSNativeUIPhase5Availability({
+    minIOSVersion: 16,
+  });
+  const nativeEditorEnabledByContract = nativeEditorAvailability.enabled;
+  const expoSwiftUI = nativeEditorEnabledByContract
+    ? loadExpoSwiftUIModule()
+    : null;
+  const expoSwiftUIAny = expoSwiftUI as Record<string, unknown> | null;
+  const hasNativeEditorControls = Boolean(
+    expoSwiftUIAny &&
+      "Host" in expoSwiftUIAny &&
+      "HStack" in expoSwiftUIAny &&
+      "Picker" in expoSwiftUIAny &&
+      "Switch" in expoSwiftUIAny,
+  );
+  const canUseNativeEditorControls =
+    nativeEditorEnabledByContract &&
+    expoSwiftUI !== null &&
+    hasNativeEditorControls;
+
+  useEffect(() => {
+    const toValue = isTrimPanelVisible ? 1 : 0;
+    Animated.parallel([
+      Animated.timing(trimPanelHeightAnim, {
+        toValue,
+        duration: TRIM_PANEL_ANIMATION_DURATION_MS,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }),
+      Animated.timing(trimPanelVisualAnim, {
+        toValue,
+        duration: TRIM_PANEL_ANIMATION_DURATION_MS,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [isTrimPanelVisible, trimPanelHeightAnim, trimPanelVisualAnim]);
 
   const createDraftProject = useCallback(async () => {
     if (currentProjectId) return currentProjectId;
@@ -724,7 +800,14 @@ export default function EditorScreen() {
 
   const stageWidthRatio = aspectRatio === "9:16" ? 9 / 16 : 1;
   const fallbackMaxStageWidth = Math.min(SCREEN_WIDTH - STAGE_HORIZONTAL_PADDING, 520);
-  const fallbackMaxStageHeight = SCREEN_HEIGHT * (aspectRatio === "9:16" ? 0.72 : 0.57);
+  const fallbackMaxStageHeight = SCREEN_HEIGHT *
+    (aspectRatio === "9:16"
+      ? isTrimPanelVisible
+        ? 0.62
+        : 0.78
+      : isTrimPanelVisible
+        ? 0.52
+        : 0.66);
   const measuredMaxStageWidth =
     previewViewport.width > 0
       ? Math.max(previewViewport.width - spacing.sm * 2, 0)
@@ -1247,6 +1330,7 @@ export default function EditorScreen() {
       router.push({
         pathname: "/create/picker",
         params: {
+          source: entrySource ?? "",
           projectId: currentProjectId ? String(currentProjectId) : "",
           localProjectId: currentLocalProjectId ?? "",
           title: projectTitle,
@@ -1280,6 +1364,7 @@ export default function EditorScreen() {
       showTemplateInfo,
       trimStart,
       trimEnd,
+      entrySource,
     ],
   );
 
@@ -1295,6 +1380,9 @@ export default function EditorScreen() {
       if (!canExport) {
         return;
       }
+
+      await stopAndResetPreview();
+      await unloadPreviewSound();
 
       if (autosaveTimerRef.current) {
         clearTimeout(autosaveTimerRef.current);
@@ -1349,6 +1437,8 @@ export default function EditorScreen() {
     serializedTemplateTweaks,
     showTemplateInfo,
     persistProjectSnapshot,
+    stopAndResetPreview,
+    unloadPreviewSound,
   ]);
 
   const handleTemplateChange = useCallback((nextTemplateId: string) => {
@@ -1356,44 +1446,64 @@ export default function EditorScreen() {
     setTemplateId((prev) => (prev === resolvedId ? prev : resolvedId));
   }, []);
 
-  const handleOpenEditMedia = useCallback(() => {
-    track("editor_controls_opened", { surface: "edit_media" });
-    setIsEditMediaModalVisible(true);
-  }, [track]);
-
-  const handleCloseEditMedia = useCallback(() => {
-    setIsEditMediaModalVisible(false);
-  }, []);
-
-  const handleApplyEditMedia = useCallback(
-    (next: { aspectRatio: AspectRatio; templateId: string }) => {
-      setAspectRatio(next.aspectRatio);
-      handleTemplateChange(next.templateId);
-      setIsEditMediaModalVisible(false);
-    },
-    [handleTemplateChange],
-  );
-
   const handleOpenTemplateCustomize = useCallback(() => {
     track("editor_controls_opened", { surface: "template" });
     setIsTemplateCustomizeVisible(true);
   }, [track]);
 
-  const handleToggleTemplateInfo = useCallback(() => {
-    setShowTemplateInfo((prev) => {
-      const next = !prev;
-      track("editor_controls_opened", {
-        surface: next ? "template_info_on" : "template_info_off",
+  const handleSetTemplateInfoVisibility = useCallback(
+    (nextValue: boolean) => {
+      setShowTemplateInfo((prev) => {
+        if (prev === nextValue) return prev;
+        track("editor_controls_opened", {
+          surface: nextValue ? "template_info_on" : "template_info_off",
+        });
+        return nextValue;
       });
-      return next;
-    });
-  }, [track]);
+    },
+    [track],
+  );
+
+  const handleToggleTemplateInfo = useCallback(() => {
+    handleSetTemplateInfoVisibility(!showTemplateInfo);
+  }, [handleSetTemplateInfoVisibility, showTemplateInfo]);
+
+  const handleSetAspectRatio = useCallback(
+    (nextValue: AspectRatio) => {
+      setAspectRatio((prev) => {
+        if (prev === nextValue) return prev;
+        track("editor_controls_opened", {
+          surface: nextValue === "9:16" ? "aspect_ratio_9x16" : "aspect_ratio_1x1",
+        });
+        return nextValue;
+      });
+    },
+    [track],
+  );
 
   const handleToggleAspectRatio = useCallback(() => {
-    setAspectRatio((prev) => {
-      const next = prev === "9:16" ? "1:1" : "9:16";
+    handleSetAspectRatio(aspectRatio === "9:16" ? "1:1" : "9:16");
+  }, [aspectRatio, handleSetAspectRatio]);
+
+  const handleNativeAspectRatioSelect = useCallback(
+    (index: number) => {
+      handleSetAspectRatio(NATIVE_ASPECT_RATIO_OPTIONS[index] ?? "9:16");
+    },
+    [handleSetAspectRatio],
+  );
+
+  const handleNativeTemplateInfoChange = useCallback(
+    (nextValue: boolean) => {
+      handleSetTemplateInfoVisibility(nextValue);
+    },
+    [handleSetTemplateInfoVisibility],
+  );
+
+  const handleToggleTrimPanel = useCallback(() => {
+    setIsTrimPanelVisible((prev) => {
+      const next = !prev;
       track("editor_controls_opened", {
-        surface: next === "9:16" ? "aspect_ratio_9x16" : "aspect_ratio_1x1",
+        surface: next ? "trim_audio_on" : "trim_audio_off",
       });
       return next;
     });
@@ -1404,10 +1514,23 @@ export default function EditorScreen() {
   }, []);
 
   const handleApplyTemplateCustomize = useCallback(
-    (next: TemplateTweaks) => {
-      const normalizedNext = normalizeTemplateTweaks(next);
+    (next: {
+      tweaks: TemplateTweaks;
+      aspectRatio: AspectRatio;
+      templateId: string;
+    }) => {
+      handleSetAspectRatio(next.aspectRatio);
+      handleTemplateChange(next.templateId);
+
+      const normalizedNext = normalizeTemplateTweaks(next.tweaks);
       if (normalizedNext.spinSpeed !== templateTweaks.spinSpeed) {
         track("template_tweak_changed", { control: "spin_speed" });
+      }
+      if (normalizedNext.recordSize !== templateTweaks.recordSize) {
+        track("template_tweak_changed", { control: "record_size" });
+      }
+      if (normalizedNext.artworkScale !== templateTweaks.artworkScale) {
+        track("template_tweak_changed", { control: "artwork_size" });
       }
       if (normalizedNext.recordTransparency !== templateTweaks.recordTransparency) {
         track("template_tweak_changed", { control: "record_transparency" });
@@ -1429,13 +1552,16 @@ export default function EditorScreen() {
       ) {
         track("template_tweak_changed", { control: "stage_background" });
       }
+      if (normalizedNext.showWatermark !== templateTweaks.showWatermark) {
+        track("template_tweak_changed", { control: "watermark" });
+      }
       setTemplateTweaks(normalizedNext);
       setIsTemplateCustomizeVisible(false);
     },
-    [templateTweaks, track],
+    [handleSetAspectRatio, handleTemplateChange, templateTweaks, track],
   );
 
-  const handleTemplateSelectedFromEditMedia = useCallback(
+  const handleTemplateSelectedFromTemplateCustomize = useCallback(
     (nextTemplateId: string) => {
       track("template_selected_from_edit_media", {
         templateId: resolveTemplateId(nextTemplateId),
@@ -1444,10 +1570,10 @@ export default function EditorScreen() {
     [track],
   );
 
-  const handleSwapMediaFromEditMedia = useCallback(
+  const handleSwapMediaFromTemplateCustomize = useCallback(
     (tab: "photo" | "audio") => {
       track("media_swap_started_from_edit_media", { media_type: tab });
-      setIsEditMediaModalVisible(false);
+      setIsTemplateCustomizeVisible(false);
       handleSwapMedia(tab);
     },
     [handleSwapMedia, track],
@@ -1458,6 +1584,18 @@ export default function EditorScreen() {
   const trackTitle = displayMediaLabel(audioName, "Untitled track");
   const subtitle = projectTitle.trim() || DEFAULT_PROJECT_TITLE;
   const playbackLabel = isPlaying ? "Now Playing" : "Paused";
+  const trimPanelMaxHeight = trimPanelHeightAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, TRIM_PANEL_MAX_HEIGHT],
+  });
+  const trimPanelOpacity = trimPanelVisualAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 1],
+  });
+  const trimPanelTranslateY = trimPanelVisualAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [16, 0],
+  });
 
   let missingMessage = "The original files may have been moved or deleted. Replace missing files to continue.";
   if (missingFiles.photo && !missingFiles.audio) {
@@ -1469,10 +1607,17 @@ export default function EditorScreen() {
   }
   const canSaveProjectTitle =
     projectNameDraft.trim().length > 0;
+  const fallbackTopInset = Math.max(
+    initialWindowMetrics?.insets.top ?? 0,
+    Constants.statusBarHeight ?? 0,
+  );
+  const fallbackBottomInset = initialWindowMetrics?.insets.bottom ?? 0;
+  const stableTopInset = Math.max(insets.top, fallbackTopInset);
+  const stableBottomInset = Math.max(insets.bottom, fallbackBottomInset);
 
   return (
-    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
-      <View style={styles.header}>
+    <SafeAreaView style={[styles.container, { paddingBottom: stableBottomInset }]} edges={[]}>
+      <View style={[styles.header, { paddingTop: stableTopInset + spacing.sm }]}>
         <View style={[styles.headerSide, styles.headerSideLeft]}>
           <Pressable
             onPress={handleCloseEditor}
@@ -1513,11 +1658,7 @@ export default function EditorScreen() {
             accessibilityRole="button"
             accessibilityState={{ disabled: !canExport }}
           >
-            {isCheckingFiles ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : (
-              <Text style={styles.exportText}>Export</Text>
-            )}
+            <Text style={styles.exportText}>Export</Text>
           </Pressable>
         </View>
       </View>
@@ -1630,6 +1771,7 @@ export default function EditorScreen() {
             subtitle={subtitle}
             templateTweaks={templateTweaks}
             onTogglePlay={handlePlayPause}
+            showWatermark={templateTweaks.showWatermark}
           />
           <View style={styles.previewActionRow}>
             <Pressable
@@ -1644,39 +1786,58 @@ export default function EditorScreen() {
               <Ionicons name="settings-outline" size={18} color={colors.dark.text} />
             </Pressable>
             <Pressable
-              onPress={handleToggleTemplateInfo}
+              onPress={handleToggleTrimPanel}
               style={({ pressed }) => [
-                styles.previewInfoToggleButton,
-                showTemplateInfo && styles.previewInfoToggleButtonActive,
-                pressed && styles.previewTemplateButtonPressed,
+                styles.previewTrimToggleButton,
+                isTrimPanelVisible && styles.previewTrimToggleButtonActive,
+                pressed && styles.previewTrimToggleButtonPressed,
               ]}
               accessibilityLabel={
-                showTemplateInfo
-                  ? "Hide template information"
-                  : "Show template information"
+                isTrimPanelVisible ? "Hide Trim Audio panel" : "Show Trim Audio panel"
               }
               accessibilityRole="button"
-              accessibilityState={{ selected: showTemplateInfo }}
+              accessibilityState={{
+                selected: isTrimPanelVisible,
+                expanded: isTrimPanelVisible,
+              }}
             >
               <Ionicons
-                name="information-circle-outline"
-                size={18}
-                color={showTemplateInfo ? colors.dark.background : colors.dark.text}
+                name="cut-outline"
+                size={15}
+                color={isTrimPanelVisible ? colors.dark.background : colors.dark.text}
               />
-            </Pressable>
-            <Pressable
-              onPress={handleOpenEditMedia}
-              style={({ pressed }) => [
-                styles.previewEditTemplateButton,
-                pressed && styles.previewEditTemplateButtonPressed,
-              ]}
-              accessibilityLabel="Edit template settings"
-              accessibilityRole="button"
-            >
-              <Ionicons name="images-outline" size={15} color={colors.dark.text} />
-              <Text style={styles.previewEditTemplateText}>Edit Template</Text>
+              <Text
+                style={[
+                  styles.previewTrimToggleText,
+                  isTrimPanelVisible && styles.previewTrimToggleTextActive,
+                ]}
+              >
+                Trim Audio
+              </Text>
             </Pressable>
           </View>
+          <Pressable
+            onPress={handleToggleTemplateInfo}
+            style={({ pressed }) => [
+              styles.previewInfoToggleButton,
+              styles.previewInfoToggleButtonTopLeft,
+              showTemplateInfo && styles.previewInfoToggleButtonActive,
+              pressed && styles.previewTemplateButtonPressed,
+            ]}
+            accessibilityLabel={
+              showTemplateInfo
+                ? "Hide template information"
+                : "Show template information"
+            }
+            accessibilityRole="button"
+            accessibilityState={{ selected: showTemplateInfo }}
+          >
+            <Ionicons
+              name="information-circle-outline"
+              size={18}
+              color={showTemplateInfo ? colors.dark.background : colors.dark.text}
+            />
+          </Pressable>
           <Pressable
             onPress={handleToggleAspectRatio}
             style={({ pressed }) => [
@@ -1700,42 +1861,77 @@ export default function EditorScreen() {
         </View>
       </View>
 
-      <View style={styles.trimmerSection}>
-        <Text style={styles.sectionLabel}>Trim Audio</Text>
-        <AudioTrimmer
-          durationSec={audioDurationSec}
-          startSec={trimStart}
-          endSec={trimEnd}
-          onTrimChange={handleTrimChange}
-          centerTimeLabel={`${formatClock(previewPositionSec)} / ${formatClock(trimmedDuration)}`}
-          isPlaying={isPlaying}
-          playbackProgressSec={previewPositionSec}
-          onTogglePlay={handlePlayPause}
-          minDuration={minTrimDuration}
-          maxDuration={maxTrimDuration}
-        />
-      </View>
+      {canUseNativeEditorControls && expoSwiftUI ? (
+        <View style={styles.nativeEditorControlsWrap}>
+          <expoSwiftUI.Host style={styles.nativeEditorControlsHost} colorScheme="dark">
+            <expoSwiftUI.HStack spacing={10}>
+              <expoSwiftUI.Picker
+                label="Aspect ratio"
+                options={NATIVE_ASPECT_RATIO_OPTIONS}
+                selectedIndex={Math.max(
+                  0,
+                  NATIVE_ASPECT_RATIO_OPTIONS.indexOf(aspectRatio),
+                )}
+                variant="segmented"
+                onOptionSelected={(event) => {
+                  handleNativeAspectRatioSelect(event.nativeEvent.index);
+                }}
+              />
+              <expoSwiftUI.Switch
+                label="Template info"
+                value={showTemplateInfo}
+                variant="button"
+                onValueChange={handleNativeTemplateInfoChange}
+              />
+            </expoSwiftUI.HStack>
+          </expoSwiftUI.Host>
+        </View>
+      ) : null}
 
-      <EditMediaModal
-        visible={isEditMediaModalVisible}
-        aspectRatio={aspectRatio}
-        templateId={templateId}
-        templateDefinitions={templateDefinitions}
-        onTemplateSelectionChanged={handleTemplateSelectedFromEditMedia}
-        onClose={handleCloseEditMedia}
-        onApply={handleApplyEditMedia}
-        onSwapPhoto={() => handleSwapMediaFromEditMedia("photo")}
-        onSwapAudio={() => handleSwapMediaFromEditMedia("audio")}
-        photoLabel={photoName}
-        audioLabel={audioName}
-      />
+      <Animated.View
+        style={[styles.trimmerPanelWrap, { maxHeight: trimPanelMaxHeight }]}
+        pointerEvents={isTrimPanelVisible ? "auto" : "none"}
+      >
+        <Animated.View
+          style={[
+            styles.trimmerPanelAnimatedContent,
+            {
+              opacity: trimPanelOpacity,
+              transform: [{ translateY: trimPanelTranslateY }],
+            },
+          ]}
+        >
+          <View style={styles.trimmerSection}>
+            <Text style={styles.sectionLabel}>Trim Audio</Text>
+            <AudioTrimmer
+              durationSec={audioDurationSec}
+              startSec={trimStart}
+              endSec={trimEnd}
+              onTrimChange={handleTrimChange}
+              centerTimeLabel={`${formatClock(previewPositionSec)} / ${formatClock(trimmedDuration)}`}
+              isPlaying={isPlaying}
+              playbackProgressSec={previewPositionSec}
+              onTogglePlay={handlePlayPause}
+              minDuration={minTrimDuration}
+              maxDuration={maxTrimDuration}
+            />
+          </View>
+        </Animated.View>
+      </Animated.View>
 
       <TemplateCustomizeModal
         visible={isTemplateCustomizeVisible}
+        aspectRatio={aspectRatio}
         templateId={templateId}
+        templateDefinitions={templateDefinitions}
         photoUri={photoUri}
+        photoLabel={photoName}
+        audioLabel={audioName}
         value={templateTweaks}
         showTemplateInfo={showTemplateInfo}
+        onTemplateSelectionChanged={handleTemplateSelectedFromTemplateCustomize}
+        onSwapPhoto={() => handleSwapMediaFromTemplateCustomize("photo")}
+        onSwapAudio={() => handleSwapMediaFromTemplateCustomize("audio")}
         onClose={handleCloseTemplateCustomize}
         onApply={handleApplyTemplateCustomize}
       />
@@ -1807,7 +2003,7 @@ const styles = StyleSheet.create({
   exportText: {
     ...typography.caption,
     fontWeight: "700",
-    color: "#FFFFFF",
+    color: colors.accent.onPrimary,
   },
   projectNameModalRoot: {
     flex: 1,
@@ -1931,6 +2127,7 @@ const styles = StyleSheet.create({
     bottom: spacing.sm,
     flexDirection: "row",
     alignItems: "center",
+    flexWrap: "wrap",
     gap: spacing.xs,
   },
   previewTemplateButton: {
@@ -1953,6 +2150,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.12)",
   },
+  previewInfoToggleButtonTopLeft: {
+    position: "absolute",
+    left: spacing.sm,
+    top: spacing.sm,
+  },
   previewInfoToggleButtonActive: {
     backgroundColor: colors.dark.text,
     borderColor: "rgba(255,255,255,0.72)",
@@ -1961,7 +2163,7 @@ const styles = StyleSheet.create({
     opacity: 0.82,
     transform: [{ scale: 0.96 }],
   },
-  previewEditTemplateButton: {
+  previewTrimToggleButton: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
@@ -1972,18 +2174,25 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.12)",
   },
-  previewEditTemplateButtonPressed: {
+  previewTrimToggleButtonActive: {
+    backgroundColor: colors.dark.text,
+    borderColor: "rgba(255,255,255,0.85)",
+  },
+  previewTrimToggleButtonPressed: {
     opacity: 0.82,
   },
-  previewEditTemplateText: {
+  previewTrimToggleText: {
     ...typography.caption,
     color: colors.dark.text,
     fontWeight: "700",
   },
+  previewTrimToggleTextActive: {
+    color: colors.dark.background,
+  },
   previewAspectRatioBadge: {
     position: "absolute",
     right: spacing.sm,
-    bottom: spacing.sm,
+    top: spacing.sm,
     minHeight: 40,
     minWidth: 56,
     alignItems: "center",
@@ -2007,9 +2216,24 @@ const styles = StyleSheet.create({
   },
   previewTemplateInfoBadge: {
     position: "absolute",
-    top: spacing.sm,
+    top: spacing.sm + 48,
     left: spacing.sm,
     right: spacing.sm,
+  },
+  nativeEditorControlsWrap: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xs,
+  },
+  nativeEditorControlsHost: {
+    borderRadius: radius.md,
+    overflow: "hidden",
+    backgroundColor: colors.dark.surface,
+  },
+  trimmerPanelWrap: {
+    overflow: "hidden",
+  },
+  trimmerPanelAnimatedContent: {
+    width: "100%",
   },
   trimmerSection: {
     paddingHorizontal: spacing.lg,

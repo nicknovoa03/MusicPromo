@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   Platform,
+  useColorScheme,
   Pressable,
   Alert,
   ActivityIndicator,
@@ -33,9 +34,12 @@ import { api } from "../../convex/_generated/api";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
 import {
   DEFAULT_LOCAL_ARTIST_PROFILE,
+  DEFAULT_LOCAL_PROFILE_PREFERENCES,
   PROFILE_LINK_PLATFORMS,
   getLocalArtistProfile,
+  getLocalProfilePreferences,
   setLocalArtistProfile,
+  setLocalProfilePreferences,
   type ProfileLink,
   type ProfileLinkPlatform,
 } from "@/lib/localProfile";
@@ -44,6 +48,10 @@ import { getExpoPushTokenAsync } from "@/lib/notifications";
 import type { EventName } from "@/lib/analytics";
 import { useLocalSession } from "@/providers/localSession";
 import { persistPickedMediaFile } from "@/lib/mediaStorage";
+import {
+  getIOSNativeUIPhase5Availability,
+  loadExpoSwiftUIModule,
+} from "@/lib/iosNativeUi";
 import { sleep } from "@/lib/utils";
 
 const PLATFORM_LABELS: Record<ProfileLinkPlatform, string> = {
@@ -62,6 +70,13 @@ type DraftProfileLink = {
   url: string;
   sortOrder: number;
 };
+
+type AspectRatioPreference = "9:16" | "1:1";
+type VideoLengthPreference = 15 | 30 | 60;
+
+const ASPECT_RATIO_OPTIONS: AspectRatioPreference[] = ["9:16", "1:1"];
+const VIDEO_LENGTH_OPTIONS: VideoLengthPreference[] = [15, 30, 60];
+const VIDEO_LENGTH_LABELS = VIDEO_LENGTH_OPTIONS.map((seconds) => `${seconds} sec`);
 
 function normalizeProfileLinkPlatform(value: unknown): ProfileLinkPlatform | null {
   if (typeof value !== "string") return null;
@@ -121,6 +136,7 @@ function normalizeProfileUrl(value: string): string | null {
 
 export default function ProfileScreen() {
   const { height: windowHeight, width: windowWidth } = useWindowDimensions();
+  const colorScheme = useColorScheme();
   const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -137,6 +153,7 @@ export default function ProfileScreen() {
 
   const [isBootstrappingUser, setIsBootstrappingUser] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [isSavingPreferences, setIsSavingPreferences] = useState(false);
   const [isPickingAvatar, setIsPickingAvatar] = useState(false);
   const [isPickingHero, setIsPickingHero] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
@@ -148,16 +165,45 @@ export default function ProfileScreen() {
   );
   const [isLocalArtistProfileReady, setIsLocalArtistProfileReady] =
     useState(false);
+  const [localProfilePreferences, setLocalProfilePreferencesState] = useState(
+    DEFAULT_LOCAL_PROFILE_PREFERENCES,
+  );
+  const [isLocalProfilePreferencesReady, setIsLocalProfilePreferencesReady] =
+    useState(false);
 
   const [artistNameDraft, setArtistNameDraft] = useState("");
   const [heroImageUrlDraft, setHeroImageUrlDraft] = useState<string | null>(null);
   const [avatarImageUrlDraft, setAvatarImageUrlDraft] = useState<string | null>(
     null,
   );
+  const [defaultAspectRatioDraft, setDefaultAspectRatioDraft] =
+    useState<AspectRatioPreference>("9:16");
+  const [defaultVideoLengthDraft, setDefaultVideoLengthDraft] =
+    useState<VideoLengthPreference>(15);
   const [linksDraft, setLinksDraft] = useState<DraftProfileLink[]>([]);
+  const [nativeFieldSeed, setNativeFieldSeed] = useState(0);
   const [isProfileSettingsOpen, setIsProfileSettingsOpen] = useState(false);
   const [isClosingProfileSettings, setIsClosingProfileSettings] = useState(false);
   const profileSettingsTranslateX = useRef(new Animated.Value(windowWidth)).current;
+  const profileScrollY = useRef(new Animated.Value(0)).current;
+  const isDarkMode = colorScheme === "dark";
+  const profileBackgroundColor = isDarkMode ? colors.dark.background : colors.light.background;
+  const profileSurfaceColor = isDarkMode ? colors.dark.surface : colors.light.surface;
+  const profileSurfaceMutedColor = isDarkMode
+    ? colors.dark.surfaceMuted
+    : colors.light.surfaceMuted;
+  const profileTextColor = isDarkMode ? colors.dark.text : colors.light.text;
+  const profileTextSecondaryColor = isDarkMode
+    ? colors.dark.textSecondary
+    : colors.light.textSecondary;
+  const profileBorderColor = isDarkMode ? "rgba(255,255,255,0.15)" : colors.light.border;
+  const profileTopBorderColor = isDarkMode
+    ? "rgba(255,255,255,0.12)"
+    : "rgba(16,35,23,0.14)";
+  const profileStatusBarStyle = isDarkMode ? "light" : "dark";
+  const profileSettingsPressColor = isDarkMode
+    ? "rgba(255,255,255,0.12)"
+    : profileSurfaceColor;
 
   useEffect(() => {
     let isActive = true;
@@ -175,11 +221,27 @@ export default function ProfileScreen() {
     };
   }, []);
 
+  useEffect(() => {
+    let isActive = true;
+    setIsLocalProfilePreferencesReady(false);
+
+    (async () => {
+      const preferences = await getLocalProfilePreferences();
+      if (!isActive) return;
+      setLocalProfilePreferencesState(preferences);
+      setIsLocalProfilePreferencesReady(true);
+    })();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
   const usesLocalProfile = isLocalGuest || !isSignedIn;
   const isConvexUnavailableForSignedIn = Boolean(isSignedIn) && !isAuthenticated;
 
   const isProfileLoading = usesLocalProfile
-    ? !isLocalArtistProfileReady
+    ? !isLocalArtistProfileReady || !isLocalProfilePreferencesReady
     : isConvexUnavailableForSignedIn
       ? false
       : convexUser === undefined || isBootstrappingUser || isConvexAuthLoading;
@@ -212,14 +274,33 @@ export default function ProfileScreen() {
       ),
     [usesLocalProfile, localArtistProfile.links, convexUser?.links],
   );
+  const sourceDefaultAspectRatio = usesLocalProfile
+    ? localProfilePreferences.defaultAspectRatio
+    : convexUser?.preferences?.defaultAspectRatio ??
+      localProfilePreferences.defaultAspectRatio;
+  const sourceDefaultVideoLength = usesLocalProfile
+    ? localProfilePreferences.defaultVideoLength
+    : convexUser?.preferences?.defaultVideoLength ??
+      localProfilePreferences.defaultVideoLength;
 
   useEffect(() => {
     if (isProfileLoading) return;
     setArtistNameDraft(sourceArtistName);
     setHeroImageUrlDraft(sourceHeroImageUrl);
     setAvatarImageUrlDraft(sourceAvatarImageUrl);
+    setDefaultAspectRatioDraft(sourceDefaultAspectRatio);
+    setDefaultVideoLengthDraft(sourceDefaultVideoLength);
     setLinksDraft(sourceLinks);
-  }, [isProfileLoading, sourceArtistName, sourceHeroImageUrl, sourceAvatarImageUrl, sourceLinks]);
+    setNativeFieldSeed((prev) => prev + 1);
+  }, [
+    isProfileLoading,
+    sourceArtistName,
+    sourceHeroImageUrl,
+    sourceAvatarImageUrl,
+    sourceDefaultAspectRatio,
+    sourceDefaultVideoLength,
+    sourceLinks,
+  ]);
 
   const track = useCallback(
     (event: EventName, props?: Record<string, string>) => {
@@ -302,16 +383,28 @@ export default function ProfileScreen() {
 
   const handleUpdateLinkUrl = useCallback(
     (platform: ProfileLinkPlatform, url: string) => {
-      setLinksDraft((prev) =>
-        prev.map((link) =>
+      setLinksDraft((prev) => {
+        const existingIndex = prev.findIndex((link) => link.platform === platform);
+        if (existingIndex === -1) {
+          return [
+            ...prev,
+            {
+              platform,
+              url,
+              sortOrder: prev.length,
+            },
+          ];
+        }
+
+        return prev.map((link) =>
           link.platform === platform
             ? {
                 ...link,
                 url,
               }
             : link,
-        ),
-      );
+        );
+      });
     },
     [],
   );
@@ -333,7 +426,7 @@ export default function ProfileScreen() {
 
   const saveProfile = useCallback(
     async (options: SaveProfileOptions = {}) => {
-      if (isSavingProfile || isSigningOut || isDeleting) return;
+      if (isSavingProfile || isSavingPreferences || isSigningOut || isDeleting) return;
       const includeLinks = options.includeLinks ?? true;
 
       setErrorText(null);
@@ -417,11 +510,127 @@ export default function ProfileScreen() {
       isDeleting,
       isMissingConvexTemplateError,
       isSavingProfile,
+      isSavingPreferences,
       isSigningOut,
       isUnauthenticatedError,
       linksDraft,
       updateProfile,
       usesLocalProfile,
+    ],
+  );
+
+  const savePreferences = useCallback(
+    async (updates: Partial<{
+      defaultAspectRatio: AspectRatioPreference;
+      defaultVideoLength: VideoLengthPreference;
+    }>) => {
+      if (
+        isProfileLoading ||
+        isSavingPreferences ||
+        isSavingProfile ||
+        isSigningOut ||
+        isDeleting
+      ) {
+        return;
+      }
+
+      setErrorText(null);
+      setIsSavingPreferences(true);
+      const nextPreferences = {
+        defaultAspectRatio: updates.defaultAspectRatio ?? defaultAspectRatioDraft,
+        defaultVideoLength: updates.defaultVideoLength ?? defaultVideoLengthDraft,
+      };
+
+      try {
+        const cached = await setLocalProfilePreferences(nextPreferences);
+        setLocalProfilePreferencesState(cached);
+
+        if (!usesLocalProfile) {
+          await ensureUserRecord(convexUser);
+          await updateProfile({
+            preferences: nextPreferences,
+          });
+        }
+
+        const changedKey =
+          updates.defaultAspectRatio !== undefined
+            ? "default_aspect_ratio"
+            : updates.defaultVideoLength !== undefined
+              ? "default_video_length"
+              : "multiple";
+        const changedValue =
+          updates.defaultAspectRatio !== undefined
+            ? updates.defaultAspectRatio
+            : updates.defaultVideoLength !== undefined
+              ? String(updates.defaultVideoLength)
+              : `${nextPreferences.defaultAspectRatio}|${nextPreferences.defaultVideoLength}`;
+
+        track("profile_preference_updated", {
+          key: changedKey,
+          value: changedValue,
+          mode: usesLocalProfile ? "local" : "convex",
+        });
+      } catch (error) {
+        const preferenceError = isMissingConvexTemplateError(error)
+          ? "Clerk JWT template 'convex' is missing. Configure it in Clerk, then sign out/in."
+          : isUnauthenticatedError(error)
+            ? "Session isn't ready yet. Please wait a moment and try again."
+            : "Couldn't update preferences. Please try again.";
+        setErrorText(preferenceError);
+        console.warn("Failed to save preferences:", error);
+      } finally {
+        setIsSavingPreferences(false);
+      }
+    },
+    [
+      convexUser,
+      defaultAspectRatioDraft,
+      defaultVideoLengthDraft,
+      ensureUserRecord,
+      isDeleting,
+      isMissingConvexTemplateError,
+      isProfileLoading,
+      isSavingPreferences,
+      isSavingProfile,
+      isSigningOut,
+      isUnauthenticatedError,
+      track,
+      updateProfile,
+      usesLocalProfile,
+    ],
+  );
+
+  const handleNativeAspectRatioSelect = useCallback(
+    (index: number) => {
+      if (isProfileLoading || isSavingPreferences || isSavingProfile) return;
+      const nextAspectRatio = ASPECT_RATIO_OPTIONS[index] ?? ASPECT_RATIO_OPTIONS[0];
+      if (nextAspectRatio === defaultAspectRatioDraft) return;
+      setDefaultAspectRatioDraft(nextAspectRatio);
+      void savePreferences({ defaultAspectRatio: nextAspectRatio });
+    },
+    [
+      defaultAspectRatioDraft,
+      isProfileLoading,
+      isSavingPreferences,
+      isSavingProfile,
+      savePreferences,
+    ],
+  );
+
+  const handleNativeVideoLengthSelect = useCallback(
+    (index: number) => {
+      if (isProfileLoading || isSavingPreferences || isSavingProfile) return;
+      const nextVideoLength = VIDEO_LENGTH_OPTIONS[index] ?? VIDEO_LENGTH_OPTIONS[0];
+      if (nextVideoLength === defaultVideoLengthDraft) return;
+      setDefaultVideoLengthDraft(nextVideoLength);
+      void savePreferences({ defaultVideoLength: nextVideoLength });
+    },
+    [
+      defaultVideoLengthDraft,
+      isProfileLoading,
+      isSavingPreferences,
+      isSavingProfile,
+      savePreferences,
     ],
   );
 
@@ -597,27 +806,84 @@ export default function ProfileScreen() {
     );
   }, [runDeleteAccount]);
 
-  const availablePlatforms = useMemo(() => {
-    const used = new Set(linksDraft.map((link) => link.platform));
-    return PROFILE_LINK_PLATFORMS.filter((platform) => !used.has(platform));
+  const linksDraftByPlatform = useMemo(() => {
+    const mapping = {} as Record<ProfileLinkPlatform, string>;
+    for (const platform of PROFILE_LINK_PLATFORMS) {
+      mapping[platform] = "";
+    }
+    for (const link of linksDraft) {
+      mapping[link.platform] = link.url;
+    }
+    return mapping;
   }, [linksDraft]);
+  const nativeProfileAvailability = getIOSNativeUIPhase5Availability({
+    minIOSVersion: 16,
+  });
+  const nativeProfileEnabledByContract = nativeProfileAvailability.enabled;
+  const expoSwiftUI = nativeProfileEnabledByContract
+    ? loadExpoSwiftUIModule()
+    : null;
+  const expoSwiftUIAny = expoSwiftUI as Record<string, unknown> | null;
+  const hasNativeProfileComponents = Boolean(
+    expoSwiftUIAny &&
+      "Host" in expoSwiftUIAny &&
+      "Form" in expoSwiftUIAny &&
+      "Section" in expoSwiftUIAny &&
+      "LabeledContent" in expoSwiftUIAny &&
+      "TextField" in expoSwiftUIAny &&
+      "Picker" in expoSwiftUIAny &&
+      "Button" in expoSwiftUIAny &&
+      "Text" in expoSwiftUIAny,
+  );
+  const canUseNativeProfileSettings =
+    nativeProfileEnabledByContract &&
+    expoSwiftUI !== null &&
+    hasNativeProfileComponents;
+  const primaryEmail = clerkUser?.primaryEmailAddress?.emailAddress ?? null;
+
   const heroHeight = Math.max(380, Math.min(Math.round(windowHeight * 0.5), 560));
   const heroBannerHeight = Math.max(
     240,
     Math.min(Math.round(windowWidth * 0.72), Math.round(heroHeight * 0.76)),
   );
+  const heroPullDistance = profileScrollY.interpolate({
+    inputRange: [-1, 0],
+    outputRange: [1, 0],
+    extrapolateLeft: "extend",
+    extrapolateRight: "clamp",
+  });
+  const heroBannerAnimatedHeight = profileScrollY.interpolate({
+    inputRange: [-1, 0],
+    outputRange: [heroBannerHeight + 1, heroBannerHeight],
+    extrapolateLeft: "extend",
+    extrapolateRight: "clamp",
+  });
+  const heroBannerPullScale = profileScrollY.interpolate({
+    inputRange: [-120, 0],
+    outputRange: [1.24, 1.16],
+    extrapolate: "clamp",
+  });
+  const heroBannerPullTranslateY = profileScrollY.interpolate({
+    inputRange: [-120, 0],
+    outputRange: [-8, 18],
+    extrapolate: "clamp",
+  });
   const heroArtistName = artistNameDraft.trim() || "Tap to add artist name";
   const actionsDisabled = isSigningOut || isDeleting;
-  const profileInputsDisabled =
+  const profileMutationDisabled =
     isProfileLoading ||
     isSavingProfile ||
+    isSavingPreferences ||
     isSigningOut ||
-    isDeleting ||
-    isPickingAvatar ||
-    isPickingHero;
-  const profileSettingsDisabled = profileInputsDisabled || isSavingProfile;
+    isDeleting;
+  const profileInputsDisabled =
+    profileMutationDisabled || isPickingAvatar || isPickingHero;
+  const profileSettingsDisabled = profileInputsDisabled;
+  const avatarPickerVisualDisabled = profileMutationDisabled || isPickingAvatar;
+  const heroPickerVisualDisabled = profileMutationDisabled || isPickingHero;
   const modalTopInset = Platform.OS === "ios" ? (insets.top > 0 ? insets.top : 44) : 0;
-  const heroTopInsetOffset = Platform.OS === "ios" ? -insets.top : 0;
+  const heroTopInsetOffset = 0;
+  const shouldUseRNSettingsGesture = !canUseNativeProfileSettings;
 
   const handleOpenProfileSettings = useCallback(() => {
     if (isProfileSettingsOpen || isClosingProfileSettings) return;
@@ -649,9 +915,10 @@ export default function ProfileScreen() {
     }).start(() => {
       setIsClosingProfileSettings(false);
       setIsProfileSettingsOpen(false);
-      void saveProfile({ includeLinks: false });
+      void saveProfile({ includeLinks: canUseNativeProfileSettings });
     });
   }, [
+    canUseNativeProfileSettings,
     isProfileSettingsOpen,
     isClosingProfileSettings,
     profileSettingsTranslateX,
@@ -740,8 +1007,8 @@ export default function ProfileScreen() {
   }, [isProfileSettingsOpen, profileSettingsTranslateX, windowWidth]);
 
   return (
-    <SafeAreaView style={styles.container} edges={["left", "right"]}>
-      {isFocused && !isProfileSettingsOpen ? <StatusBar style="light" /> : null}
+    <SafeAreaView style={[styles.container, { backgroundColor: profileBackgroundColor }]} edges={["left", "right"]}>
+      {isFocused && !isProfileSettingsOpen ? <StatusBar style={profileStatusBarStyle} /> : null}
       {isProfileSettingsOpen ? (
         <Modal
           visible
@@ -755,182 +1022,409 @@ export default function ProfileScreen() {
               <Animated.View
                 style={[
                   styles.profileSettingsAnimatedLayer,
+                  { backgroundColor: profileBackgroundColor },
                   { transform: [{ translateX: profileSettingsTranslateX }] },
                 ]}
               >
                 <SafeAreaView
-                  style={[styles.profileSettingsScreen, { paddingTop: modalTopInset }]}
+                  style={[
+                    styles.profileSettingsScreen,
+                    { paddingTop: modalTopInset, backgroundColor: profileBackgroundColor },
+                  ]}
                   edges={[]}
                 >
-                  <StatusBar style="dark" />
-                <View
-                  style={styles.profileSettingsHeader}
-                  {...profileSettingsPanResponder.panHandlers}
-                >
-                  <Pressable
-                    onPress={handleCloseProfileSettings}
-                    style={({ pressed }) => [
-                      styles.profileSettingsBackButton,
-                      pressed && styles.profileSettingsBackButtonPressed,
+                  <StatusBar style={profileStatusBarStyle} />
+                  <View
+                    style={[
+                      styles.profileSettingsHeader,
+                      {
+                        backgroundColor: profileBackgroundColor,
+                        borderBottomColor: profileBorderColor,
+                      },
                     ]}
-                    accessibilityLabel="Close edit profile"
-                    accessibilityRole="button"
+                    {...(shouldUseRNSettingsGesture
+                      ? profileSettingsPanResponder.panHandlers
+                      : {})}
                   >
-                    <Ionicons name="chevron-back" size={24} color="#121826" />
-                  </Pressable>
-                  <Text style={styles.profileSettingsHeaderTitle}>Edit profile</Text>
-                </View>
-                <ScrollView
-                  contentContainerStyle={styles.profileSettingsContent}
-                  keyboardShouldPersistTaps="handled"
-                >
-                  <View style={styles.profileSettingsAvatarSection}>
-                    <View style={styles.profileSettingsMediaRow}>
-                      <View style={styles.profileSettingsMediaColumn}>
-                        <Pressable
-                          onPress={() => {
-                            void handlePickAvatar();
-                          }}
-                          disabled={profileSettingsDisabled}
-                          style={({ pressed }) => [
-                            styles.profileSettingsMediaCircle,
-                            profileSettingsDisabled && styles.heroActionDisabled,
-                            pressed && !profileSettingsDisabled && styles.optionChipPressed,
-                          ]}
-                          accessibilityLabel="Edit profile picture"
-                          accessibilityRole="button"
-                        >
-                          {avatarImageUrlDraft ? (
-                            <Image
-                              source={{ uri: avatarImageUrlDraft }}
-                              style={styles.profileSettingsMediaImage}
+                    <Pressable
+                      onPress={handleCloseProfileSettings}
+                      style={({ pressed }) => [
+                        styles.profileSettingsBackButton,
+                        pressed && { backgroundColor: profileSettingsPressColor },
+                      ]}
+                      accessibilityLabel="Close edit profile"
+                      accessibilityRole="button"
+                    >
+                      <Ionicons name="chevron-back" size={22} color={profileTextColor} />
+                    </Pressable>
+                    <Text
+                      style={[styles.profileSettingsHeaderTitle, { color: profileTextColor }]}
+                    >
+                      Edit profile
+                    </Text>
+                    <Pressable
+                      onPress={handleCloseProfileSettings}
+                      style={({ pressed }) => [
+                        styles.profileSettingsDoneButton,
+                        pressed && { backgroundColor: profileSettingsPressColor },
+                      ]}
+                      accessibilityLabel="Done editing profile"
+                      accessibilityRole="button"
+                    >
+                      <Text
+                        style={[styles.profileSettingsDoneText, { color: profileTextColor }]}
+                      >
+                        Done
+                      </Text>
+                    </Pressable>
+                  </View>
+                  {canUseNativeProfileSettings && expoSwiftUI ? (
+                    <expoSwiftUI.Host
+                      style={[
+                        styles.nativeSettingsHost,
+                        { backgroundColor: profileBackgroundColor },
+                      ]}
+                      useViewportSizeMeasurement
+                      colorScheme={isDarkMode ? "dark" : "light"}
+                    >
+                      <expoSwiftUI.Form>
+                        <expoSwiftUI.Section title="Identity">
+                          <expoSwiftUI.LabeledContent label="Account">
+                            <expoSwiftUI.Text>{displayName}</expoSwiftUI.Text>
+                          </expoSwiftUI.LabeledContent>
+                          {primaryEmail ? (
+                            <expoSwiftUI.LabeledContent label="Email">
+                              <expoSwiftUI.Text>{primaryEmail}</expoSwiftUI.Text>
+                            </expoSwiftUI.LabeledContent>
+                          ) : null}
+                          <expoSwiftUI.LabeledContent label="Artist name">
+                            <expoSwiftUI.TextField
+                              key={`native-artist-name-${nativeFieldSeed}`}
+                              defaultValue={artistNameDraft}
+                              placeholder="Add name"
+                              autocorrection={false}
+                              onChangeText={setArtistNameDraft}
                             />
-                          ) : (
-                            <Ionicons name="person" size={44} color="#8792AA" />
-                          )}
-                        </Pressable>
-                        <Text style={styles.profileSettingsMediaLabel}>Avatar</Text>
-                        <Pressable
-                          onPress={() => {
-                            void handlePickAvatar();
-                          }}
-                          disabled={profileSettingsDisabled}
-                          style={({ pressed }) => [
-                            styles.profileSettingsMediaCtaButton,
-                            pressed && !profileSettingsDisabled && styles.optionChipPressed,
-                          ]}
-                          accessibilityLabel="Edit avatar"
-                          accessibilityRole="button"
-                        >
-                          {isPickingAvatar ? (
-                            <ActivityIndicator size="small" color="#4A5BEA" />
-                          ) : (
-                            <Text style={styles.profileSettingsMediaCtaText}>Edit avatar</Text>
-                          )}
-                        </Pressable>
+                          </expoSwiftUI.LabeledContent>
+                          <expoSwiftUI.Button
+                            disabled={profileSettingsDisabled}
+                            systemImage="person.crop.circle.badge.plus"
+                            onPress={() => {
+                              void handlePickAvatar();
+                            }}
+                          >
+                            {isPickingAvatar ? "Updating avatar..." : "Change avatar photo"}
+                          </expoSwiftUI.Button>
+                          <expoSwiftUI.Button
+                            disabled={profileSettingsDisabled}
+                            systemImage="photo.badge.plus"
+                            onPress={() => {
+                              void handlePickHero();
+                            }}
+                          >
+                            {isPickingHero ? "Updating banner..." : "Change banner photo"}
+                          </expoSwiftUI.Button>
+                          <expoSwiftUI.Button
+                            variant="borderedProminent"
+                            disabled={profileSettingsDisabled}
+                            systemImage="checkmark"
+                            onPress={() => {
+                              void saveProfile();
+                            }}
+                          >
+                            {isSavingProfile ? "Saving profile..." : "Save profile changes"}
+                          </expoSwiftUI.Button>
+                        </expoSwiftUI.Section>
+
+                        <expoSwiftUI.Section title="Preferences">
+                          <expoSwiftUI.Picker
+                            options={ASPECT_RATIO_OPTIONS}
+                            selectedIndex={Math.max(
+                              0,
+                              ASPECT_RATIO_OPTIONS.indexOf(defaultAspectRatioDraft),
+                            )}
+                            label="Default aspect ratio"
+                            variant="menu"
+                            onOptionSelected={(event) => {
+                              handleNativeAspectRatioSelect(event.nativeEvent.index);
+                            }}
+                          />
+                          <expoSwiftUI.Picker
+                            options={VIDEO_LENGTH_LABELS}
+                            selectedIndex={Math.max(
+                              0,
+                              VIDEO_LENGTH_OPTIONS.indexOf(defaultVideoLengthDraft),
+                            )}
+                            label="Default video length"
+                            variant="menu"
+                            onOptionSelected={(event) => {
+                              handleNativeVideoLengthSelect(event.nativeEvent.index);
+                            }}
+                          />
+                        </expoSwiftUI.Section>
+
+                        <expoSwiftUI.Section title="Profile Links">
+                          {PROFILE_LINK_PLATFORMS.map((platform) => (
+                            <expoSwiftUI.LabeledContent
+                              key={platform}
+                              label={PLATFORM_LABELS[platform]}
+                            >
+                              <expoSwiftUI.TextField
+                                key={`native-link-${platform}-${nativeFieldSeed}`}
+                                defaultValue={linksDraftByPlatform[platform] ?? ""}
+                                placeholder="https://"
+                                autocorrection={false}
+                                keyboardType="url"
+                                onChangeText={(value) => {
+                                  handleUpdateLinkUrl(platform, value);
+                                }}
+                              />
+                            </expoSwiftUI.LabeledContent>
+                          ))}
+                        </expoSwiftUI.Section>
+
+                        <expoSwiftUI.Section title="Account Actions">
+                          <expoSwiftUI.Button
+                            disabled={actionsDisabled}
+                            systemImage="rectangle.portrait.and.arrow.right"
+                            onPress={handleSignOut}
+                          >
+                            {isSigningOut
+                              ? "Signing out..."
+                              : isLocalGuest
+                                ? "Exit guest mode"
+                                : "Sign out"}
+                          </expoSwiftUI.Button>
+                          {!isLocalGuest ? (
+                            <expoSwiftUI.Button
+                              role="destructive"
+                              disabled={actionsDisabled}
+                              systemImage="trash"
+                              onPress={handleDeleteAccount}
+                            >
+                              {isDeleting ? "Deleting account..." : "Delete account"}
+                            </expoSwiftUI.Button>
+                          ) : null}
+                        </expoSwiftUI.Section>
+
+                        {errorText ? (
+                          <expoSwiftUI.Section title="Status">
+                            <expoSwiftUI.Text color={colors.accent.error}>{errorText}</expoSwiftUI.Text>
+                          </expoSwiftUI.Section>
+                        ) : null}
+                      </expoSwiftUI.Form>
+                    </expoSwiftUI.Host>
+                  ) : (
+                    <ScrollView
+                      contentContainerStyle={[
+                        styles.profileSettingsContent,
+                        { backgroundColor: profileBackgroundColor },
+                      ]}
+                      keyboardShouldPersistTaps="handled"
+                    >
+                      <View style={styles.profileSettingsIdentitySection}>
+                        <View style={styles.profileSettingsAvatarRow}>
+                          <View style={styles.profileSettingsAvatarOption}>
+                            <Pressable
+                              onPress={() => {
+                                void handlePickAvatar();
+                              }}
+                              disabled={profileSettingsDisabled}
+                              style={({ pressed }) => [
+                                styles.profileSettingsAvatarButton,
+                                {
+                                  backgroundColor: profileSurfaceColor,
+                                  borderColor: profileBorderColor,
+                                },
+                                avatarPickerVisualDisabled && styles.heroActionDisabled,
+                                pressed && !profileSettingsDisabled && styles.optionChipPressed,
+                              ]}
+                              accessibilityLabel="Edit profile picture"
+                              accessibilityRole="button"
+                            >
+                              {avatarImageUrlDraft ? (
+                                <Image
+                                  source={{ uri: avatarImageUrlDraft }}
+                                  style={styles.profileSettingsMediaImage}
+                                />
+                              ) : (
+                                <Ionicons
+                                  name="person"
+                                  size={42}
+                                  color={profileTextSecondaryColor}
+                                />
+                              )}
+                            </Pressable>
+                            <Text
+                              style={[
+                                styles.profileSettingsAvatarLabel,
+                                { color: profileTextSecondaryColor },
+                              ]}
+                            >
+                              Profile
+                            </Text>
+                          </View>
+
+                          <View style={styles.profileSettingsAvatarOption}>
+                            <Pressable
+                              onPress={() => {
+                                void handlePickHero();
+                              }}
+                              disabled={profileSettingsDisabled}
+                              style={({ pressed }) => [
+                                styles.profileSettingsAvatarButton,
+                                styles.profileSettingsAvatarButtonSecondary,
+                                {
+                                  backgroundColor: profileBackgroundColor,
+                                  borderColor: profileBorderColor,
+                                },
+                                heroPickerVisualDisabled && styles.heroActionDisabled,
+                                pressed && !profileSettingsDisabled && styles.optionChipPressed,
+                              ]}
+                              accessibilityLabel="Edit banner picture"
+                              accessibilityRole="button"
+                            >
+                              {heroImageUrlDraft ? (
+                                <Image
+                                  source={{ uri: heroImageUrlDraft }}
+                                  style={styles.profileSettingsMediaImage}
+                                />
+                              ) : (
+                                <Ionicons
+                                  name="image-outline"
+                                  size={34}
+                                  color={profileTextSecondaryColor}
+                                />
+                              )}
+                            </Pressable>
+                            <Text
+                              style={[
+                                styles.profileSettingsAvatarLabel,
+                                { color: profileTextSecondaryColor },
+                              ]}
+                            >
+                              Banner
+                            </Text>
+                          </View>
+                        </View>
                       </View>
 
-                      <View style={styles.profileSettingsMediaColumn}>
-                        <Pressable
-                          onPress={() => {
-                            void handlePickHero();
-                          }}
-                          disabled={profileSettingsDisabled}
-                          style={({ pressed }) => [
-                            styles.profileSettingsMediaCircle,
-                            profileSettingsDisabled && styles.heroActionDisabled,
-                            pressed && !profileSettingsDisabled && styles.optionChipPressed,
+                      <View
+                        style={[
+                          styles.profileSettingsList,
+                          {
+                            backgroundColor: profileBackgroundColor,
+                            borderColor: profileBorderColor,
+                          },
+                        ]}
+                      >
+                        <View
+                          style={[
+                            styles.profileSettingsListRow,
+                            {
+                              backgroundColor: profileBackgroundColor,
+                              borderBottomColor: profileBorderColor,
+                            },
                           ]}
-                          accessibilityLabel="Edit banner picture"
-                          accessibilityRole="button"
                         >
-                          {heroImageUrlDraft ? (
-                            <Image
-                              source={{ uri: heroImageUrlDraft }}
-                              style={styles.profileSettingsMediaImage}
-                            />
-                          ) : (
-                            <Ionicons name="image-outline" size={40} color="#8792AA" />
-                          )}
-                        </Pressable>
-                        <Text style={styles.profileSettingsMediaLabel}>Banner</Text>
-                        <Pressable
-                          onPress={() => {
-                            void handlePickHero();
-                          }}
-                          disabled={profileSettingsDisabled}
-                          style={({ pressed }) => [
-                            styles.profileSettingsMediaCtaButton,
-                            pressed && !profileSettingsDisabled && styles.optionChipPressed,
-                          ]}
-                          accessibilityLabel="Edit banner"
-                          accessibilityRole="button"
-                        >
-                          {isPickingHero ? (
-                            <ActivityIndicator size="small" color="#4A5BEA" />
-                          ) : (
-                            <Text style={styles.profileSettingsMediaCtaText}>Edit banner</Text>
-                          )}
-                        </Pressable>
+                          <Text
+                            style={[styles.profileSettingsListLabel, { color: profileTextColor }]}
+                          >
+                            Name
+                          </Text>
+                          <TextInput
+                            value={artistNameDraft}
+                            onChangeText={setArtistNameDraft}
+                            placeholder="Add name"
+                            placeholderTextColor={profileTextSecondaryColor}
+                            editable={!profileSettingsDisabled}
+                            onSubmitEditing={() => {
+                              void saveProfile({ includeLinks: false });
+                            }}
+                            onBlur={() => {
+                              void saveProfile({ includeLinks: false });
+                            }}
+                            style={[
+                              styles.profileSettingsListValueInput,
+                              { color: profileTextColor },
+                            ]}
+                            autoCapitalize="words"
+                            autoCorrect={false}
+                            returnKeyType="done"
+                          />
+                        </View>
                       </View>
-                    </View>
-                  </View>
-
-                  <View style={styles.profileSettingsCard}>
-                    <View style={styles.profileSettingsRow}>
-                      <Text style={styles.profileSettingsRowLabel}>Name</Text>
-                      <TextInput
-                        value={artistNameDraft}
-                        onChangeText={setArtistNameDraft}
-                        placeholder="Add name"
-                        placeholderTextColor="#A7AFC0"
-                        editable={!profileSettingsDisabled}
-                        onSubmitEditing={() => {
-                          void saveProfile({ includeLinks: false });
-                        }}
-                        onBlur={() => {
-                          void saveProfile({ includeLinks: false });
-                        }}
-                        style={styles.profileSettingsNameInput}
-                        autoCapitalize="words"
-                        autoCorrect={false}
-                        returnKeyType="done"
-                      />
-                    </View>
-                  </View>
-                </ScrollView>
+                    </ScrollView>
+                  )}
               </SafeAreaView>
             </Animated.View>
             </View>
           </SafeAreaProvider>
         </Modal>
       ) : null}
-        <ScrollView
+        <Animated.ScrollView
           contentInsetAdjustmentBehavior="never"
           automaticallyAdjustContentInsets={false}
           automaticallyAdjustsScrollIndicatorInsets={false}
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
+          scrollEventThrottle={16}
+          onScroll={Animated.event(
+            [{ nativeEvent: { contentOffset: { y: profileScrollY } } }],
+            { useNativeDriver: false },
+          )}
         >
-        <View
+        <Animated.View
           style={[
             styles.heroShell,
-            { minHeight: heroHeight, marginTop: heroTopInsetOffset },
+            { backgroundColor: profileBackgroundColor },
+            {
+              minHeight: heroHeight,
+              marginTop: heroTopInsetOffset,
+              transform: [{ translateY: Animated.multiply(heroPullDistance, -1) }],
+            },
           ]}
         >
-          <View style={[styles.heroBanner, { height: heroBannerHeight }]}>
+          <Animated.View style={[styles.heroBanner, { height: heroBannerAnimatedHeight }]}>
             {heroImageUrlDraft ? (
-              <Image
+              <Animated.Image
                 source={{ uri: heroImageUrlDraft }}
-                style={styles.heroBannerImage}
+                style={[
+                  styles.heroBannerImage,
+                  {
+                    transform: [
+                      { scale: heroBannerPullScale },
+                      { translateY: heroBannerPullTranslateY },
+                    ],
+                  },
+                ]}
                 resizeMode="cover"
               />
             ) : (
-              <View style={styles.heroBannerFallback} />
+              <Animated.View
+                style={[
+                  styles.heroBannerFallback,
+                  { backgroundColor: profileSurfaceColor },
+                  {
+                    transform: [
+                      { scale: heroBannerPullScale },
+                      { translateY: heroBannerPullTranslateY },
+                    ],
+                  },
+                ]}
+              />
             )}
-          </View>
+          </Animated.View>
 
-          <View style={styles.heroIdentityBlock}>
+          <View
+            style={[
+              styles.heroIdentityBlock,
+              {
+                backgroundColor: profileBackgroundColor,
+                borderTopColor: profileTopBorderColor,
+              },
+            ]}
+          >
             <Pressable
               onPress={() => {
                 void handlePickAvatar();
@@ -949,11 +1443,8 @@ export default function ProfileScreen() {
                   {avatarImageUrlDraft ? (
                     <Image source={{ uri: avatarImageUrlDraft }} style={styles.heroAvatarImage} />
                   ) : (
-                    <Ionicons name="person" size={52} color="#9EABC8" />
+                    <Ionicons name="person" size={52} color={profileTextSecondaryColor} />
                   )}
-                </View>
-                <View style={styles.heroAvatarPlaceholder}>
-                  <Ionicons name="camera-outline" size={14} color="#F4F7FF" />
                 </View>
               </View>
             </Pressable>
@@ -966,6 +1457,7 @@ export default function ProfileScreen() {
                 disabled={profileInputsDisabled}
                 style={({ pressed }) => [
                   styles.heroEditProfileButton,
+                  { backgroundColor: profileSurfaceMutedColor },
                   profileInputsDisabled && styles.heroActionDisabled,
                   pressed && !profileInputsDisabled && styles.optionChipPressed,
                 ]}
@@ -973,11 +1465,14 @@ export default function ProfileScreen() {
                 accessibilityRole="button"
               >
                 {isPickingAvatar ? (
-                  <ActivityIndicator size="small" color="#11152A" />
+                  <ActivityIndicator size="small" color={profileTextColor} />
                 ) : (
                   <>
-                    <Ionicons name="pencil-outline" size={15} color="#11152A" />
-                    <Text style={styles.heroEditProfileButtonText} numberOfLines={1}>
+                    <Ionicons name="pencil-outline" size={15} color={profileTextColor} />
+                    <Text
+                      style={[styles.heroEditProfileButtonText, { color: profileTextColor }]}
+                      numberOfLines={1}
+                    >
                       Edit Profile
                     </Text>
                   </>
@@ -989,16 +1484,25 @@ export default function ProfileScreen() {
               <Text
                 style={[
                   styles.heroArtistName,
-                  !artistNameDraft.trim() && styles.heroArtistNamePlaceholder,
+                  { color: profileTextColor },
+                  !artistNameDraft.trim() && [
+                    styles.heroArtistNamePlaceholder,
+                    { color: profileTextSecondaryColor },
+                  ],
                 ]}
               >
                 {heroArtistName}
               </Text>
             </View>
           </View>
-        </View>
+        </Animated.View>
 
-        <View style={styles.mainContent}>
+        <Animated.View
+          style={[
+            styles.mainContent,
+            { transform: [{ translateY: Animated.multiply(heroPullDistance, -1) }] },
+          ]}
+        >
           {errorText ? (
             <View style={styles.errorPanel}>
               <Ionicons name="alert-circle-outline" size={16} color={colors.accent.error} />
@@ -1007,19 +1511,36 @@ export default function ProfileScreen() {
           ) : null}
 
           {isProfileLoading ? (
-            <View style={styles.loadingCard}>
-              <ActivityIndicator color="#F1F4FF" />
-              <Text style={styles.loadingText}>Loading profile...</Text>
+            <View
+              style={[
+                styles.loadingCard,
+                { backgroundColor: profileSurfaceColor, borderColor: profileBorderColor },
+              ]}
+            >
+              <ActivityIndicator color={profileTextColor} />
+              <Text style={[styles.loadingText, { color: profileTextSecondaryColor }]}>
+                Loading profile...
+              </Text>
             </View>
           ) : null}
 
-          <View style={styles.accountSection}>
-            <Text style={styles.sectionEyebrow}>Account Actions</Text>
-            <Text style={styles.sectionTitle}>Security & Session</Text>
+          <View
+            style={[
+              styles.accountSection,
+              { backgroundColor: profileSurfaceColor, borderColor: profileBorderColor },
+            ]}
+          >
+            <Text style={[styles.sectionEyebrow, { color: profileTextSecondaryColor }]}>
+              Account Actions
+            </Text>
+            <Text style={[styles.sectionTitle, { color: profileTextColor }]}>
+              Security & Session
+            </Text>
 
             <Pressable
               style={({ pressed }) => [
                 styles.actionRow,
+                { backgroundColor: profileSurfaceMutedColor, borderColor: profileBorderColor },
                 pressed && !actionsDisabled && styles.actionRowPressed,
               ]}
               onPress={handleSignOut}
@@ -1028,15 +1549,15 @@ export default function ProfileScreen() {
               accessibilityRole="button"
             >
               <View style={styles.actionRowLeft}>
-                <Ionicons name="log-out-outline" size={20} color="#E8ECF8" />
-                <Text style={styles.actionText}>
+                <Ionicons name="log-out-outline" size={20} color={profileTextColor} />
+                <Text style={[styles.actionText, { color: profileTextColor }]}>
                   {isLocalGuest ? "Exit Guest Mode" : "Sign Out"}
                 </Text>
               </View>
               {isSigningOut ? (
-                <ActivityIndicator size="small" color="#AEB7D1" />
+                <ActivityIndicator size="small" color={profileTextSecondaryColor} />
               ) : (
-                <Ionicons name="chevron-forward" size={16} color="#AEB7D1" />
+                <Ionicons name="chevron-forward" size={16} color={profileTextSecondaryColor} />
               )}
             </Pressable>
 
@@ -1045,6 +1566,7 @@ export default function ProfileScreen() {
                 <Pressable
                   style={({ pressed }) => [
                     styles.actionRow,
+                    { backgroundColor: profileSurfaceMutedColor, borderColor: profileBorderColor },
                     pressed && !actionsDisabled && styles.deleteRowPressed,
                   ]}
                   onPress={handleDeleteAccount}
@@ -1053,24 +1575,23 @@ export default function ProfileScreen() {
                   accessibilityRole="button"
                 >
                   <View style={styles.actionRowLeft}>
-                    <Ionicons name="trash-outline" size={20} color={colors.accent.error} />
-                    <Text style={styles.deleteText}>Delete Account</Text>
+                    <Ionicons name="trash-outline" size={20} color={profileTextColor} />
+                    <Text style={[styles.deleteText, { color: profileTextColor }]}>
+                      Delete Account
+                    </Text>
                   </View>
                   {isDeleting ? (
-                    <ActivityIndicator size="small" color={colors.accent.error} />
+                    <ActivityIndicator size="small" color={profileTextColor} />
                   ) : (
-                    <Ionicons name="chevron-forward" size={16} color="#AEB7D1" />
+                    <Ionicons name="chevron-forward" size={16} color={profileTextSecondaryColor} />
                   )}
                 </Pressable>
 
-                <Text style={styles.warningText}>
-                  Deleting deactivates your account for v1 while keeping records recoverable.
-                </Text>
               </>
             ) : null}
           </View>
-        </View>
-      </ScrollView>
+        </Animated.View>
+      </Animated.ScrollView>
     </SafeAreaView>
   );
 }
@@ -1078,7 +1599,7 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#03050A",
+    backgroundColor: colors.dark.background,
   },
   content: {
     paddingTop: 0,
@@ -1090,20 +1611,24 @@ const styles = StyleSheet.create({
   },
   profileSettingsScreen: {
     flex: 1,
-    backgroundColor: "#F4F5F7",
+    backgroundColor: colors.light.background,
+  },
+  nativeSettingsHost: {
+    flex: 1,
+    backgroundColor: colors.light.background,
   },
   profileSettingsAnimatedLayer: {
     flex: 1,
-    backgroundColor: "#F4F5F7",
+    backgroundColor: colors.light.background,
   },
   profileSettingsHeader: {
     minHeight: 58,
     borderBottomWidth: 1,
-    borderBottomColor: "#E6E8EE",
+    borderBottomColor: colors.light.border,
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: spacing.sm,
-    justifyContent: "flex-start",
+    justifyContent: "space-between",
   },
   profileSettingsBackButton: {
     width: 38,
@@ -1113,104 +1638,109 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   profileSettingsBackButtonPressed: {
-    backgroundColor: "#E8EBF2",
+    backgroundColor: colors.light.surface,
+  },
+  profileSettingsDoneButton: {
+    minHeight: 34,
+    minWidth: 52,
+    borderRadius: radius.full,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: spacing.sm,
+  },
+  profileSettingsDoneButtonPressed: {
+    backgroundColor: colors.light.surface,
+  },
+  profileSettingsDoneText: {
+    ...typography.body,
+    color: colors.light.text,
+    fontWeight: "600",
   },
   profileSettingsHeaderTitle: {
     ...typography.h2,
-    color: "#232938",
+    color: colors.light.text,
     textAlign: "center",
     position: "absolute",
     left: 56,
     right: 56,
   },
   profileSettingsContent: {
-    paddingBottom: 36,
+    paddingBottom: spacing.xl,
+    backgroundColor: colors.light.background,
   },
-  profileSettingsAvatarSection: {
-    borderBottomWidth: 1,
-    borderBottomColor: "#E6E8EE",
+  profileSettingsIdentitySection: {
     paddingTop: spacing.lg,
-    paddingBottom: spacing.md,
-    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
+    paddingHorizontal: spacing.md,
     alignItems: "center",
   },
-  profileSettingsMediaRow: {
-    width: "100%",
+  profileSettingsAvatarRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
+    justifyContent: "center",
+    alignItems: "center",
     gap: spacing.md,
   },
-  profileSettingsMediaColumn: {
-    flex: 1,
+  profileSettingsAvatarOption: {
     alignItems: "center",
     gap: spacing.xs,
   },
-  profileSettingsMediaCircle: {
-    width: 96,
-    height: 96,
+  profileSettingsAvatarButton: {
+    width: 78,
+    height: 78,
     borderRadius: radius.full,
-    backgroundColor: "#DDE2EC",
+    backgroundColor: colors.light.surface,
     borderWidth: 1,
-    borderColor: "#D4DAE8",
+    borderColor: colors.light.border,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
+  },
+  profileSettingsAvatarButtonSecondary: {
+    backgroundColor: colors.light.background,
   },
   profileSettingsMediaImage: {
     width: "100%",
     height: "100%",
   },
-  profileSettingsMediaLabel: {
+  profileSettingsAvatarLabel: {
     ...typography.caption,
-    color: "#4A5266",
-    fontWeight: "700",
-    letterSpacing: 0.5,
-    textTransform: "uppercase",
-    marginTop: spacing.xs,
-  },
-  profileSettingsMediaCtaButton: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    minHeight: 28,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  profileSettingsMediaCtaText: {
-    ...typography.body,
-    color: "#4A5BEA",
+    color: colors.light.textSecondary,
     fontWeight: "600",
-    textAlign: "center",
   },
-  profileSettingsCard: {
-    backgroundColor: "#F4F5F7",
+  profileSettingsList: {
+    marginTop: spacing.sm,
+    backgroundColor: colors.light.background,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: colors.light.border,
   },
-  profileSettingsRow: {
+  profileSettingsListRow: {
     minHeight: 56,
     borderBottomWidth: 1,
-    borderBottomColor: "#E6E8EE",
-    paddingHorizontal: spacing.lg,
+    borderBottomColor: colors.light.border,
+    paddingHorizontal: spacing.md,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: spacing.md,
   },
-  profileSettingsRowLabel: {
+  profileSettingsListLabel: {
     ...typography.body,
-    color: "#303645",
+    color: colors.light.text,
     flexShrink: 0,
   },
-  profileSettingsNameInput: {
+  profileSettingsListValueInput: {
     ...typography.body,
-    color: "#1F2431",
+    color: colors.light.text,
     textAlign: "right",
     flex: 1,
     minHeight: 36,
     paddingVertical: 0,
+    paddingHorizontal: 0,
   },
   heroShell: {
     width: "100%",
-    backgroundColor: "#03050A",
+    backgroundColor: colors.dark.background,
   },
   heroBanner: {
     width: "100%",
@@ -1223,7 +1753,7 @@ const styles = StyleSheet.create({
   },
   heroBannerFallback: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "#0F172D",
+    backgroundColor: colors.dark.surface,
   },
   heroEditProfileActionRow: {
     marginLeft: 156,
@@ -1237,7 +1767,7 @@ const styles = StyleSheet.create({
     minHeight: 38,
     borderRadius: radius.full,
     paddingHorizontal: spacing.md,
-    backgroundColor: "#EFF3FF",
+    backgroundColor: colors.light.surfaceMuted,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -1245,7 +1775,7 @@ const styles = StyleSheet.create({
   },
   heroEditProfileButtonText: {
     ...typography.caption,
-    color: "#11152A",
+    color: colors.dark.background,
     fontWeight: "700",
   },
   heroActionDisabled: {
@@ -1253,12 +1783,12 @@ const styles = StyleSheet.create({
   },
   heroIdentityBlock: {
     position: "relative",
-    backgroundColor: "#03050A",
+    backgroundColor: colors.dark.background,
     paddingHorizontal: spacing.lg,
     paddingTop: 90,
     paddingBottom: spacing.lg,
     borderTopWidth: 1,
-    borderTopColor: "rgba(184, 200, 236, 0.15)",
+    borderTopColor: "rgba(255,255,255,0.12)",
   },
   heroAvatarPressable: {
     position: "absolute",
@@ -1272,8 +1802,8 @@ const styles = StyleSheet.create({
     height: 140,
     borderRadius: 72,
     padding: 4,
-    backgroundColor: "rgba(222, 233, 255, 0.8)",
-    shadowColor: "#000000",
+    backgroundColor: "rgba(255,255,255,0.8)",
+    shadowColor: colors.dark.background,
     shadowOpacity: 0.42,
     shadowRadius: 24,
     shadowOffset: { width: 0, height: 14 },
@@ -1284,7 +1814,7 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
     borderRadius: 68,
-    backgroundColor: "#16203A",
+    backgroundColor: colors.dark.surface,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
@@ -1293,32 +1823,20 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
   },
-  heroAvatarPlaceholder: {
-    position: "absolute",
-    left: 6,
-    bottom: 6,
-    width: 34,
-    height: 34,
-    borderRadius: radius.full,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "rgba(227, 236, 255, 0.42)",
-    backgroundColor: "rgba(18, 26, 44, 0.82)",
-  },
   heroIdentityTextWrap: {
     gap: spacing.xs,
   },
   heroArtistName: {
     ...typography.h1,
-    color: "#F8FAFF",
+    color: colors.dark.text,
     fontSize: 42,
-    lineHeight: 46,
+    lineHeight: 50,
     letterSpacing: 0.3,
     maxWidth: "88%",
+    paddingBottom: 2,
   },
   heroArtistNamePlaceholder: {
-    color: "#D6DEEF",
+    color: colors.dark.textSecondary,
   },
   mainContent: {
     paddingHorizontal: spacing.lg,
@@ -1338,15 +1856,15 @@ const styles = StyleSheet.create({
   },
   errorPanelText: {
     ...typography.caption,
-    color: "#FFB8BE",
+    color: colors.accent.error,
     flex: 1,
   },
   loadingCard: {
     minHeight: 120,
     borderRadius: radius.lg,
-    backgroundColor: "#121A2E",
+    backgroundColor: colors.dark.surface,
     borderWidth: 1,
-    borderColor: "rgba(187, 203, 236, 0.15)",
+    borderColor: "rgba(255,255,255,0.15)",
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
@@ -1355,27 +1873,27 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     ...typography.body,
-    color: "#D7DFF4",
+    color: colors.dark.textSecondary,
   },
   sectionCard: {
     borderRadius: radius.lg,
-    backgroundColor: "#11192C",
+    backgroundColor: colors.dark.surface,
     borderWidth: 1,
-    borderColor: "rgba(187, 203, 236, 0.15)",
+    borderColor: "rgba(255,255,255,0.15)",
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
     marginBottom: spacing.md,
   },
   sectionEyebrow: {
     ...typography.caption,
-    color: "#8D9BBD",
+    color: colors.dark.textSecondary,
     textTransform: "uppercase",
     letterSpacing: 1,
     marginBottom: spacing.xs,
   },
   sectionTitle: {
     ...typography.h2,
-    color: "#F4F7FF",
+    color: colors.dark.text,
     marginBottom: spacing.md,
   },
   optionChipPressed: {
@@ -1390,8 +1908,8 @@ const styles = StyleSheet.create({
   addPlatformChip: {
     borderRadius: radius.full,
     borderWidth: 1,
-    borderColor: "rgba(205, 218, 249, 0.3)",
-    backgroundColor: "#1A2946",
+    borderColor: "rgba(255,255,255,0.22)",
+    backgroundColor: colors.dark.surfaceMuted,
     paddingHorizontal: spacing.md,
     minHeight: 34,
     alignItems: "center",
@@ -1401,19 +1919,19 @@ const styles = StyleSheet.create({
   },
   addPlatformChipText: {
     ...typography.caption,
-    color: "#DBE4FC",
+    color: colors.dark.text,
     fontWeight: "600",
   },
   emptyLinksText: {
     ...typography.caption,
-    color: "#94A2C4",
+    color: colors.dark.textSecondary,
     marginBottom: spacing.sm,
   },
   linkRow: {
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: "rgba(205, 218, 249, 0.2)",
-    backgroundColor: "#0F172A",
+    borderColor: "rgba(255,255,255,0.15)",
+    backgroundColor: colors.dark.surface,
     padding: spacing.sm,
     marginTop: spacing.xs,
     gap: spacing.xs,
@@ -1425,20 +1943,20 @@ const styles = StyleSheet.create({
   },
   linkPlatform: {
     ...typography.caption,
-    color: "#DCE4FA",
+    color: colors.dark.text,
     fontWeight: "600",
   },
   linkInput: {
     ...typography.body,
-    color: "#F3F6FF",
+    color: colors.dark.text,
     flex: 1,
     minHeight: 36,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
     borderRadius: radius.sm,
     borderWidth: 1,
-    borderColor: "rgba(205, 218, 249, 0.2)",
-    backgroundColor: "#13203B",
+    borderColor: "rgba(255,255,255,0.15)",
+    backgroundColor: colors.dark.surfaceMuted,
   },
   linkRemoveButton: {
     width: 30,
@@ -1453,10 +1971,10 @@ const styles = StyleSheet.create({
     borderRadius: radius.full,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#F1F4FE",
+    backgroundColor: colors.accent.primary,
     marginTop: spacing.xs,
     borderWidth: 1,
-    borderColor: "#D7DEEE",
+    borderColor: colors.accent.primary,
     marginBottom: spacing.lg,
     flexDirection: "row",
     gap: spacing.xs,
@@ -1466,14 +1984,14 @@ const styles = StyleSheet.create({
   },
   saveButtonText: {
     ...typography.button,
-    color: "#101426",
+    color: colors.accent.onPrimary,
     fontWeight: "700",
   },
   accountSection: {
     borderRadius: radius.lg,
-    backgroundColor: "#11192C",
+    backgroundColor: colors.dark.surface,
     borderWidth: 1,
-    borderColor: "rgba(187, 203, 236, 0.15)",
+    borderColor: "rgba(255,255,255,0.15)",
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
   },
@@ -1484,16 +2002,16 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
-    backgroundColor: "#0D162A",
+    backgroundColor: colors.dark.surfaceMuted,
     borderWidth: 1,
-    borderColor: "rgba(205, 218, 249, 0.2)",
+    borderColor: "rgba(255,255,255,0.15)",
     marginBottom: spacing.sm,
   },
   actionRowPressed: {
     opacity: 0.86,
   },
   deleteRowPressed: {
-    backgroundColor: "#2B161D",
+    backgroundColor: "rgba(95,29,39,0.72)",
   },
   actionRowLeft: {
     flexDirection: "row",
@@ -1502,18 +2020,12 @@ const styles = StyleSheet.create({
   },
   actionText: {
     ...typography.body,
-    color: "#E8ECF8",
+    color: colors.dark.text,
     fontWeight: "600",
   },
   deleteText: {
     ...typography.body,
     color: colors.accent.error,
     fontWeight: "600",
-  },
-  warningText: {
-    ...typography.caption,
-    color: "#8F9DBE",
-    lineHeight: 18,
-    marginTop: spacing.xs,
   },
 });

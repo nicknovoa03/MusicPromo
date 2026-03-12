@@ -16,6 +16,7 @@ export const ffmpegRenderer: Renderer = {
       aspectRatio: request.aspectRatio,
       debugRenderModeBadge: request.debugRenderModeBadge,
       fastMode: request.fastMode,
+      outputFileName: request.outputFileName,
       onProgress: request.onProgress,
     });
 

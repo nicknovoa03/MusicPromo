@@ -71,14 +71,39 @@ const RAIL_PRESETS: Record<RailPresetId, RailPreset> = {
 // Switch between "tight" | "balanced" | "spotlight" for feel tuning.
 const ACTIVE_RAIL_PRESET: RailPresetId = "balanced";
 
+const TEMPLATE_ICON_FALLBACK: ComponentProps<typeof Ionicons>["name"] = "shapes";
+
 const TEMPLATE_ICONS: Record<string, ComponentProps<typeof Ionicons>["name"]> = {
+  vinyl: "disc",
+  cd: "disc-outline",
+  whole: "ellipse",
+  hybrid: "ellipse",
   "simple-spin": "disc",
-  "graphic-pop": "color-palette",
+  "graphic-pop": "disc-outline",
 };
 
 function clampIndex(index: number, maxIndex: number): number {
   if (maxIndex <= 0) return 0;
   return Math.max(0, Math.min(index, maxIndex));
+}
+
+function TemplateGlyph({
+  templateId,
+  size,
+  selected,
+}: {
+  templateId: string;
+  size: number;
+  selected: boolean;
+}) {
+  const iconName = TEMPLATE_ICONS[templateId] ?? TEMPLATE_ICON_FALLBACK;
+  return (
+    <Ionicons
+      name={iconName}
+      size={size}
+      color={selected ? colors.accent.onPrimary : "rgba(255,255,255,0.9)"}
+    />
+  );
 }
 
 export function TemplateSwitcher({
@@ -159,19 +184,33 @@ export function TemplateSwitcher({
   }, []);
 
   const selectIndex = useCallback(
-    (index: number, animated = true) => {
+    (
+      index: number,
+      behavior: { animated?: boolean; shouldScroll?: boolean } = {},
+    ) => {
+      const { animated = true, shouldScroll = true } = behavior;
       if (!options.length) return;
       const clamped = clampIndex(index, options.length - 1);
-      const option = options[clamped];
-      if (!option) return;
-      setActiveTemplateId(option.id);
-      if (option.id !== value) {
-        triggerSelectionHaptic(option.id);
-        onChange(option.id);
+      const nextOption = options[clamped];
+      if (!nextOption) return;
+      setActiveTemplateId((previous) =>
+        previous === nextOption.id ? previous : nextOption.id,
+      );
+      if (nextOption.id !== value) {
+        triggerSelectionHaptic(nextOption.id);
+        onChange(nextOption.id);
       }
-      scrollToIndex(clamped, animated);
+      if (shouldScroll) {
+        scrollToIndex(clamped, animated);
+      }
     },
-    [onChange, options, scrollToIndex, triggerSelectionHaptic, value],
+    [
+      onChange,
+      options,
+      scrollToIndex,
+      triggerSelectionHaptic,
+      value,
+    ],
   );
 
   const settleFromOffset = useCallback(
@@ -181,7 +220,7 @@ export function TemplateSwitcher({
         Math.round(offsetX / snapInterval),
         options.length - 1,
       );
-      selectIndex(nextIndex, false);
+      selectIndex(nextIndex, { animated: false, shouldScroll: false });
     },
     [options.length, selectIndex, snapInterval],
   );
@@ -244,24 +283,37 @@ export function TemplateSwitcher({
         >
           <Pressable
             onPress={() => selectIndex(index)}
+            hitSlop={14}
+            pressRetentionOffset={{
+              top: 24,
+              right: 24,
+              bottom: 24,
+              left: 24,
+            }}
             style={({ pressed }) => [
-              styles.option,
+              styles.optionTouchTarget,
               {
-                width: preset.tileSize,
-                height: preset.tileSize,
+                width: preset.itemWidth,
+                height: preset.tileSize + 12,
               },
-              selected && styles.optionSelected,
               pressed && styles.optionPressed,
             ]}
             accessibilityLabel={`Template ${item.name}`}
             accessibilityRole="button"
             accessibilityState={{ selected }}
           >
-            <Ionicons
-              name={TEMPLATE_ICONS[item.id] ?? "shapes"}
-              size={preset.iconSize}
-              color={selected ? colors.dark.text : "rgba(255,255,255,0.9)"}
-            />
+            <View
+              style={[
+                styles.option,
+              {
+                width: preset.tileSize,
+                height: preset.tileSize,
+              },
+              selected && styles.optionSelected,
+            ]}
+            >
+              <TemplateGlyph templateId={item.id} size={preset.iconSize} selected={selected} />
+            </View>
           </Pressable>
         </Animated.View>
       );
@@ -294,6 +346,9 @@ export function TemplateSwitcher({
           data={options}
           keyExtractor={(item) => item.id}
           horizontal
+          keyboardShouldPersistTaps="always"
+          directionalLockEnabled
+          disableScrollViewPanResponder
           renderItem={renderItem}
           ItemSeparatorComponent={() => <View style={[styles.separator, { width: preset.itemGap }]} />}
           contentContainerStyle={[
@@ -341,7 +396,7 @@ const styles = StyleSheet.create({
   },
   railWrap: {
     borderRadius: radius.full,
-    backgroundColor: "transparent",
+    backgroundColor: "rgba(255,255,255,0.03)",
   },
   activeLabelPill: {
     alignSelf: "center",
@@ -349,9 +404,9 @@ const styles = StyleSheet.create({
     minWidth: 88,
     borderRadius: radius.full,
     paddingHorizontal: spacing.sm,
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.13)",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderWidth: 0,
+    borderColor: "transparent",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -374,12 +429,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radius.md,
-    backgroundColor: "rgba(255,255,255,0.08)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.16)",
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderWidth: 0,
+    borderColor: "transparent",
+  },
+  optionTouchTarget: {
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radius.md,
   },
   optionSelected: {
     backgroundColor: colors.accent.primary,
+    borderWidth: 1,
     borderColor: colors.accent.primary,
     shadowColor: colors.accent.primary,
     shadowOffset: { width: 0, height: 0 },

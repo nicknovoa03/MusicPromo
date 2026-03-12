@@ -24,9 +24,9 @@ const styles = StyleSheet.create({
   handle: {
     width: 18,
     height: "100%",
-    backgroundColor: "#EEF0FF",
+    backgroundColor: colors.accent.primaryMuted,
     borderWidth: 1,
-    borderColor: "rgba(88,86,214,0.55)",
+    borderColor: colors.brand.tintStrong,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -46,6 +46,6 @@ const styles = StyleSheet.create({
     width: 3.5,
     height: 22,
     borderRadius: radius.full,
-    backgroundColor: "rgba(36,38,56,0.45)",
+    backgroundColor: "rgba(16,35,23,0.45)",
   },
 });

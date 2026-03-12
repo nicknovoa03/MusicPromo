@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -7,7 +7,11 @@ import {
   Alert,
   useWindowDimensions,
 } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  initialWindowMetrics,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { usePostHog } from "posthog-react-native";
@@ -41,6 +45,7 @@ function isExpoGo(): boolean {
 }
 
 const STAGE_HORIZONTAL_PADDING = spacing.lg * 2;
+const EXPORT_CONTENT_VERTICAL_OFFSET = 0;
 const DEFAULT_TRIM_DURATION = 5;
 const ENABLE_RENDER_MODE_BADGE = false;
 const ENABLE_FAST_RENDER_MODE = false;
@@ -104,6 +109,8 @@ export default function RenderingScreen() {
     templateId?: string;
     templateTweaks?: string;
     spinSpeed?: string;
+    recordSize?: string;
+    artworkScale?: string;
     recordTransparency?: string;
     stageBackgroundColor?: string;
     photoUri: string;
@@ -119,34 +126,70 @@ export default function RenderingScreen() {
   const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
   const createProject = useMutation(api.projects.create);
   const updateProject = useMutation(api.projects.update);
-  const projectTitle = firstParam(params.title)?.trim() || "New Project";
-  const audioName = firstParam(params.audioName) || "";
-  const aspectRatio = firstParam(params.aspectRatio) === "1:1" ? "1:1" : "9:16";
-  const showTemplateInfo = firstParam(params.showTemplateInfo) === "1";
-  const templateId = resolveTemplateId(firstParam(params.templateId));
-  const parsedTemplateTweaks = parseTemplateTweaksParam(
-    firstParam(params.templateTweaks),
-  );
-  const templateTweaks = parsedTemplateTweaks
-    ? parsedTemplateTweaks
-    : normalizeTemplateTweaks({
-        spinSpeed: Number(firstParam(params.spinSpeed)),
-        recordTransparency: Number.isFinite(Number(firstParam(params.recordTransparency)))
-          ? Number(firstParam(params.recordTransparency))
-          : undefined,
-        stageBackgroundColor: firstParam(params.stageBackgroundColor) ?? undefined,
-      });
+  const titleParam = firstParam(params.title);
+  const audioNameParam = firstParam(params.audioName);
+  const aspectRatioParam = firstParam(params.aspectRatio);
+  const showTemplateInfoParam = firstParam(params.showTemplateInfo);
+  const templateIdParam = firstParam(params.templateId);
+  const templateTweaksParam = firstParam(params.templateTweaks);
+  const spinSpeedParam = firstParam(params.spinSpeed);
+  const recordSizeParam = firstParam(params.recordSize);
+  const artworkScaleParam = firstParam(params.artworkScale);
+  const recordTransparencyParam = firstParam(params.recordTransparency);
+  const stageBackgroundColorParam = firstParam(params.stageBackgroundColor);
+  const photoUriParam = firstParam(params.photoUri);
+
+  const projectTitle = titleParam?.trim() || "New Project";
+  const audioName = audioNameParam || "";
+  const aspectRatio = aspectRatioParam === "1:1" ? "1:1" : "9:16";
+  const showTemplateInfo = showTemplateInfoParam === "1";
+  const templateId = resolveTemplateId(templateIdParam);
+  const templateTweaks = useMemo(() => {
+    const parsedTemplateTweaks = parseTemplateTweaksParam(templateTweaksParam);
+    if (parsedTemplateTweaks) {
+      return parsedTemplateTweaks;
+    }
+    return normalizeTemplateTweaks({
+      spinSpeed: Number(spinSpeedParam),
+      recordSize: Number.isFinite(Number(recordSizeParam))
+        ? Number(recordSizeParam)
+        : undefined,
+      artworkScale: Number.isFinite(Number(artworkScaleParam))
+        ? Number(artworkScaleParam)
+        : undefined,
+      recordTransparency: Number.isFinite(Number(recordTransparencyParam))
+        ? Number(recordTransparencyParam)
+        : undefined,
+      stageBackgroundColor: stageBackgroundColorParam ?? undefined,
+    });
+  }, [
+    templateTweaksParam,
+    spinSpeedParam,
+    recordSizeParam,
+    artworkScaleParam,
+    recordTransparencyParam,
+    stageBackgroundColorParam,
+  ]);
   const previewTemplateDefinition = getTemplateDefinition(templateId);
   const TemplateStageComponent = previewTemplateDefinition.StageComponent;
-  const previewPhotoUri = normalizeMediaUri(
-    decodeUriParam(firstParam(params.photoUri)),
+  const previewPhotoUri = useMemo(
+    () => normalizeMediaUri(decodeUriParam(photoUriParam)),
+    [photoUriParam],
   );
   const trackTitle = displayMediaLabel(audioName, "Untitled track");
   const stageWidthRatio = aspectRatio === "9:16" ? 9 / 16 : 1;
   const maxStageWidth = Math.min(windowWidth - STAGE_HORIZONTAL_PADDING, 440);
+  const fallbackTopInset = Math.max(
+    initialWindowMetrics?.insets.top ?? 0,
+    Constants.statusBarHeight ?? 0,
+  );
+  const fallbackBottomInset = initialWindowMetrics?.insets.bottom ?? 0;
+  const stableTopInset = Math.max(insets.top, fallbackTopInset);
+  const stableBottomInset = Math.max(insets.bottom, fallbackBottomInset);
   const reservedVerticalSpace =
-    insets.top +
-    insets.bottom +
+    stableTopInset +
+    stableBottomInset +
+    EXPORT_CONTENT_VERTICAL_OFFSET +
     48 + // header row
     32 + // "Exporting" label + top margin
     88 + // large percentage text + margin
@@ -216,6 +259,12 @@ export default function RenderingScreen() {
       ? parsedTemplateTweaks
       : normalizeTemplateTweaks({
           spinSpeed: Number(firstParam(params.spinSpeed)),
+          recordSize: Number.isFinite(Number(firstParam(params.recordSize)))
+            ? Number(firstParam(params.recordSize))
+            : undefined,
+          artworkScale: Number.isFinite(Number(firstParam(params.artworkScale)))
+            ? Number(firstParam(params.artworkScale))
+            : undefined,
           recordTransparency: Number.isFinite(Number(firstParam(params.recordTransparency)))
             ? Number(firstParam(params.recordTransparency))
             : undefined,
@@ -286,6 +335,7 @@ export default function RenderingScreen() {
         aspectRatio,
         debugRenderModeBadge: ENABLE_RENDER_MODE_BADGE,
         fastMode: ENABLE_FAST_RENDER_MODE,
+        outputFileName: title?.trim() || audioName?.trim() || "MusicPromo Export",
         onProgress: (percent) => {
           setProgress(percent);
         },
@@ -391,11 +441,53 @@ export default function RenderingScreen() {
     hasStarted.current = false;
     startRender();
   }, [startRender]);
+  const stagePreview = useMemo(
+    () => (
+      <View style={styles.stageWrap}>
+        <View style={[styles.stageFrame, { width: stageWidth, height: stageHeight }]}>
+          <TemplateStageComponent
+            width={stageWidth}
+            height={stageHeight}
+            aspectRatio={aspectRatio}
+            photoUri={previewPhotoUri}
+            isPlaying={renderState === "rendering"}
+            playbackLabel="Now Playing"
+            trackTitle={trackTitle}
+            subtitle={projectTitle}
+            templateTweaks={templateTweaks}
+            showWatermark={templateTweaks.showWatermark}
+          />
+          {showTemplateInfo ? (
+            <TemplateInfoBadge
+              templateId={templateId}
+              templateTweaks={templateTweaks}
+              aspectRatio={aspectRatio}
+              compact
+              style={styles.stageTemplateInfoBadge}
+            />
+          ) : null}
+        </View>
+      </View>
+    ),
+    [
+      TemplateStageComponent,
+      stageWidth,
+      stageHeight,
+      aspectRatio,
+      previewPhotoUri,
+      renderState,
+      trackTitle,
+      projectTitle,
+      templateTweaks,
+      showTemplateInfo,
+      templateId,
+    ],
+  );
 
   return (
-    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
+    <SafeAreaView style={styles.container} edges={[]}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: stableTopInset + spacing.xs }]}>
         <Pressable
           onPress={handleCancel}
           style={styles.headerButton}
@@ -408,7 +500,7 @@ export default function RenderingScreen() {
       </View>
 
       {/* Main content */}
-      <View style={styles.content}>
+      <View style={[styles.content, { paddingBottom: spacing.lg + stableBottomInset }]}>
         {renderState === "error" ? (
           <View style={styles.errorContainer}>
             <Ionicons
@@ -437,30 +529,7 @@ export default function RenderingScreen() {
             <Text style={styles.progressLabel}>Exporting</Text>
             <Text style={styles.percentageText}>{progress}%</Text>
 
-            <View style={styles.stageWrap}>
-              <View style={[styles.stageFrame, { width: stageWidth, height: stageHeight }]}>
-                <TemplateStageComponent
-                  width={stageWidth}
-                  height={stageHeight}
-                  aspectRatio={aspectRatio}
-                  photoUri={previewPhotoUri}
-                  isPlaying={renderState === "rendering"}
-                  playbackLabel="Now Playing"
-                  trackTitle={trackTitle}
-                  subtitle={projectTitle}
-                  templateTweaks={templateTweaks}
-                />
-                {showTemplateInfo ? (
-                  <TemplateInfoBadge
-                    templateId={templateId}
-                    templateTweaks={templateTweaks}
-                    aspectRatio={aspectRatio}
-                    compact
-                    style={styles.stageTemplateInfoBadge}
-                  />
-                ) : null}
-              </View>
-            </View>
+            {stagePreview}
 
             <Text style={styles.message}>
               Please don't close the app{"\n"}or lock your screen.
@@ -500,6 +569,7 @@ const styles = StyleSheet.create({
     justifyContent: "flex-start",
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.lg,
+    marginTop: -EXPORT_CONTENT_VERTICAL_OFFSET,
   },
   progressLabel: {
     ...typography.caption,

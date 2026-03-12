@@ -11,11 +11,19 @@
     },
     "preview": {
       "distribution": "internal",
-      "channel": "preview"
+      "channel": "preview",
+      "env": {
+        "EXPO_PUBLIC_EXPORT_QUALITY_PROFILE": "high",
+        "EXPO_PUBLIC_RENDER_ENGINE": "ffmpeg"
+      }
     },
     "production": {
       "autoIncrement": true,
-      "channel": "production"
+      "channel": "production",
+      "env": {
+        "EXPO_PUBLIC_EXPORT_QUALITY_PROFILE": "high",
+        "EXPO_PUBLIC_RENDER_ENGINE": "ffmpeg"
+      }
     }
   },
   "submit": {

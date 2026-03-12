@@ -13,6 +13,13 @@ Focus: Profile/settings native grouped controls with strict fallback parity
 - Phase 5a foundation gating is merged (flag + capability checks).
 - Home fallback matrix already verified.
 
+## Lessons Applied From Phase 5a
+
+- Prefer static imports for `@expo/ui/swift-ui` in migrated screens. Avoid runtime `require`-based loading paths.
+- Before rendering native surfaces, validate runtime shape for required components (for example, `Form`, `Section`, controls) and fallback immediately if unavailable.
+- Avoid wiring native gestures through competing RN gesture layers. Keep interaction ownership clear per path (native path vs fallback path).
+- Keep fallback affordances fully functional until native path is verified on-device for the target screen.
+
 ## Goal
 
 Upgrade Profile/Settings to a more iOS-native settings experience while preserving all existing account/data behaviors.
@@ -84,4 +91,3 @@ Acceptance criteria:
 - No regressions to auth/account or preference persistence.
 - Android and fallback paths remain stable.
 ```
-

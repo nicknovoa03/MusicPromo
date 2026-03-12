@@ -1,9 +1,10 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
   Platform,
+  useColorScheme,
   Pressable,
   FlatList,
   ActivityIndicator,
@@ -12,7 +13,7 @@ import {
   Alert,
   Modal,
 } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useConvex, useMutation, useQuery } from "convex/react";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -22,6 +23,12 @@ import { api } from "../../convex/_generated/api";
 import type { Doc } from "../../convex/_generated/dataModel";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
 import type { EventName } from "@/lib/analytics";
+import {
+  canUseIOSNativeUIPhase5,
+  getIOSNativeUIPhase5Availability,
+  loadExpoSwiftUIModifiersModule,
+  loadExpoSwiftUIModule,
+} from "@/lib/iosNativeUi";
 import { normalizeMediaUri } from "@/lib/mediaUri";
 import { getLocalArtistProfile } from "@/lib/localProfile";
 import { encodeUriParam } from "@/lib/uri";
@@ -31,9 +38,20 @@ import {
   removeLocalProject,
   type LocalProject,
 } from "@/lib/localProjects";
-import { resolveTemplateId } from "@/lib/templates";
+import {
+  getTemplateDefinition,
+  parseTemplateTweaksParam,
+  resolveTemplateId,
+} from "@/lib/templates";
 
 type Project = Doc<"projects"> | LocalProject;
+type ProjectAction = "rename" | "duplicate" | "delete";
+type ProjectThumbnailProps = {
+  project: Project;
+  title: string;
+  surfaceColor: string;
+  fallbackIconColor: string;
+};
 
 function isLocalProject(project: Project): project is LocalProject {
   return "id" in project;
@@ -57,11 +75,68 @@ function normalizeAvatarUri(value: string | null | undefined): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function ProjectThumbnail({
+  project,
+  title,
+  surfaceColor,
+  fallbackIconColor,
+}: ProjectThumbnailProps) {
+  const [thumbnailSize, setThumbnailSize] = useState(0);
+  const photoUri = normalizeMediaUri(project.photoUri);
+  const fallbackPreviewUri = normalizeMediaUri(project.exportedVideoUri);
+  const templateId = resolveTemplateId(project.templateId);
+  const templateTweaks = useMemo(
+    () => parseTemplateTweaksParam(project.templateTweaks),
+    [project.templateTweaks],
+  );
+  const templateDefinition = useMemo(
+    () => getTemplateDefinition(templateId),
+    [templateId],
+  );
+  const TemplateStageComponent = templateDefinition.StageComponent;
+  const canRenderTemplateThumbnail = thumbnailSize > 0;
+
+  return (
+    <View
+      style={[styles.thumbnail, { backgroundColor: surfaceColor }]}
+      onLayout={(event) => {
+        const nextSize = Math.round(event.nativeEvent.layout.width);
+        setThumbnailSize((current) => (current === nextSize ? current : nextSize));
+      }}
+    >
+      {canRenderTemplateThumbnail ? (
+        <TemplateStageComponent
+          width={thumbnailSize}
+          height={thumbnailSize}
+          aspectRatio={project.aspectRatio}
+          photoUri={photoUri}
+          isPlaying={false}
+          playbackLabel="Project thumbnail"
+          trackTitle={title}
+          subtitle={templateDefinition.name}
+          templateTweaks={templateTweaks ?? undefined}
+          showWatermark={false}
+        />
+      ) : fallbackPreviewUri ? (
+        <Image
+          source={{ uri: fallbackPreviewUri }}
+          style={styles.thumbnailImage}
+          resizeMode="cover"
+        />
+      ) : (
+        <Ionicons
+          name="image-outline"
+          size={30}
+          color={fallbackIconColor}
+        />
+      )}
+    </View>
+  );
+}
+
 let hasWarnedHapticsUnavailable = false;
 
-async function triggerSelectionHaptic(
-  type: "enter" | "toggle-on" | "toggle-off",
-) {
+async function triggerSelectionHaptic(type: "enter" | "toggle-on" | "toggle-off") {
   const hapticsCompat = Haptics as unknown as {
     performAndroidHapticsAsync?: (
       hapticType: Haptics.AndroidHaptics,
@@ -142,7 +217,7 @@ async function triggerSelectionHaptic(
 
 export default function HomeScreen() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
+  const colorScheme = useColorScheme();
   const convex = useConvex();
   const posthog = usePostHog();
   const { isLocalGuest } = useLocalSession();
@@ -158,6 +233,21 @@ export default function HomeScreen() {
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const longPressProjectIdRef = useRef<string | null>(null);
+  const isDarkMode = colorScheme === "dark";
+  const homeBackgroundColor = isDarkMode ? colors.dark.background : colors.light.background;
+  const homeSurfaceColor = isDarkMode ? colors.dark.surface : colors.light.surface;
+  const homeTextColor = isDarkMode ? colors.dark.text : colors.light.text;
+  const homeTextSecondaryColor = isDarkMode
+    ? colors.dark.textSecondary
+    : colors.light.textSecondary;
+  const homeBorderColor = isDarkMode ? colors.dark.border : colors.light.border;
+  const homeOverlayColor = isDarkMode ? "rgba(0,0,0,0.56)" : colors.overlay.light;
+  const homeOverlayStrongColor = isDarkMode
+    ? "rgba(14,16,20,0.78)"
+    : colors.overlay.lightStrong;
+  const homeDestructiveColor = "#C62828";
+  const fabBackgroundColor = isDarkMode ? "#FFFFFF" : colors.accent.fab;
+  const fabIconColor = isDarkMode ? "#000000" : colors.accent.fabIcon;
 
   const track = useCallback(
     (event: EventName, props?: Record<string, string>) => {
@@ -165,6 +255,50 @@ export default function HomeScreen() {
     },
     [posthog],
   );
+  const nativeProjectActionsAvailability = getIOSNativeUIPhase5Availability({
+    minIOSVersion: 14,
+  });
+  const nativeProjectActionsEnabledByContract = nativeProjectActionsAvailability.enabled;
+  const nativeEmptyStateEnabledByContract = canUseIOSNativeUIPhase5({
+    minIOSVersion: 17,
+  });
+  const shouldLoadExpoSwiftUI =
+    nativeProjectActionsEnabledByContract || nativeEmptyStateEnabledByContract;
+  const expoSwiftUI = shouldLoadExpoSwiftUI
+    ? loadExpoSwiftUIModule()
+    : null;
+  const expoSwiftUIModifiers = shouldLoadExpoSwiftUI
+    ? loadExpoSwiftUIModifiersModule()
+    : null;
+  const expoSwiftUIAny = expoSwiftUI as Record<string, unknown> | null;
+  const hasNativeProjectGestureComponents = Boolean(
+    expoSwiftUIAny && "RoundedRectangle" in expoSwiftUIAny,
+  );
+  const hasNativeEmptyStateComponents = Boolean(
+    expoSwiftUIAny &&
+      "Host" in expoSwiftUIAny &&
+      "ContentUnavailableView" in expoSwiftUIAny,
+  );
+  const expoSwiftUIModifiersAny =
+    expoSwiftUIModifiers as Record<string, unknown> | null;
+  const hasNativeProjectGestureModifiers = Boolean(
+    expoSwiftUIModifiersAny &&
+      "opacity" in expoSwiftUIModifiersAny &&
+      "onTapGesture" in expoSwiftUIModifiersAny &&
+      "onLongPressGesture" in expoSwiftUIModifiersAny &&
+      "accessibilityLabel" in expoSwiftUIModifiersAny,
+  );
+
+  const canUseNativeProjectGestures =
+    nativeProjectActionsEnabledByContract &&
+    expoSwiftUI !== null &&
+    hasNativeProjectGestureComponents &&
+    expoSwiftUIModifiers !== null &&
+    hasNativeProjectGestureModifiers;
+  const canUseNativeEmptyState =
+    nativeEmptyStateEnabledByContract &&
+    expoSwiftUI !== null &&
+    hasNativeEmptyStateComponents;
 
   const refreshLocalProjects = useCallback(async () => {
     const projects = await listLocalProjects();
@@ -217,6 +351,12 @@ export default function HomeScreen() {
   const openProject = useCallback(
     (project: Project) => {
       const projectKey = getProjectId(project);
+      const projectPhotoUri = normalizeMediaUri(project.photoUri);
+      const projectAudioUri = normalizeMediaUri(project.audioUri);
+      const stageBackgroundUri = normalizeMediaUri(
+        parseTemplateTweaksParam(project.templateTweaks)?.stageBackgroundImageUri ??
+          null,
+      );
       if (longPressProjectIdRef.current === projectKey) {
         longPressProjectIdRef.current = null;
         return;
@@ -233,16 +373,23 @@ export default function HomeScreen() {
       }
       if (deletingProjectId === projectKey) return;
       track("project_reopened", { projectId: projectKey });
+      if (projectPhotoUri) {
+        void Image.prefetch(projectPhotoUri).catch(() => {});
+      }
+      if (stageBackgroundUri) {
+        void Image.prefetch(stageBackgroundUri).catch(() => {});
+      }
 
       if (isLocalProject(project)) {
         router.push({
           pathname: "/create/editor",
           params: {
+            source: "home",
             localProjectId: project.id,
             title: project.title ?? "",
-            photoUri: encodeUriParam(project.photoUri ?? ""),
+            photoUri: encodeUriParam(projectPhotoUri ?? ""),
             photoName: project.photoName ?? "",
-            audioUri: encodeUriParam(project.audioUri ?? ""),
+            audioUri: encodeUriParam(projectAudioUri ?? ""),
             audioName: project.audioName ?? "",
             aspectRatio: project.aspectRatio,
             templateId: resolveTemplateId(project.templateId),
@@ -257,9 +404,12 @@ export default function HomeScreen() {
       router.push({
         pathname: "/create/editor",
         params: {
+          source: "home",
           projectId: String(project._id),
           title: project.title ?? "",
+          photoUri: encodeUriParam(projectPhotoUri ?? ""),
           photoName: project.photoName ?? "",
+          audioUri: encodeUriParam(projectAudioUri ?? ""),
           audioName: project.audioName ?? "",
           aspectRatio: project.aspectRatio,
           templateId: resolveTemplateId(project.templateId),
@@ -293,16 +443,6 @@ export default function HomeScreen() {
     });
   }, [closeProjectActions]);
 
-  const toggleProjectSelection = useCallback((projectKey: string) => {
-    const wasSelected = selectedProjectIds.includes(projectKey);
-    void triggerSelectionHaptic(wasSelected ? "toggle-off" : "toggle-on");
-    setSelectedProjectIds((prev) =>
-      prev.includes(projectKey)
-        ? prev.filter((id) => id !== projectKey)
-        : [...prev, projectKey],
-    );
-  }, [selectedProjectIds]);
-
   const openProjectActions = useCallback(
     (project: Project) => {
       if (isSelectionMode) return;
@@ -310,6 +450,41 @@ export default function HomeScreen() {
       track("project_actions_opened", { projectId: getProjectId(project) });
     },
     [isSelectionMode, track],
+  );
+
+  const handleProjectLongPress = useCallback(
+    (project: Project) => {
+      const projectKey = getProjectId(project);
+      if (deletingProjectId === projectKey) return;
+      longPressProjectIdRef.current = projectKey;
+      setTimeout(() => {
+        if (longPressProjectIdRef.current === projectKey) {
+          longPressProjectIdRef.current = null;
+        }
+      }, 350);
+
+      if (isSelectionMode) {
+        const wasSelected = selectedProjectIds.includes(projectKey);
+        void triggerSelectionHaptic(wasSelected ? "toggle-off" : "toggle-on");
+        setSelectedProjectIds((prev) =>
+          prev.includes(projectKey)
+            ? prev.filter((id) => id !== projectKey)
+            : [...prev, projectKey],
+        );
+        return;
+      }
+
+      closeProjectActions();
+      setIsSelectionMode(true);
+      setSelectedProjectIds([projectKey]);
+      void triggerSelectionHaptic("enter");
+    },
+    [
+      closeProjectActions,
+      deletingProjectId,
+      isSelectionMode,
+      selectedProjectIds,
+    ],
   );
 
   const runDeleteProject = useCallback(
@@ -337,12 +512,8 @@ export default function HomeScreen() {
   );
 
   const handleProjectAction = useCallback(
-    (action: "rename" | "duplicate" | "delete") => {
-      const project = actionProject;
-      if (!project) return;
-
+    (project: Project, action: ProjectAction) => {
       if (action === "delete") {
-        closeProjectActions();
         track("project_delete_started", { projectId: getProjectId(project) });
         Alert.alert(
           "Delete project?",
@@ -367,7 +538,18 @@ export default function HomeScreen() {
         "This action is part of the next project-management pass.",
       );
     },
-    [actionProject, closeProjectActions, runDeleteProject, track],
+    [closeProjectActions, runDeleteProject, track],
+  );
+
+  const handleModalProjectAction = useCallback(
+    (action: ProjectAction) => {
+      const project = actionProject;
+      if (!project) return;
+
+      closeProjectActions();
+      handleProjectAction(project, action);
+    },
+    [actionProject, closeProjectActions, handleProjectAction],
   );
 
   const stableProjects = useMemo(() => {
@@ -445,91 +627,113 @@ export default function HomeScreen() {
   const renderProjectCard = useCallback(
     ({ item }: { item: Project }) => {
       const projectKey = getProjectId(item);
-      const previewUri = normalizeMediaUri(item.photoUri ?? item.exportedVideoUri);
       const isDeleting = deletingProjectId === projectKey;
       const isSelected = selectedProjectIds.includes(projectKey);
+      const title = item.title?.trim() ? item.title : "Untitled Project";
+      const canRenderNativeProjectGestures =
+        canUseNativeProjectGestures && expoSwiftUI && !isSelectionMode && !isDeleting;
+      const isRNCardGestureOwner = !canRenderNativeProjectGestures;
+      const cardContent = (
+        <View style={styles.cardContent}>
+          <ProjectThumbnail
+            project={item}
+            title={title}
+            surfaceColor={homeSurfaceColor}
+            fallbackIconColor={homeTextSecondaryColor}
+          />
+          <View style={styles.cardBody}>
+            <Text numberOfLines={1} style={[styles.cardTitle, { color: homeTextColor }]}>
+              {title}
+            </Text>
+            <Text style={[styles.cardDate, { color: homeTextSecondaryColor }]}>
+              {formatDate(item.createdAt)}
+            </Text>
+          </View>
+        </View>
+      );
 
       return (
-        <View style={[styles.card, isSelectionMode && isSelected && styles.cardSelected]}>
+        <View
+          style={[
+            styles.card,
+            { backgroundColor: homeSurfaceColor },
+            isSelectionMode && isSelected && styles.cardSelected,
+          ]}
+        >
+          {isSelectionMode ? (
+            <View
+              style={[
+                styles.cardSelectBadge,
+                { backgroundColor: homeOverlayStrongColor },
+                isSelected && styles.cardSelectBadgeSelected,
+              ]}
+            >
+              <Ionicons
+                name={isSelected ? "checkmark" : "ellipse-outline"}
+                size={14}
+                color={isSelected ? colors.accent.onPrimary : homeTextSecondaryColor}
+              />
+            </View>
+          ) : null}
+
           <Pressable
             style={({ pressed }) => [
               styles.cardPressable,
-              pressed && styles.cardPressed,
+              isRNCardGestureOwner && pressed && styles.cardPressed,
             ]}
-            onPress={() => openProject(item)}
-            onLongPress={() => {
-              longPressProjectIdRef.current = projectKey;
-              if (isSelectionMode) {
-                toggleProjectSelection(projectKey);
-                return;
-              }
-              void triggerSelectionHaptic("enter");
-              setIsSelectionMode(true);
-              setSelectedProjectIds([projectKey]);
-            }}
+            onPress={isRNCardGestureOwner ? () => openProject(item) : undefined}
+            onLongPress={isRNCardGestureOwner ? () => handleProjectLongPress(item) : undefined}
             delayLongPress={220}
             disabled={isDeleting}
+            pointerEvents={isRNCardGestureOwner ? "auto" : "none"}
             accessibilityLabel={
-              isSelectionMode
-                ? `${isSelected ? "Deselect" : "Select"} ${item.title ?? "Untitled Project"}`
-                : `Open ${item.title ?? "Untitled Project"}`
+              isRNCardGestureOwner
+                ? isSelectionMode
+                  ? `${isSelected ? "Deselect" : "Select"} ${title}`
+                  : `Open ${title}`
+                : undefined
             }
-            accessibilityRole="button"
-            accessibilityState={{ disabled: isDeleting }}
+            accessibilityRole={isRNCardGestureOwner ? "button" : undefined}
+            accessibilityState={isRNCardGestureOwner ? { disabled: isDeleting } : undefined}
           >
-            {isSelectionMode ? (
-              <View
-                style={[
-                  styles.cardSelectBadge,
-                  isSelected && styles.cardSelectBadgeSelected,
-                ]}
-              >
-                <Ionicons
-                  name={isSelected ? "checkmark" : "ellipse-outline"}
-                  size={14}
-                  color={isSelected ? colors.light.background : colors.light.textSecondary}
-                />
-              </View>
-            ) : null}
-            <View style={styles.thumbnail}>
-              {previewUri ? (
-                <Image
-                  source={{ uri: previewUri }}
-                  style={styles.thumbnailImage}
-                  resizeMode="cover"
-                />
-              ) : (
-                <Ionicons
-                  name="image-outline"
-                  size={30}
-                  color={colors.light.textSecondary}
-                />
-              )}
-            </View>
-            <View style={styles.cardBody}>
-              <Text numberOfLines={1} style={styles.cardTitle}>
-                {item.title?.trim() ? item.title : "Untitled Project"}
-              </Text>
-              <Text style={styles.cardDate}>{formatDate(item.createdAt)}</Text>
-            </View>
+            {cardContent}
           </Pressable>
+
+          {canRenderNativeProjectGestures && expoSwiftUI && expoSwiftUIModifiers ? (
+            <expoSwiftUI.Host style={styles.nativeCardContextMenuOverlay}>
+              <expoSwiftUI.RoundedRectangle
+                cornerRadius={radius.md}
+                modifiers={[
+                  expoSwiftUIModifiers.opacity(0.015),
+                  expoSwiftUIModifiers.onTapGesture(() => openProject(item)),
+                  expoSwiftUIModifiers.onLongPressGesture(
+                    () => handleProjectLongPress(item),
+                    0.22,
+                  ),
+                  expoSwiftUIModifiers.accessibilityLabel(
+                    `Open ${title}. Long press to multi-select.`,
+                  ),
+                ]}
+              />
+            </expoSwiftUI.Host>
+          ) : null}
 
           {!isSelectionMode ? (
             <Pressable
-              style={styles.cardMenuButton}
+              style={[styles.cardMenuButton, { backgroundColor: homeOverlayStrongColor }]}
               onPress={() => openProjectActions(item)}
               disabled={isDeleting}
-              accessibilityLabel={`Project actions for ${item.title ?? "Untitled Project"}`}
+              accessibilityLabel={`Project actions for ${title}`}
               accessibilityRole="button"
               accessibilityState={{ disabled: isDeleting }}
             >
               {isDeleting ? (
-                <ActivityIndicator size="small" color={colors.light.textSecondary} />
+                <ActivityIndicator size="small" color={homeTextSecondaryColor} />
               ) : (
                 <Ionicons
                   name="ellipsis-horizontal"
                   size={16}
-                  color={colors.light.text}
+                  color={homeTextColor}
                 />
               )}
             </Pressable>
@@ -538,12 +742,19 @@ export default function HomeScreen() {
       );
     },
     [
+      canUseNativeProjectGestures,
       deletingProjectId,
+      expoSwiftUI,
+      expoSwiftUIModifiers,
+      handleProjectLongPress,
+      homeOverlayStrongColor,
+      homeSurfaceColor,
+      homeTextColor,
+      homeTextSecondaryColor,
       isSelectionMode,
       openProject,
       openProjectActions,
       selectedProjectIds,
-      toggleProjectSelection,
     ],
   );
 
@@ -551,17 +762,17 @@ export default function HomeScreen() {
     !!actionProject && deletingProjectId === getProjectId(actionProject);
   const selectedCount = selectedProjectIds.length;
   const isCancelSelectionAction = selectedCount === 0;
-  const bulkDeleteBottom = Math.max(90, insets.bottom + 68);
+  const bulkDeleteBottom = Platform.select({ ios: 8, android: 6, default: 6 }) ?? 6;
 
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: homeBackgroundColor }]} edges={["top"]}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>
+        <Text style={[styles.headerTitle, { color: homeTextColor }]}>
           {isSelectionMode ? `${selectedCount} Selected` : "Projects"}
         </Text>
         <View style={styles.headerActions}>
           <Pressable
-            style={styles.selectModeButton}
+            style={[styles.selectModeButton, { backgroundColor: homeSurfaceColor }]}
             onPress={isSelectionMode ? clearSelectionMode : toggleSelectionMode}
             accessibilityLabel={
               isSelectionMode ? "Exit multi-select mode" : "Enter multi-select mode"
@@ -571,7 +782,7 @@ export default function HomeScreen() {
             <Ionicons
               name={isSelectionMode ? "close-outline" : "checkbox-outline"}
               size={20}
-              color={colors.light.text}
+              color={homeTextColor}
             />
           </Pressable>
           <Pressable
@@ -586,7 +797,7 @@ export default function HomeScreen() {
               <Ionicons
                 name="person-circle-outline"
                 size={32}
-                color={colors.light.text}
+                color={homeTextColor}
               />
             )}
           </Pressable>
@@ -595,7 +806,7 @@ export default function HomeScreen() {
 
       {/* TODO: Add cursor pagination if project history grows beyond v1 size. */}
       <FlatList
-        data={isLoading ? [] : stableProjects}
+        data={stableProjects}
         keyExtractor={(item) => getProjectId(item)}
         renderItem={renderProjectCard}
         numColumns={2}
@@ -613,23 +824,40 @@ export default function HomeScreen() {
         }
         ListEmptyComponent={
           isLoading ? null : (
-            <View style={styles.emptyState}>
-              <View style={styles.emptyIcon}>
-                <Ionicons
-                  name="film-outline"
-                  size={48}
-                  color={colors.light.textSecondary}
+            canUseNativeEmptyState && expoSwiftUI ? (
+              <expoSwiftUI.Host
+                style={styles.nativeEmptyStateHost}
+                useViewportSizeMeasurement
+              >
+                <expoSwiftUI.ContentUnavailableView
+                  title="Create your first promo"
+                  description="Tap + to get started"
+                  systemImage="film.stack"
                 />
+              </expoSwiftUI.Host>
+            ) : (
+              <View style={styles.emptyState}>
+                <View style={[styles.emptyIcon, { backgroundColor: homeSurfaceColor }]}>
+                  <Ionicons
+                    name="film-outline"
+                    size={48}
+                    color={homeTextSecondaryColor}
+                  />
+                </View>
+                <Text style={[styles.emptyTitle, { color: homeTextColor }]}>
+                  Create your first promo
+                </Text>
+                <Text style={[styles.emptySubtitle, { color: homeTextSecondaryColor }]}>
+                  Tap + to get started
+                </Text>
               </View>
-              <Text style={styles.emptyTitle}>Create your first promo</Text>
-              <Text style={styles.emptySubtitle}>Tap + to get started</Text>
-            </View>
+            )
           )
         }
       />
 
       {isLoading && (
-        <View style={styles.loadingOverlay}>
+        <View style={[styles.loadingOverlay, { backgroundColor: homeOverlayColor }]}>
           <ActivityIndicator size="large" color={colors.accent.primary} />
         </View>
       )}
@@ -650,62 +878,70 @@ export default function HomeScreen() {
         <View style={styles.actionsOverlay} pointerEvents="box-none">
           {actionProject ? (
             <>
-              <View style={styles.actionsCard}>
+              <View style={[styles.actionsCard, { backgroundColor: homeBackgroundColor }]}>
                 <Pressable
                   style={({ pressed }) => [
                     styles.actionsRow,
+                    { borderBottomColor: homeBorderColor },
                     pressed && styles.actionsRowPressed,
+                    pressed && { backgroundColor: homeSurfaceColor },
                   ]}
-                  onPress={() => handleProjectAction("rename")}
+                  onPress={() => handleModalProjectAction("rename")}
                   accessibilityLabel="Rename project"
                   accessibilityRole="button"
                 >
                   <Ionicons
                     name="create-outline"
                     size={18}
-                    color={colors.light.text}
+                    color={homeTextColor}
                   />
-                  <Text style={styles.actionsText}>Rename</Text>
+                  <Text style={[styles.actionsText, { color: homeTextColor }]}>Rename</Text>
                 </Pressable>
 
                 <Pressable
                   style={({ pressed }) => [
                     styles.actionsRow,
+                    { borderBottomColor: homeBorderColor },
                     pressed && styles.actionsRowPressed,
+                    pressed && { backgroundColor: homeSurfaceColor },
                   ]}
-                  onPress={() => handleProjectAction("duplicate")}
+                  onPress={() => handleModalProjectAction("duplicate")}
                   accessibilityLabel="Duplicate project"
                   accessibilityRole="button"
                 >
                   <Ionicons
                     name="copy-outline"
                     size={18}
-                    color={colors.light.text}
+                    color={homeTextColor}
                   />
-                  <Text style={styles.actionsText}>Duplicate</Text>
+                  <Text style={[styles.actionsText, { color: homeTextColor }]}>Duplicate</Text>
                 </Pressable>
 
                 <Pressable
                   style={({ pressed }) => [
                     styles.actionsRow,
+                    { borderBottomColor: homeBorderColor },
                     pressed && styles.actionsRowPressed,
+                    pressed && { backgroundColor: homeSurfaceColor },
                   ]}
-                  onPress={() => handleProjectAction("delete")}
+                  onPress={() => handleModalProjectAction("delete")}
                   disabled={isDeletingSelectedProject}
                   accessibilityLabel="Delete project"
                   accessibilityRole="button"
                   accessibilityState={{ disabled: isDeletingSelectedProject }}
                 >
                   {isDeletingSelectedProject ? (
-                    <ActivityIndicator size="small" color={colors.accent.error} />
+                    <ActivityIndicator size="small" color={homeDestructiveColor} />
                   ) : (
                     <Ionicons
                       name="trash-outline"
                       size={18}
-                      color={colors.accent.error}
+                      color={homeDestructiveColor}
                     />
                   )}
-                  <Text style={styles.actionsDeleteText}>Delete</Text>
+                  <Text style={[styles.actionsDeleteText, { color: homeDestructiveColor }]}>
+                    Delete
+                  </Text>
                 </Pressable>
               </View>
             </>
@@ -731,13 +967,13 @@ export default function HomeScreen() {
           accessibilityState={{ disabled: isBulkDeleting }}
         >
           {isBulkDeleting ? (
-            <ActivityIndicator size="small" color="#FFFFFF" />
+            <ActivityIndicator size="small" color={colors.accent.onPrimary} />
           ) : (
             <>
               <Ionicons
                 name={isCancelSelectionAction ? "close" : "trash-outline"}
                 size={18}
-                color="#FFFFFF"
+                color={colors.accent.onPrimary}
               />
               <Text
                 style={[
@@ -752,12 +988,16 @@ export default function HomeScreen() {
         </Pressable>
       ) : (
         <Pressable
-          style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
+          style={({ pressed }) => [
+            styles.fab,
+            { backgroundColor: fabBackgroundColor },
+            pressed && styles.fabPressed,
+          ]}
           onPress={() => router.push("/create/picker" as const)}
           accessibilityLabel="Create new project"
           accessibilityRole="button"
         >
-          <Ionicons name="add" size={28} color={colors.accent.fabIcon} />
+          <Ionicons name="add" size={28} color={fabIconColor} />
         </Pressable>
       )}
     </SafeAreaView>
@@ -805,6 +1045,10 @@ const styles = StyleSheet.create({
   avatarImage: {
     width: "100%",
     height: "100%",
+  },
+  nativeEmptyStateHost: {
+    flex: 1,
+    minHeight: 320,
   },
   emptyState: {
     flex: 1,
@@ -858,18 +1102,26 @@ const styles = StyleSheet.create({
   cardPressable: {
     flex: 1,
   },
+  cardContent: {
+    flex: 1,
+  },
   cardPressed: {
     opacity: 0.88,
     transform: [{ scale: 0.98 }],
+  },
+  nativeCardContextMenuOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 4,
   },
   cardMenuButton: {
     position: "absolute",
     top: spacing.xs,
     right: spacing.xs,
+    zIndex: 5,
     width: 28,
     height: 28,
     borderRadius: radius.full,
-    backgroundColor: "rgba(255,255,255,0.85)",
+    backgroundColor: colors.overlay.lightStrong,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -880,7 +1132,7 @@ const styles = StyleSheet.create({
     width: 26,
     height: 26,
     borderRadius: radius.full,
-    backgroundColor: "rgba(255,255,255,0.92)",
+    backgroundColor: colors.overlay.lightStrong,
     alignItems: "center",
     justifyContent: "center",
     zIndex: 3,
@@ -917,11 +1169,11 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.6)",
+    backgroundColor: colors.overlay.light,
   },
   actionsBackdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.22)",
+    backgroundColor: colors.overlay.darkSoft,
   },
   actionsOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -960,7 +1212,7 @@ const styles = StyleSheet.create({
   },
   fab: {
     position: "absolute",
-    bottom: 100,
+    bottom: 40,
     right: spacing.lg,
     width: 56,
     height: 56,
@@ -968,7 +1220,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accent.fab,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
+    shadowColor: colors.dark.background,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 8,
@@ -991,7 +1243,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     flexDirection: "row",
     gap: spacing.xs,
-    shadowColor: "#000",
+    shadowColor: colors.dark.background,
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.2,
     shadowRadius: 7,
@@ -1001,9 +1253,9 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   bulkDeleteButtonCancel: {
-    backgroundColor: "#111111",
+    backgroundColor: colors.accent.fab,
     borderWidth: 1,
-    borderColor: "#111111",
+    borderColor: colors.accent.fab,
   },
   bulkDeleteButtonPressed: {
     opacity: 0.9,
@@ -1011,10 +1263,10 @@ const styles = StyleSheet.create({
   },
   bulkDeleteText: {
     ...typography.button,
-    color: "#FFFFFF",
+    color: colors.accent.onPrimary,
     fontWeight: "700",
   },
   bulkDeleteTextCancel: {
-    color: "#FFFFFF",
+    color: colors.accent.onPrimary,
   },
 });

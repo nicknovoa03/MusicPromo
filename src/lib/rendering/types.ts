@@ -6,12 +6,15 @@ export interface RenderRequest {
   templateId?: string;
   templateTweaks?: {
     spinSpeed?: number;
+    recordSize?: number;
+    artworkScale?: number;
     recordTransparency?: number;
     backgroundBlur?: number;
     rotationStartDeg?: number;
     rotationDirection?: "cw" | "ccw";
     stageBackgroundColor?: string | null;
     stageBackgroundImageUri?: string | null;
+    showWatermark?: boolean;
   };
   photoUri: string;
   audioUri: string;
@@ -20,6 +23,7 @@ export interface RenderRequest {
   aspectRatio: RenderAspectRatio;
   debugRenderModeBadge?: boolean;
   fastMode?: boolean;
+  outputFileName?: string;
   onProgress?: (percent: number) => void;
   engine?: RenderEngine;
 }
