@@ -14,6 +14,7 @@ import { convex } from "@/lib/convex";
 import {
   getIOSNativeUIPhase5Availability,
   IOS_NATIVE_UI_PHASE5_FLAG_NAME,
+  isIOSNativeUIPhase5FlagValueValid,
 } from "@/lib/iosNativeUi";
 import {
   LocalSessionProvider,
@@ -77,20 +78,15 @@ function IOSNativeUIPhase5Bootstrap() {
       return;
     }
 
-    if (
-      availability.flagValue !== undefined &&
-      availability.flagValue !== "0" &&
-      availability.flagValue !== "1"
-    ) {
+    if (!isIOSNativeUIPhase5FlagValueValid(availability.flagValue)) {
       console.warn(
-        `${IOS_NATIVE_UI_PHASE5_FLAG_NAME} must be set to "1" to enable the Phase 5 iOS-native UI path.`,
+        `${IOS_NATIVE_UI_PHASE5_FLAG_NAME} has an invalid value. Use "0"/"false"/"off" to disable, or omit it to keep iOS-native UI enabled.`,
       );
-      return;
     }
 
     if (availability.flagEnabled && !availability.runtimeAvailable) {
       console.info(
-        "Phase 5 iOS-native UI flag is enabled, but Expo UI is unavailable in this runtime. Falling back to React Native surfaces.",
+        "iOS-native UI is enabled, but Expo UI is unavailable in this runtime. Falling back to React Native surfaces.",
       );
     }
   }, []);

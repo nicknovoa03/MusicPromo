@@ -24,6 +24,8 @@ export type IOSNativeUIPhase5Availability = {
 let cachedExpoUINativeModuleAvailable: boolean | undefined;
 let cachedExpoSwiftUIModule: ExpoSwiftUIModule | null | undefined;
 let cachedExpoSwiftUIModifiersModule: ExpoSwiftUIModifiersModule | null | undefined;
+const IOS_NATIVE_UI_PHASE5_DISABLED_VALUES = new Set(["0", "false", "off", "no"]);
+const IOS_NATIVE_UI_PHASE5_ENABLED_VALUES = new Set(["1", "true", "on", "yes"]);
 
 function getIOSVersionMajor() {
   if (Platform.OS !== "ios") return null;
@@ -76,8 +78,34 @@ export function loadExpoSwiftUIModifiersModule() {
   return cachedExpoSwiftUIModifiersModule;
 }
 
+function normalizeIOSNativeUIPhase5FlagValue(value: string | undefined) {
+  if (value === undefined) {
+    return { enabled: true, valid: true };
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) {
+    return { enabled: true, valid: true };
+  }
+  if (IOS_NATIVE_UI_PHASE5_DISABLED_VALUES.has(normalized)) {
+    return { enabled: false, valid: true };
+  }
+  if (IOS_NATIVE_UI_PHASE5_ENABLED_VALUES.has(normalized)) {
+    return { enabled: true, valid: true };
+  }
+  return { enabled: true, valid: false };
+}
+
 export function isIOSNativeUIPhase5FlagEnabled() {
-  return process.env.EXPO_PUBLIC_IOS_NATIVE_UI_PHASE5 === "1";
+  return normalizeIOSNativeUIPhase5FlagValue(
+    process.env.EXPO_PUBLIC_IOS_NATIVE_UI_PHASE5,
+  ).enabled;
+}
+
+export function isIOSNativeUIPhase5FlagValueValid(
+  value: string | undefined = process.env.EXPO_PUBLIC_IOS_NATIVE_UI_PHASE5,
+) {
+  return normalizeIOSNativeUIPhase5FlagValue(value).valid;
 }
 
 export function isExpoUINativeModuleAvailable() {
@@ -95,7 +123,7 @@ export function getIOSNativeUIPhase5Availability(
   const { minIOSVersion = 0 } = options;
   const isIOS = Platform.OS === "ios";
   const flagValue = process.env.EXPO_PUBLIC_IOS_NATIVE_UI_PHASE5;
-  const flagEnabled = flagValue === "1";
+  const flagEnabled = normalizeIOSNativeUIPhase5FlagValue(flagValue).enabled;
   const iosVersionMajor = getIOSVersionMajor();
   const runtimeAvailable = isIOS && isExpoUINativeModuleAvailable();
   const supportsRequestedOSVersion =
