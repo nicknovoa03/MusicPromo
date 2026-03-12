@@ -117,13 +117,28 @@ const CUSTOM_TONE_LABELS = ["Deep", "Dark", "Base", "Soft", "Glow"] as const;
 const STAGE_HORIZONTAL_PADDING = spacing.sm * 2;
 const SHEET_RESTING_OFFSET = 14;
 const PHOTO_BACKGROUND_SWATCH_COUNT = 5;
+const CORE_BACKGROUND_OPTIONS: BackgroundOption[] = [
+  { id: "default", label: "Default", color: null, swatch: "#000000" },
+];
 const FALLBACK_BACKGROUND_OPTIONS: BackgroundOption[] = [
-  { id: "default", label: "Default", color: null, swatch: "#080A12" },
   { id: "indigo", label: "Indigo", color: "#14142d", swatch: "#35357a" },
   { id: "midnight", label: "Midnight", color: "#0a0f1c", swatch: "#1d2f58" },
   { id: "charcoal", label: "Charcoal", color: "#111114", swatch: "#37373e" },
   { id: "sunset", label: "Sunset", color: "#211121", swatch: "#8f3f7d" },
 ];
+
+function withCoreBackgroundOptions(options: BackgroundOption[]): BackgroundOption[] {
+  const merged: BackgroundOption[] = [...CORE_BACKGROUND_OPTIONS];
+  for (const option of options) {
+    const hasMatch = merged.some(
+      (entry) => entry.id === option.id || entry.color === option.color,
+    );
+    if (!hasMatch) {
+      merged.push(option);
+    }
+  }
+  return merged;
+}
 
 function formatSpeed(value: number): string {
   return `${value.toFixed(value % 1 === 0 ? 0 : 2)}x`;
@@ -830,7 +845,7 @@ export function TemplateCustomizeModal({
     string | null
   >(null);
   const [backgroundOptions, setBackgroundOptions] = useState<BackgroundOption[]>(
-    FALLBACK_BACKGROUND_OPTIONS,
+    withCoreBackgroundOptions(FALLBACK_BACKGROUND_OPTIONS),
   );
   const customColor = useMemo(
     () => hslToHex(customHue, customSaturation, customLightness),
@@ -891,14 +906,16 @@ export function TemplateCustomizeModal({
   useEffect(() => {
     const nextPhotoUri = photoUri?.trim();
     if (!nextPhotoUri) {
-      setBackgroundOptions(FALLBACK_BACKGROUND_OPTIONS);
+      setBackgroundOptions(withCoreBackgroundOptions(FALLBACK_BACKGROUND_OPTIONS));
       return;
     }
 
     let isActive = true;
     void buildPhotoMatchedBackgroundOptions(nextPhotoUri).then((matchedOptions) => {
       if (!isActive) return;
-      setBackgroundOptions(matchedOptions ?? FALLBACK_BACKGROUND_OPTIONS);
+      setBackgroundOptions(
+        withCoreBackgroundOptions(matchedOptions ?? FALLBACK_BACKGROUND_OPTIONS),
+      );
     });
     return () => {
       isActive = false;

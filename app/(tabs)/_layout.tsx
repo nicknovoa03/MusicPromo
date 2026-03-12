@@ -52,7 +52,6 @@ export default function TabsLayout() {
   const tabInactiveColor = isDarkMode ? "#9BA3AF" : "#6E6E73";
   const tabBackgroundColor = isDarkMode ? "#000000" : "#FFFFFF";
   const tabBorderColor = isDarkMode ? "#1C1C1E" : "#D1D1D6";
-  const tabNavigatorKey = isDarkMode ? "tabs-dark" : "tabs-light";
   const gateBackgroundColor = isDarkMode ? colors.dark.background : colors.light.background;
   const gateTextColor = isDarkMode ? colors.dark.textSecondary : colors.light.textSecondary;
 
@@ -245,7 +244,6 @@ export default function TabsLayout() {
   }
   return (
     <Tabs
-      key={tabNavigatorKey}
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: tabActiveColor,

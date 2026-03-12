@@ -27,7 +27,7 @@ export interface CenterTextureSpec {
   shadowOffsetY: number;
 }
 
-export const SIMPLE_SPIN_STAGE_BACKGROUND_HEX = "#04070d";
+export const SIMPLE_SPIN_STAGE_BACKGROUND_HEX = "#000000";
 export const SIMPLE_SPIN_GLOW_HEX = "#95bbff";
 export const SIMPLE_SPIN_GLOW_ALPHA_BYTE = 0;
 export const SIMPLE_SPIN_AMBIENT_GLOW_HEX = "#3f6aa8";

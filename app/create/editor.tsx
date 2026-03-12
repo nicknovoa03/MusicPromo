@@ -69,6 +69,7 @@ const DEFAULT_PROJECT_TITLE = "New Project";
 const NATIVE_ASPECT_RATIO_OPTIONS: AspectRatio[] = ["9:16", "1:1"];
 const TRIM_PANEL_ANIMATION_DURATION_MS = 260;
 const TRIM_PANEL_MAX_HEIGHT = Math.max(260, Math.round(SCREEN_HEIGHT * 0.44));
+const audioDurationSecCache = new Map<string, number>();
 
 type MissingFilesState = {
   photo: boolean;
@@ -168,6 +169,8 @@ async function isMissingFile(uri?: string) {
 async function getAudioDurationSec(uri: string): Promise<number | null> {
   const normalizedUri = normalizeMediaUri(uri);
   if (!normalizedUri) return null;
+  const cachedDuration = audioDurationSecCache.get(normalizedUri);
+  if (cachedDuration !== undefined) return cachedDuration;
 
   if (normalizedUri.startsWith("file://")) {
     try {
@@ -189,7 +192,9 @@ async function getAudioDurationSec(uri: string): Promise<number | null> {
     sound = created.sound;
     const status = await sound.getStatusAsync();
     if (status.isLoaded && status.durationMillis) {
-      return status.durationMillis / 1000;
+      const durationSec = status.durationMillis / 1000;
+      audioDurationSecCache.set(normalizedUri, durationSec);
+      return durationSec;
     }
     return null;
   } catch {
@@ -1310,7 +1315,7 @@ export default function EditorScreen() {
         }
       } finally {
         if (entrySource === "home") {
-          router.back();
+          router.replace("/" as const);
           return;
         }
         router.replace("/" as const);

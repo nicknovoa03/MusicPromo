@@ -225,10 +225,6 @@ export default function HomeScreen() {
   const projectsQuery = useQuery(api.projects.listByUser);
   const deleteProject = useMutation(api.projects.remove);
   const [localProjects, setLocalProjects] = useState<LocalProject[] | null>(null);
-  const [cachedLocalProjects, setCachedLocalProjects] = useState<LocalProject[]>([]);
-  const [cachedServerProjects, setCachedServerProjects] = useState<Doc<"projects">[]>(
-    [],
-  );
   const [localAvatarUrl, setLocalAvatarUrl] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [actionProject, setActionProject] = useState<Project | null>(null);
@@ -302,18 +298,6 @@ export default function HomeScreen() {
     setLocalProjects(projects);
   }, []);
 
-  useEffect(() => {
-    if (localProjects !== null) {
-      setCachedLocalProjects(localProjects);
-    }
-  }, [localProjects]);
-
-  useEffect(() => {
-    if (projectsQuery !== undefined) {
-      setCachedServerProjects(projectsQuery);
-    }
-  }, [projectsQuery]);
-
   useFocusEffect(
     useCallback(() => {
       if (!isLocalGuest) {
@@ -362,6 +346,10 @@ export default function HomeScreen() {
       const projectKey = getProjectId(project);
       const projectPhotoUri = normalizeMediaUri(project.photoUri);
       const projectAudioUri = normalizeMediaUri(project.audioUri);
+      const stageBackgroundUri = normalizeMediaUri(
+        parseTemplateTweaksParam(project.templateTweaks)?.stageBackgroundImageUri ??
+          null,
+      );
       if (longPressProjectIdRef.current === projectKey) {
         longPressProjectIdRef.current = null;
         return;
@@ -378,8 +366,11 @@ export default function HomeScreen() {
       }
       if (deletingProjectId === projectKey) return;
       track("project_reopened", { projectId: projectKey });
-      if (projectPhotoUri && /^https?:\/\//i.test(projectPhotoUri)) {
+      if (projectPhotoUri) {
         void Image.prefetch(projectPhotoUri).catch(() => {});
+      }
+      if (stageBackgroundUri) {
+        void Image.prefetch(stageBackgroundUri).catch(() => {});
       }
 
       if (isLocalProject(project)) {
@@ -555,18 +546,10 @@ export default function HomeScreen() {
   );
 
   const stableProjects = useMemo(() => {
-    if (isLocalGuest) return localProjects ?? cachedLocalProjects;
-    return projectsQuery ?? cachedServerProjects;
-  }, [
-    cachedLocalProjects,
-    cachedServerProjects,
-    isLocalGuest,
-    localProjects,
-    projectsQuery,
-  ]);
-  const isLoading = isLocalGuest
-    ? localProjects === null && cachedLocalProjects.length === 0
-    : projectsQuery === undefined && cachedServerProjects.length === 0;
+    if (isLocalGuest) return localProjects ?? [];
+    return projectsQuery ?? [];
+  }, [isLocalGuest, localProjects, projectsQuery]);
+  const isLoading = isLocalGuest ? localProjects === null : projectsQuery === undefined;
   const hasProjects = stableProjects.length > 0;
   const selectedProjects = useMemo(
     () =>
