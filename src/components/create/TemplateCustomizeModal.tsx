@@ -1894,7 +1894,7 @@ export function TemplateCustomizeModal({
                           styles.backgroundSwatchWrap,
                           styles.customBackgroundToggleWrap,
                           isCustomColorEnabled && styles.backgroundSwatchWrapSelected,
-                          { backgroundColor: customColor },
+                          { backgroundColor: "#ffffff" },
                         ]}
                         accessibilityLabel="Toggle custom background color"
                         accessibilityRole="button"
@@ -1903,7 +1903,7 @@ export function TemplateCustomizeModal({
                         <Ionicons
                           name="color-palette"
                           size={11}
-                          color="#ffffff"
+                          color="#000000"
                           style={styles.customBackgroundToggleIcon}
                         />
                       </Pressable>

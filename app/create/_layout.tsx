@@ -27,8 +27,9 @@ export default function CreateLayout() {
         options={{
           contentStyle: { backgroundColor: colors.dark.background },
           animation: "fade",
-          fullScreenGestureEnabled: Platform.OS === "ios",
-          animationMatchesGesture: Platform.OS === "ios",
+          // Prevent iOS back-swipe from hijacking horizontal trim gestures.
+          // Editor already has an explicit close affordance in its header.
+          gestureEnabled: false,
         }}
       />
       <Stack.Screen
