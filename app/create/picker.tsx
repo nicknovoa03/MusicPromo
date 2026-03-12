@@ -774,11 +774,11 @@ const styles = StyleSheet.create({
   },
   cancelText: {
     ...typography.body,
-    color: colors.accent.primary,
+    color: colors.light.text,
   },
   addText: {
     ...typography.button,
-    color: colors.accent.primary,
+    color: colors.light.text,
   },
   addTextDisabled: {
     opacity: 0.35,
@@ -864,11 +864,11 @@ const styles = StyleSheet.create({
     borderRadius: radius.full,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.accent.primary,
+    backgroundColor: colors.accent.fill,
   },
   pickButtonText: {
     ...typography.button,
-    color: colors.accent.onPrimary,
+    color: colors.accent.onFill,
     fontWeight: "700",
   },
   selectionWrap: {
@@ -900,7 +900,7 @@ const styles = StyleSheet.create({
   },
   aspectRatioBadgeText: {
     ...typography.caption,
-    color: colors.accent.onPrimary,
+    color: colors.accent.onDark,
     fontWeight: "700",
     letterSpacing: 0.4,
   },
@@ -949,7 +949,7 @@ const styles = StyleSheet.create({
   },
   selectionActionText: {
     ...typography.caption,
-    color: colors.accent.primary,
+    color: colors.light.text,
     fontWeight: "700",
   },
   quickFillCard: {
@@ -976,7 +976,7 @@ const styles = StyleSheet.create({
   },
   quickFillTitle: {
     ...typography.caption,
-    color: colors.accent.primary,
+    color: colors.light.text,
     fontWeight: "700",
     textTransform: "uppercase",
     letterSpacing: 0.5,

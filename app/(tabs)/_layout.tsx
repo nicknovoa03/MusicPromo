@@ -48,10 +48,14 @@ export default function TabsLayout() {
   const [localOnboardingReady, setLocalOnboardingReady] = useState(false);
   const [localOnboardingCompleted, setLocalOnboardingCompleted] = useState(false);
   const isDarkMode = colorScheme === "dark";
-  const tabActiveColor = isDarkMode ? "#F4F6F8" : "#111111";
-  const tabInactiveColor = isDarkMode ? "#9BA3AF" : "#6E6E73";
-  const tabBackgroundColor = isDarkMode ? "#000000" : "#FFFFFF";
-  const tabBorderColor = isDarkMode ? "#1C1C1E" : "#D1D1D6";
+  const tabActiveColor = isDarkMode ? colors.dark.text : colors.light.text;
+  const tabInactiveColor = isDarkMode
+    ? colors.dark.textSecondary
+    : colors.light.textSecondary;
+  const tabBackgroundColor = isDarkMode
+    ? colors.dark.background
+    : colors.light.background;
+  const tabBorderColor = isDarkMode ? colors.dark.border : colors.light.border;
   const gateBackgroundColor = isDarkMode ? colors.dark.background : colors.light.background;
   const gateTextColor = isDarkMode ? colors.dark.textSecondary : colors.light.textSecondary;
 

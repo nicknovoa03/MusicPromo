@@ -6,7 +6,7 @@
 - Doc owner: Nick
 - Stakeholders: Nick (sole developer / product owner)
 - Last updated (YYYY-MM-DD): 2026-03-11
-- Version: 1.7 (Phase 5 iOS-native rollout in progress)
+- Version: 1.8 (Phase 5 iOS-native rollout in progress)
 - Links: GitHub repo at `/home/nick/MusicPromo`
 
 ## 1) Product Summary
@@ -101,7 +101,7 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 ### User Profile
 - Owner: Self
 - Visibility: Private
-- Key fields: `clerkId`, `name`, `email`, `avatarUrl`, `artistName`, `avatarImageUrl`, `heroImageUrl`, `links`, `subscriptionTier`, `preferences` (defaultAspectRatio, defaultVideoLength), `createdAt`
+- Key fields: `clerkId`, `name`, `email`, `avatarUrl`, `artistName`, `avatarImageUrl`, `heroImageUrl`, `links`, `subscriptionTier`, `preferences` (defaultVideoLength), `createdAt`
 - Relationships: Has many Projects, has many Push Tokens
 - Typical queries: Get profile by clerkId
 - Permissions: User reads/updates own profile only
@@ -184,6 +184,7 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
   - User can trim audio to select playback section
   - User can choose aspect ratio (9:16 or 1:1)
   - New create projects default to aspect ratio `9:16` unless an explicit aspect-ratio param is provided
+  - Profile `defaultAspectRatio` is treated as deprecated placeholder data and is not read by the create flow (fallback remains `9:16` when route params do not specify a ratio)
   - User can open one unified template customization surface from the editor with tabs for `Layout`, `Style`, `Backdrop`, `Motion`, and `Media`
   - User can switch templates from the `Layout` tab template rail (tap + swipe with clear active state)
   - User can change spin speed, record transparency, stage background color/photo, background blur, and rotation start/direction from the same customization surface
@@ -218,6 +219,7 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
   - "Share to TikTok" opens TikTok via native share intent
   - Share layout remains usable on compact-height devices via scroll + scaled preview sizing
   - "Done" returns to projects or home
+  - "Done" and header close actions clear the create stack before navigating home so Android/back navigation cannot reopen stale create/editor/render/share routes
 - **States:**
   - Loading: N/A (instant actions)
   - Empty: N/A
@@ -371,7 +373,7 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 - **Header:** X button (left)
 - **Main sections:** "Ready to share" heading + subtitle, video preview, optional template-info parity badge, optional beta watermark overlay, share buttons, confirmation text
 - **Primary CTA:** "Share to Instagram" (gradient button)
-- **Secondary actions:** "Share to TikTok" (outlined button), "Done" / X to return home
+- **Secondary actions:** "Share to TikTok" (outlined button), "Done" / X dismisses the create stack then returns home
 - **Layout behavior:** Scrollable content + scaled preview variant on compact-height screens
 - **Theme:** Dark/black
 - **Analytics:** `video_exported`, `video_saved_to_camera_roll`, `share_tapped_instagram`, `share_tapped_tiktok`

@@ -835,7 +835,10 @@ export default function ProfileScreen() {
       "Button" in expoSwiftUIAny &&
       "Text" in expoSwiftUIAny,
   );
-  const canUseNativeProfileSettings = false;
+  const canUseNativeProfileSettings =
+    nativeProfileEnabledByContract &&
+    expoSwiftUI !== null &&
+    hasNativeProfileComponents;
   const primaryEmail = clerkUser?.primaryEmailAddress?.emailAddress ?? null;
 
   const heroHeight = Math.max(380, Math.min(Math.round(windowHeight * 0.5), 560));

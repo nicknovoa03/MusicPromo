@@ -205,7 +205,6 @@ export function TemplateSwitcher({
       }
     },
     [
-      activeTemplateId,
       onChange,
       options,
       scrollToIndex,
@@ -450,40 +449,5 @@ const styles = StyleSheet.create({
   },
   optionPressed: {
     opacity: 0.86,
-  },
-  glyphShell: {
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    overflow: "hidden",
-  },
-  glyphVinylRing: {
-    position: "absolute",
-    borderWidth: 1,
-  },
-  glyphVinylLabel: {
-    position: "absolute",
-  },
-  glyphVinylHole: {
-    position: "absolute",
-  },
-  glyphCdRing: {
-    position: "absolute",
-    borderWidth: 1,
-  },
-  glyphCdStripeA: {
-    position: "absolute",
-    borderRadius: 999,
-    backgroundColor: "rgba(255,184,212,0.58)",
-    transform: [{ rotate: "24deg" }],
-  },
-  glyphCdStripeB: {
-    position: "absolute",
-    borderRadius: 999,
-    backgroundColor: "rgba(155,228,255,0.54)",
-    transform: [{ rotate: "-26deg" }],
-  },
-  glyphCdHole: {
-    position: "absolute",
   },
 });

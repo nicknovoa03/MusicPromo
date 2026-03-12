@@ -75,6 +75,7 @@ type RenderPath = "primary" | "fallback" | "safe_fallback";
 let ffmpegModule: FFmpegKitModule | null = null;
 let activeRenderSessionId: number | null = null;
 let activeRenderToken: symbol | null = null;
+let betaWatermarkOverlayInputUriCache: string | null = null;
 const vinylShellOverlayInputUriCache: Partial<Record<VinylShellSize, string>> = {};
 
 async function getFFmpegKit(): Promise<FFmpegKitModule> {
@@ -555,6 +556,20 @@ async function ensureRenderableInputUri(
 }
 
 async function getBetaWatermarkOverlayInputUri(): Promise<string> {
+  if (betaWatermarkOverlayInputUriCache) {
+    try {
+      const cachedInfo = await LegacyFileSystem.getInfoAsync(
+        betaWatermarkOverlayInputUriCache,
+      );
+      if (cachedInfo.exists) {
+        return betaWatermarkOverlayInputUriCache;
+      }
+    } catch {
+      // Fall through and refresh cache.
+    }
+    betaWatermarkOverlayInputUriCache = null;
+  }
+
   const resolvedAsset = Image.resolveAssetSource(BETA_WATERMARK_IMAGE_MODULE);
   const assetUri = normalizeMediaUri(resolvedAsset?.uri ?? "");
   if (!assetUri.trim()) {
@@ -565,9 +580,18 @@ async function getBetaWatermarkOverlayInputUri(): Promise<string> {
     if (!LegacyFileSystem.cacheDirectory) {
       throw new Error("Unable to access app cache for beta watermark download.");
     }
-    const downloadUri = `${LegacyFileSystem.cacheDirectory}beta-watermark-${Date.now()}-${Math.floor(
-      Math.random() * 1_000_000,
-    )}.png`;
+
+    const downloadUri = `${LegacyFileSystem.cacheDirectory}beta-watermark-overlay.png`;
+    try {
+      const existingInfo = await LegacyFileSystem.getInfoAsync(downloadUri);
+      if (existingInfo.exists) {
+        betaWatermarkOverlayInputUriCache = downloadUri;
+        return downloadUri;
+      }
+    } catch {
+      // Ignore file metadata errors and continue to download.
+    }
+
     try {
       await LegacyFileSystem.downloadAsync(assetUri, downloadUri);
     } catch {
@@ -575,10 +599,13 @@ async function getBetaWatermarkOverlayInputUri(): Promise<string> {
         "Unable to download beta watermark asset for rendering.",
       );
     }
+    betaWatermarkOverlayInputUriCache = downloadUri;
     return downloadUri;
   }
 
-  return ensureRenderableInputUri(assetUri, "photo");
+  const preparedUri = await ensureRenderableInputUri(assetUri, "photo");
+  betaWatermarkOverlayInputUriCache = preparedUri;
+  return preparedUri;
 }
 
 async function getVinylShellOverlayInputUri(
@@ -1513,7 +1540,16 @@ async function renderVinylVideoWithVariant(
     }
 
     if (ENABLE_BETA_WATERMARK && shouldShowWatermark) {
-      watermarkInputUri = await getBetaWatermarkOverlayInputUri();
+      try {
+        watermarkInputUri = await getBetaWatermarkOverlayInputUri();
+      } catch (error) {
+        if (__DEV__) {
+          console.warn(
+            `[renderVinylVideoWithVariant:${variantId}] Beta watermark unavailable; continuing render without watermark.`,
+            error,
+          );
+        }
+      }
     }
     exportWatermarkEnabled = shouldShowWatermark && Boolean(watermarkInputUri);
 

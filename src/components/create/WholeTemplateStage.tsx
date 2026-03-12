@@ -24,7 +24,7 @@ export function WholeTemplateStage({
   subtitle,
   templateTweaks,
   onTogglePlay,
-  showWatermark = true,
+  showWatermark,
 }: TemplateStageProps) {
   const layout = getGraphicPopTemplateLayout({ width, height, aspectRatio });
   const normalizedBackgroundBlur = Math.min(
@@ -52,6 +52,8 @@ export function WholeTemplateStage({
   const discX = Math.round(layout.discX + (layout.discSize - discSize) / 2);
   const discY = Math.round(layout.discY + (layout.discSize - discSize) / 2);
   const hasBackgroundImage = Boolean(templateTweaks?.stageBackgroundImageUri);
+  const shouldShowWatermark =
+    showWatermark ?? templateTweaks?.showWatermark ?? true;
   const backgroundSource = useMemo(
     () =>
       templateTweaks?.stageBackgroundImageUri
@@ -123,7 +125,7 @@ export function WholeTemplateStage({
         />
       ) : null}
 
-      {showWatermark ? <BetaWatermark containerWidth={width} /> : null}
+      {shouldShowWatermark ? <BetaWatermark containerWidth={width} /> : null}
     </View>
   );
 }

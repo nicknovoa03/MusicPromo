@@ -65,9 +65,8 @@ function AppStatusBar() {
   const isDarkSurface =
     root === "create" &&
     (child === "editor" || child === "rendering" || child === "share");
-  const isProfileSurface = root === "(tabs)" && child === "profile";
 
-  return <StatusBar style={isDarkMode || isDarkSurface || isProfileSurface ? "light" : "dark"} />;
+  return <StatusBar style={isDarkMode || isDarkSurface ? "light" : "dark"} />;
 }
 
 function IOSNativeUIPhase5Bootstrap() {
@@ -103,11 +102,14 @@ function useConvexAuthFromClerk() {
   const { isLoaded, isSignedIn, getToken, orgId, orgRole } = useAuth();
 
   const fetchAccessToken = useCallback(
-    async (_args: { forceRefreshToken: boolean }) => {
+    async (args: { forceRefreshToken: boolean }) => {
       try {
-        // Intentionally avoid `skipCache` due Clerk API rejecting the
-        // debug query param currently used for forced refresh requests.
-        return await getToken({ template: "convex" });
+        // Convex sets forceRefreshToken when it needs a fresh JWT after
+        // rejecting a cached token.
+        return await getToken({
+          template: "convex",
+          skipCache: Boolean(args.forceRefreshToken),
+        });
       } catch {
         return null;
       }

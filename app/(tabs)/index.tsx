@@ -274,6 +274,11 @@ export default function HomeScreen() {
   const hasNativeProjectGestureComponents = Boolean(
     expoSwiftUIAny && "RoundedRectangle" in expoSwiftUIAny,
   );
+  const hasNativeEmptyStateComponents = Boolean(
+    expoSwiftUIAny &&
+      "Host" in expoSwiftUIAny &&
+      "ContentUnavailableView" in expoSwiftUIAny,
+  );
   const expoSwiftUIModifiersAny =
     expoSwiftUIModifiers as Record<string, unknown> | null;
   const hasNativeProjectGestureModifiers = Boolean(
@@ -291,7 +296,9 @@ export default function HomeScreen() {
     expoSwiftUIModifiers !== null &&
     hasNativeProjectGestureModifiers;
   const canUseNativeEmptyState =
-    nativeEmptyStateEnabledByContract && expoSwiftUI !== null;
+    nativeEmptyStateEnabledByContract &&
+    expoSwiftUI !== null &&
+    hasNativeEmptyStateComponents;
 
   const refreshLocalProjects = useCallback(async () => {
     const projects = await listLocalProjects();

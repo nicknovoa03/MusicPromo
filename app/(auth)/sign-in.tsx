@@ -187,7 +187,7 @@ export default function SignInScreen() {
     <View style={styles.container}>
       <View style={styles.hero}>
         <View style={styles.logoContainer}>
-          <Ionicons name="musical-notes" size={48} color={colors.accent.primary} />
+          <Ionicons name="musical-notes" size={48} color={colors.accent.fill} />
         </View>
         <Text style={styles.title}>MusicPromo</Text>
         <Text style={styles.subtitle}>
@@ -208,13 +208,13 @@ export default function SignInScreen() {
           accessibilityRole="button"
         >
           {loading === "apple" ? (
-            <ActivityIndicator color={colors.accent.onPrimary} />
+            <ActivityIndicator color={colors.accent.onFill} />
           ) : (
             <>
               <Ionicons
                 name="logo-apple"
                 size={20}
-                color={colors.accent.onPrimary}
+                color={colors.accent.onFill}
                 style={styles.buttonIcon}
               />
               <Text style={styles.appleButtonText}>Sign in with Apple</Text>
@@ -320,11 +320,11 @@ const styles = StyleSheet.create({
     marginRight: spacing.sm,
   },
   appleButton: {
-    backgroundColor: colors.accent.primary,
+    backgroundColor: colors.accent.fill,
   },
   appleButtonText: {
     ...typography.button,
-    color: colors.accent.onPrimary,
+    color: colors.accent.onFill,
   },
   googleButton: {
     backgroundColor: colors.light.surface,

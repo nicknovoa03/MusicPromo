@@ -1,5 +1,7 @@
 export type VinylShellSize = "small" | "normal" | "large";
 
+// These arrays are index-coupled:
+// 1.5 -> "small", 3 -> "normal", 4.5 -> "large".
 const VINYL_SHELL_ARTWORK_SCALE_OPTIONS = [1.5, 3, 4.5] as const;
 const VINYL_SHELL_SIZE_BY_INDEX: readonly VinylShellSize[] = [
   "small",

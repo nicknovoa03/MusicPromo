@@ -14,6 +14,7 @@ export interface RenderRequest {
     rotationDirection?: "cw" | "ccw";
     stageBackgroundColor?: string | null;
     stageBackgroundImageUri?: string | null;
+    showWatermark?: boolean;
   };
   photoUri: string;
   audioUri: string;

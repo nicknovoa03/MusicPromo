@@ -165,6 +165,7 @@ export function EditMediaModal({
       "LabeledContent" in expoSwiftUIAny &&
       "Text" in expoSwiftUIAny,
   );
+  // TODO(phase-5): Re-enable once native template controls are validated end-to-end.
   const canUseNativeEditTemplateControls =
     false &&
     nativeEditTemplateEnabledByContract &&

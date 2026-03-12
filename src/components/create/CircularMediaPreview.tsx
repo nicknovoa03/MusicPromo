@@ -101,7 +101,7 @@ export function CircularMediaPreview({
 const styles = StyleSheet.create({
   circle: {
     overflow: "hidden",
-    backgroundColor: "#101012",
+    backgroundColor: colors.dark.surface,
   },
   image: {
     ...StyleSheet.absoluteFillObject,

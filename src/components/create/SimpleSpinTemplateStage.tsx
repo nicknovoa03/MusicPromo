@@ -33,7 +33,7 @@ export function SimpleSpinTemplateStage({
   subtitle,
   templateTweaks,
   onTogglePlay,
-  showWatermark = true,
+  showWatermark,
 }: TemplateStageProps) {
   const vinylToneId: VinylToneId = "simple-spin";
   const layout = getSimpleSpinTemplateLayout({ width, height, aspectRatio });
@@ -72,6 +72,8 @@ export function SimpleSpinTemplateStage({
   const holeX = Math.round(discX + (discSize - holeSize) / 2);
   const holeY = Math.round(discY + (discSize - holeSize) / 2);
   const hasBackgroundImage = Boolean(templateTweaks?.stageBackgroundImageUri);
+  const shouldShowWatermark =
+    showWatermark ?? templateTweaks?.showWatermark ?? true;
   const backgroundSource = useMemo(
     () =>
       templateTweaks?.stageBackgroundImageUri
@@ -214,7 +216,7 @@ export function SimpleSpinTemplateStage({
         />
       ) : null}
 
-      {showWatermark ? <BetaWatermark containerWidth={width} /> : null}
+      {shouldShowWatermark ? <BetaWatermark containerWidth={width} /> : null}
     </View>
   );
 }

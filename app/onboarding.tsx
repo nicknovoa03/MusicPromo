@@ -188,7 +188,7 @@ export default function OnboardingScreen() {
         <View style={[styles.slide, { width }]}>
           <View style={styles.card}>
             <View style={styles.iconShell}>
-              <Ionicons name={item.icon} size={32} color={colors.accent.primary} />
+              <Ionicons name={item.icon} size={32} color={colors.light.text} />
             </View>
             <Text style={styles.eyebrow}>{item.eyebrow}</Text>
             <Text style={styles.slideTitle}>{item.title}</Text>
@@ -213,7 +213,7 @@ export default function OnboardingScreen() {
   if (!hasCompletionState) {
     return (
       <SafeAreaView style={styles.loadingContainer} edges={["top", "bottom"]}>
-        <ActivityIndicator size="large" color={colors.accent.primary} />
+        <ActivityIndicator size="large" color={colors.light.text} />
         <Text style={styles.loadingText}>Preparing your workspace...</Text>
       </SafeAreaView>
     );
@@ -421,7 +421,7 @@ const styles = StyleSheet.create({
   },
   flowPillText: {
     ...typography.caption,
-    color: colors.accent.primary,
+    color: colors.light.text,
     fontWeight: "600",
   },
   footer: {

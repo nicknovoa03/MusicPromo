@@ -1314,15 +1314,10 @@ export default function EditorScreen() {
           await createDraftProject();
         }
       } finally {
-        if (entrySource === "home") {
-          router.replace("/" as const);
-          return;
-        }
         router.replace("/" as const);
       }
     })();
   }, [
-    entrySource,
     isLocalGuest,
     createLocalDraftProject,
     createDraftProject,

@@ -18,6 +18,9 @@ export const colors = {
   accent: {
     primary: "#FFFFFF",
     primaryMuted: "#E8E8E8",
+    fill: "#111111",
+    onFill: "#FFFFFF",
+    onDark: "#FFFFFF",
     fab: "#000000",
     fabIcon: "#FFFFFF",
     onPrimary: "#000000",
