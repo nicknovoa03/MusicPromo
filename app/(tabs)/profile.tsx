@@ -48,10 +48,6 @@ import { getExpoPushTokenAsync } from "@/lib/notifications";
 import type { EventName } from "@/lib/analytics";
 import { useLocalSession } from "@/providers/localSession";
 import { persistPickedMediaFile } from "@/lib/mediaStorage";
-import {
-  getIOSNativeUIPhase5Availability,
-  loadExpoSwiftUIModule,
-} from "@/lib/iosNativeUi";
 import { sleep } from "@/lib/utils";
 
 const PLATFORM_LABELS: Record<ProfileLinkPlatform, string> = {
@@ -181,7 +177,6 @@ export default function ProfileScreen() {
   const [defaultVideoLengthDraft, setDefaultVideoLengthDraft] =
     useState<VideoLengthPreference>(15);
   const [linksDraft, setLinksDraft] = useState<DraftProfileLink[]>([]);
-  const [nativeFieldSeed, setNativeFieldSeed] = useState(0);
   const [isProfileSettingsOpen, setIsProfileSettingsOpen] = useState(false);
   const [isClosingProfileSettings, setIsClosingProfileSettings] = useState(false);
   const profileSettingsTranslateX = useRef(new Animated.Value(windowWidth)).current;
@@ -291,7 +286,6 @@ export default function ProfileScreen() {
     setDefaultAspectRatioDraft(sourceDefaultAspectRatio);
     setDefaultVideoLengthDraft(sourceDefaultVideoLength);
     setLinksDraft(sourceLinks);
-    setNativeFieldSeed((prev) => prev + 1);
   }, [
     isProfileLoading,
     sourceArtistName,
@@ -600,40 +594,6 @@ export default function ProfileScreen() {
     ],
   );
 
-  const handleNativeAspectRatioSelect = useCallback(
-    (index: number) => {
-      if (isProfileLoading || isSavingPreferences || isSavingProfile) return;
-      const nextAspectRatio = ASPECT_RATIO_OPTIONS[index] ?? ASPECT_RATIO_OPTIONS[0];
-      if (nextAspectRatio === defaultAspectRatioDraft) return;
-      setDefaultAspectRatioDraft(nextAspectRatio);
-      void savePreferences({ defaultAspectRatio: nextAspectRatio });
-    },
-    [
-      defaultAspectRatioDraft,
-      isProfileLoading,
-      isSavingPreferences,
-      isSavingProfile,
-      savePreferences,
-    ],
-  );
-
-  const handleNativeVideoLengthSelect = useCallback(
-    (index: number) => {
-      if (isProfileLoading || isSavingPreferences || isSavingProfile) return;
-      const nextVideoLength = VIDEO_LENGTH_OPTIONS[index] ?? VIDEO_LENGTH_OPTIONS[0];
-      if (nextVideoLength === defaultVideoLengthDraft) return;
-      setDefaultVideoLengthDraft(nextVideoLength);
-      void savePreferences({ defaultVideoLength: nextVideoLength });
-    },
-    [
-      defaultVideoLengthDraft,
-      isProfileLoading,
-      isSavingPreferences,
-      isSavingProfile,
-      savePreferences,
-    ],
-  );
-
   const pickAndPersistImage = useCallback(async (fileNameFallback: string) => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
@@ -806,41 +766,6 @@ export default function ProfileScreen() {
     );
   }, [runDeleteAccount]);
 
-  const linksDraftByPlatform = useMemo(() => {
-    const mapping = {} as Record<ProfileLinkPlatform, string>;
-    for (const platform of PROFILE_LINK_PLATFORMS) {
-      mapping[platform] = "";
-    }
-    for (const link of linksDraft) {
-      mapping[link.platform] = link.url;
-    }
-    return mapping;
-  }, [linksDraft]);
-  const nativeProfileAvailability = getIOSNativeUIPhase5Availability({
-    minIOSVersion: 16,
-  });
-  const nativeProfileEnabledByContract = nativeProfileAvailability.enabled;
-  const expoSwiftUI = nativeProfileEnabledByContract
-    ? loadExpoSwiftUIModule()
-    : null;
-  const expoSwiftUIAny = expoSwiftUI as Record<string, unknown> | null;
-  const hasNativeProfileComponents = Boolean(
-    expoSwiftUIAny &&
-      "Host" in expoSwiftUIAny &&
-      "Form" in expoSwiftUIAny &&
-      "Section" in expoSwiftUIAny &&
-      "LabeledContent" in expoSwiftUIAny &&
-      "TextField" in expoSwiftUIAny &&
-      "Picker" in expoSwiftUIAny &&
-      "Button" in expoSwiftUIAny &&
-      "Text" in expoSwiftUIAny,
-  );
-  const canUseNativeProfileSettings =
-    nativeProfileEnabledByContract &&
-    expoSwiftUI !== null &&
-    hasNativeProfileComponents;
-  const primaryEmail = clerkUser?.primaryEmailAddress?.emailAddress ?? null;
-
   const heroHeight = Math.max(380, Math.min(Math.round(windowHeight * 0.5), 560));
   const heroBannerHeight = Math.max(
     240,
@@ -883,7 +808,6 @@ export default function ProfileScreen() {
   const heroPickerVisualDisabled = profileMutationDisabled || isPickingHero;
   const modalTopInset = Platform.OS === "ios" ? (insets.top > 0 ? insets.top : 44) : 0;
   const heroTopInsetOffset = 0;
-  const shouldUseRNSettingsGesture = !canUseNativeProfileSettings;
 
   const handleOpenProfileSettings = useCallback(() => {
     if (isProfileSettingsOpen || isClosingProfileSettings) return;
@@ -915,10 +839,9 @@ export default function ProfileScreen() {
     }).start(() => {
       setIsClosingProfileSettings(false);
       setIsProfileSettingsOpen(false);
-      void saveProfile({ includeLinks: canUseNativeProfileSettings });
+      void saveProfile({ includeLinks: false });
     });
   }, [
-    canUseNativeProfileSettings,
     isProfileSettingsOpen,
     isClosingProfileSettings,
     profileSettingsTranslateX,
@@ -1042,9 +965,7 @@ export default function ProfileScreen() {
                         borderBottomColor: profileBorderColor,
                       },
                     ]}
-                    {...(shouldUseRNSettingsGesture
-                      ? profileSettingsPanResponder.panHandlers
-                      : {})}
+                    {...profileSettingsPanResponder.panHandlers}
                   >
                     <Pressable
                       onPress={handleCloseProfileSettings}
@@ -1078,284 +999,146 @@ export default function ProfileScreen() {
                       </Text>
                     </Pressable>
                   </View>
-                  {canUseNativeProfileSettings && expoSwiftUI ? (
-                    <expoSwiftUI.Host
-                      style={[
-                        styles.nativeSettingsHost,
-                        { backgroundColor: profileBackgroundColor },
-                      ]}
-                      useViewportSizeMeasurement
-                      colorScheme={isDarkMode ? "dark" : "light"}
-                    >
-                      <expoSwiftUI.Form>
-                        <expoSwiftUI.Section title="Identity">
-                          <expoSwiftUI.LabeledContent label="Account">
-                            <expoSwiftUI.Text>{displayName}</expoSwiftUI.Text>
-                          </expoSwiftUI.LabeledContent>
-                          {primaryEmail ? (
-                            <expoSwiftUI.LabeledContent label="Email">
-                              <expoSwiftUI.Text>{primaryEmail}</expoSwiftUI.Text>
-                            </expoSwiftUI.LabeledContent>
-                          ) : null}
-                          <expoSwiftUI.LabeledContent label="Artist name">
-                            <expoSwiftUI.TextField
-                              key={`native-artist-name-${nativeFieldSeed}`}
-                              defaultValue={artistNameDraft}
-                              placeholder="Add name"
-                              autocorrection={false}
-                              onChangeText={setArtistNameDraft}
-                            />
-                          </expoSwiftUI.LabeledContent>
-                          <expoSwiftUI.Button
-                            disabled={profileSettingsDisabled}
-                            systemImage="person.crop.circle.badge.plus"
+                  <ScrollView
+                    contentContainerStyle={[
+                      styles.profileSettingsContent,
+                      { backgroundColor: profileBackgroundColor },
+                    ]}
+                    keyboardShouldPersistTaps="handled"
+                  >
+                    <View style={styles.profileSettingsIdentitySection}>
+                      <View style={styles.profileSettingsAvatarRow}>
+                        <View style={styles.profileSettingsAvatarOption}>
+                          <Pressable
                             onPress={() => {
                               void handlePickAvatar();
                             }}
-                          >
-                            {isPickingAvatar ? "Updating avatar..." : "Change avatar photo"}
-                          </expoSwiftUI.Button>
-                          <expoSwiftUI.Button
                             disabled={profileSettingsDisabled}
-                            systemImage="photo.badge.plus"
+                            style={({ pressed }) => [
+                              styles.profileSettingsAvatarButton,
+                              {
+                                backgroundColor: profileSurfaceColor,
+                                borderColor: profileBorderColor,
+                              },
+                              avatarPickerVisualDisabled && styles.heroActionDisabled,
+                              pressed && !profileSettingsDisabled && styles.optionChipPressed,
+                            ]}
+                            accessibilityLabel="Edit profile picture"
+                            accessibilityRole="button"
+                          >
+                            {avatarImageUrlDraft ? (
+                              <Image
+                                source={{ uri: avatarImageUrlDraft }}
+                                style={styles.profileSettingsMediaImage}
+                              />
+                            ) : (
+                              <Ionicons
+                                name="person"
+                                size={42}
+                                color={profileTextSecondaryColor}
+                              />
+                            )}
+                          </Pressable>
+                          <Text
+                            style={[
+                              styles.profileSettingsAvatarLabel,
+                              { color: profileTextSecondaryColor },
+                            ]}
+                          >
+                            Profile
+                          </Text>
+                        </View>
+
+                        <View style={styles.profileSettingsAvatarOption}>
+                          <Pressable
                             onPress={() => {
                               void handlePickHero();
                             }}
-                          >
-                            {isPickingHero ? "Updating banner..." : "Change banner photo"}
-                          </expoSwiftUI.Button>
-                          <expoSwiftUI.Button
-                            variant="borderedProminent"
                             disabled={profileSettingsDisabled}
-                            systemImage="checkmark"
-                            onPress={() => {
-                              void saveProfile();
-                            }}
+                            style={({ pressed }) => [
+                              styles.profileSettingsAvatarButton,
+                              styles.profileSettingsAvatarButtonSecondary,
+                              {
+                                backgroundColor: profileBackgroundColor,
+                                borderColor: profileBorderColor,
+                              },
+                              heroPickerVisualDisabled && styles.heroActionDisabled,
+                              pressed && !profileSettingsDisabled && styles.optionChipPressed,
+                            ]}
+                            accessibilityLabel="Edit banner picture"
+                            accessibilityRole="button"
                           >
-                            {isSavingProfile ? "Saving profile..." : "Save profile changes"}
-                          </expoSwiftUI.Button>
-                        </expoSwiftUI.Section>
-
-                        <expoSwiftUI.Section title="Preferences">
-                          <expoSwiftUI.Picker
-                            options={ASPECT_RATIO_OPTIONS}
-                            selectedIndex={Math.max(
-                              0,
-                              ASPECT_RATIO_OPTIONS.indexOf(defaultAspectRatioDraft),
-                            )}
-                            label="Default aspect ratio"
-                            variant="menu"
-                            onOptionSelected={(event) => {
-                              handleNativeAspectRatioSelect(event.nativeEvent.index);
-                            }}
-                          />
-                          <expoSwiftUI.Picker
-                            options={VIDEO_LENGTH_LABELS}
-                            selectedIndex={Math.max(
-                              0,
-                              VIDEO_LENGTH_OPTIONS.indexOf(defaultVideoLengthDraft),
-                            )}
-                            label="Default video length"
-                            variant="menu"
-                            onOptionSelected={(event) => {
-                              handleNativeVideoLengthSelect(event.nativeEvent.index);
-                            }}
-                          />
-                        </expoSwiftUI.Section>
-
-                        <expoSwiftUI.Section title="Profile Links">
-                          {PROFILE_LINK_PLATFORMS.map((platform) => (
-                            <expoSwiftUI.LabeledContent
-                              key={platform}
-                              label={PLATFORM_LABELS[platform]}
-                            >
-                              <expoSwiftUI.TextField
-                                key={`native-link-${platform}-${nativeFieldSeed}`}
-                                defaultValue={linksDraftByPlatform[platform] ?? ""}
-                                placeholder="https://"
-                                autocorrection={false}
-                                keyboardType="url"
-                                onChangeText={(value) => {
-                                  handleUpdateLinkUrl(platform, value);
-                                }}
+                            {heroImageUrlDraft ? (
+                              <Image
+                                source={{ uri: heroImageUrlDraft }}
+                                style={styles.profileSettingsMediaImage}
                               />
-                            </expoSwiftUI.LabeledContent>
-                          ))}
-                        </expoSwiftUI.Section>
-
-                        <expoSwiftUI.Section title="Account Actions">
-                          <expoSwiftUI.Button
-                            disabled={actionsDisabled}
-                            systemImage="rectangle.portrait.and.arrow.right"
-                            onPress={handleSignOut}
+                            ) : (
+                              <Ionicons
+                                name="image-outline"
+                                size={34}
+                                color={profileTextSecondaryColor}
+                              />
+                            )}
+                          </Pressable>
+                          <Text
+                            style={[
+                              styles.profileSettingsAvatarLabel,
+                              { color: profileTextSecondaryColor },
+                            ]}
                           >
-                            {isSigningOut
-                              ? "Signing out..."
-                              : isLocalGuest
-                                ? "Exit guest mode"
-                                : "Sign out"}
-                          </expoSwiftUI.Button>
-                          {!isLocalGuest ? (
-                            <expoSwiftUI.Button
-                              role="destructive"
-                              disabled={actionsDisabled}
-                              systemImage="trash"
-                              onPress={handleDeleteAccount}
-                            >
-                              {isDeleting ? "Deleting account..." : "Delete account"}
-                            </expoSwiftUI.Button>
-                          ) : null}
-                        </expoSwiftUI.Section>
-
-                        {errorText ? (
-                          <expoSwiftUI.Section title="Status">
-                            <expoSwiftUI.Text color={colors.accent.error}>{errorText}</expoSwiftUI.Text>
-                          </expoSwiftUI.Section>
-                        ) : null}
-                      </expoSwiftUI.Form>
-                    </expoSwiftUI.Host>
-                  ) : (
-                    <ScrollView
-                      contentContainerStyle={[
-                        styles.profileSettingsContent,
-                        { backgroundColor: profileBackgroundColor },
-                      ]}
-                      keyboardShouldPersistTaps="handled"
-                    >
-                      <View style={styles.profileSettingsIdentitySection}>
-                        <View style={styles.profileSettingsAvatarRow}>
-                          <View style={styles.profileSettingsAvatarOption}>
-                            <Pressable
-                              onPress={() => {
-                                void handlePickAvatar();
-                              }}
-                              disabled={profileSettingsDisabled}
-                              style={({ pressed }) => [
-                                styles.profileSettingsAvatarButton,
-                                {
-                                  backgroundColor: profileSurfaceColor,
-                                  borderColor: profileBorderColor,
-                                },
-                                avatarPickerVisualDisabled && styles.heroActionDisabled,
-                                pressed && !profileSettingsDisabled && styles.optionChipPressed,
-                              ]}
-                              accessibilityLabel="Edit profile picture"
-                              accessibilityRole="button"
-                            >
-                              {avatarImageUrlDraft ? (
-                                <Image
-                                  source={{ uri: avatarImageUrlDraft }}
-                                  style={styles.profileSettingsMediaImage}
-                                />
-                              ) : (
-                                <Ionicons
-                                  name="person"
-                                  size={42}
-                                  color={profileTextSecondaryColor}
-                                />
-                              )}
-                            </Pressable>
-                            <Text
-                              style={[
-                                styles.profileSettingsAvatarLabel,
-                                { color: profileTextSecondaryColor },
-                              ]}
-                            >
-                              Profile
-                            </Text>
-                          </View>
-
-                          <View style={styles.profileSettingsAvatarOption}>
-                            <Pressable
-                              onPress={() => {
-                                void handlePickHero();
-                              }}
-                              disabled={profileSettingsDisabled}
-                              style={({ pressed }) => [
-                                styles.profileSettingsAvatarButton,
-                                styles.profileSettingsAvatarButtonSecondary,
-                                {
-                                  backgroundColor: profileBackgroundColor,
-                                  borderColor: profileBorderColor,
-                                },
-                                heroPickerVisualDisabled && styles.heroActionDisabled,
-                                pressed && !profileSettingsDisabled && styles.optionChipPressed,
-                              ]}
-                              accessibilityLabel="Edit banner picture"
-                              accessibilityRole="button"
-                            >
-                              {heroImageUrlDraft ? (
-                                <Image
-                                  source={{ uri: heroImageUrlDraft }}
-                                  style={styles.profileSettingsMediaImage}
-                                />
-                              ) : (
-                                <Ionicons
-                                  name="image-outline"
-                                  size={34}
-                                  color={profileTextSecondaryColor}
-                                />
-                              )}
-                            </Pressable>
-                            <Text
-                              style={[
-                                styles.profileSettingsAvatarLabel,
-                                { color: profileTextSecondaryColor },
-                              ]}
-                            >
-                              Banner
-                            </Text>
-                          </View>
+                            Banner
+                          </Text>
                         </View>
                       </View>
+                    </View>
 
+                    <View
+                      style={[
+                        styles.profileSettingsList,
+                        {
+                          backgroundColor: profileBackgroundColor,
+                          borderColor: profileBorderColor,
+                        },
+                      ]}
+                    >
                       <View
                         style={[
-                          styles.profileSettingsList,
+                          styles.profileSettingsListRow,
                           {
                             backgroundColor: profileBackgroundColor,
-                            borderColor: profileBorderColor,
+                            borderBottomColor: profileBorderColor,
                           },
                         ]}
                       >
-                        <View
-                          style={[
-                            styles.profileSettingsListRow,
-                            {
-                              backgroundColor: profileBackgroundColor,
-                              borderBottomColor: profileBorderColor,
-                            },
-                          ]}
+                        <Text
+                          style={[styles.profileSettingsListLabel, { color: profileTextColor }]}
                         >
-                          <Text
-                            style={[styles.profileSettingsListLabel, { color: profileTextColor }]}
-                          >
-                            Name
-                          </Text>
-                          <TextInput
-                            value={artistNameDraft}
-                            onChangeText={setArtistNameDraft}
-                            placeholder="Add name"
-                            placeholderTextColor={profileTextSecondaryColor}
-                            editable={!profileSettingsDisabled}
-                            onSubmitEditing={() => {
-                              void saveProfile({ includeLinks: false });
-                            }}
-                            onBlur={() => {
-                              void saveProfile({ includeLinks: false });
-                            }}
-                            style={[
-                              styles.profileSettingsListValueInput,
-                              { color: profileTextColor },
-                            ]}
-                            autoCapitalize="words"
-                            autoCorrect={false}
-                            returnKeyType="done"
-                          />
-                        </View>
+                          Name
+                        </Text>
+                        <TextInput
+                          value={artistNameDraft}
+                          onChangeText={setArtistNameDraft}
+                          placeholder="Add name"
+                          placeholderTextColor={profileTextSecondaryColor}
+                          editable={!profileSettingsDisabled}
+                          onSubmitEditing={() => {
+                            void saveProfile({ includeLinks: false });
+                          }}
+                          onBlur={() => {
+                            void saveProfile({ includeLinks: false });
+                          }}
+                          style={[
+                            styles.profileSettingsListValueInput,
+                            { color: profileTextColor },
+                          ]}
+                          autoCapitalize="words"
+                          autoCorrect={false}
+                          returnKeyType="done"
+                        />
                       </View>
-                    </ScrollView>
-                  )}
+                    </View>
+                  </ScrollView>
               </SafeAreaView>
             </Animated.View>
             </View>
@@ -1610,10 +1393,6 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
   },
   profileSettingsScreen: {
-    flex: 1,
-    backgroundColor: colors.light.background,
-  },
-  nativeSettingsHost: {
     flex: 1,
     backgroundColor: colors.light.background,
   },
