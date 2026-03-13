@@ -32,7 +32,7 @@ Delivery strategy:
 ## Good Model (Target Contract)
 
 1. Vinyl remains visually on-brand and close to current output.
-2. Vinyl export time is meaningfully reduced on-device.
+2. Vinyl export time is reduced to the same order of magnitude as CD export time (currently Vinyl is significantly slower).
 3. Whole template render behavior remains unchanged.
 4. Existing controls still work:
    - Artwork size (3 states)
@@ -47,7 +47,7 @@ Delivery strategy:
 ## Scope
 
 In scope:
-- New pre-baked vinyl shell image assets (3 size variants aligned to current artwork-size states)
+- Use existing pre-baked vinyl shell image assets in `assets/` (3 size variants aligned to current artwork-size states)
 - Runtime mapping from artwork-size selection to shell asset
 - FFmpeg graph simplification for Vinyl render path
 - Optional perf diagnostics logging in dev
@@ -60,33 +60,26 @@ Out of scope:
 
 ## Asset Contract
 
-Create pre-baked transparent PNG assets for Vinyl shell layers at export-ready quality:
-- `vinyl_shell_small.png`
-- `vinyl_shell_normal.png`
-- `vinyl_shell_large.png`
+Pre-baked transparent PNG assets for Vinyl shell layers already exist in `assets/`:
+- `assets/vinyl_shell_small.png`
+- `assets/vinyl_shell_normal.png`
+- `assets/vinyl_shell_large.png`
 
-Optional additive assets (only if needed for parity/perf):
-- `vinyl_glow_small.png`
-- `vinyl_glow_normal.png`
-- `vinyl_glow_large.png`
+These assets include grooves/rims/shading details that currently come from procedural layers, with transparent regions where dynamic user artwork should remain visible.
 
-Requirements:
-- Include grooves/rims/shading details that currently come from procedural layers.
-- Keep transparent regions where dynamic user artwork should remain visible.
-- Maintain visual balance with current dark-stage treatment.
-- Build order:
+Validation order:
   1. `vinyl_shell_normal.png` first (parity gate required before continuing)
-  2. `vinyl_shell_small.png` and `vinyl_shell_large.png` second (derived from normal reference and validated)
+  2. `vinyl_shell_small.png` and `vinyl_shell_large.png` second (validated against normal reference)
 
-## Step 1 - Build and Validate Normal Vinyl Shell
+## Step 1 - Integrate and Validate Normal Vinyl Shell
 
 Files:
-- `assets/...` (new vinyl shell assets)
+- `assets/vinyl_shell_normal.png` (existing)
 - `src/lib/renderVideo.ts`
 - optional helper file in `src/lib/` for asset metadata
 
 Requirements:
-- Implement runtime support for `vinyl_shell_normal.png` first.
+- Integrate runtime support for existing `vinyl_shell_normal.png` first.
 - Keep rendering path deterministic for both 9:16 and 1:1 outputs.
 - Do not proceed to small/large until normal shell parity passes.
 
@@ -107,7 +100,8 @@ Requirements:
 ## Step 3 - Add Small/Large Shells From Normal Baseline
 
 Files:
-- `assets/...` (small/large shell assets)
+- `assets/vinyl_shell_small.png` (existing)
+- `assets/vinyl_shell_large.png` (existing)
 - `src/lib/renderVideo.ts`
 - optional helper file in `src/lib/` for asset metadata
 
@@ -160,7 +154,7 @@ QA script:
 
 Acceptance criteria:
 - Vinyl render path uses pre-baked shell compositing for the three artwork-size states.
-- Vinyl export time improves measurably on representative devices.
+- Vinyl export time is comparable to CD export time on the same device and source media.
 - Visual output remains production-acceptable and controls retain expected behavior.
 - Screenshot review confirms CD and Vinyl preview/export parity is maintained.
 - No regressions in Whole template or export reliability contracts.
