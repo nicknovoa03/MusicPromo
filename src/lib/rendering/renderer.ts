@@ -1,4 +1,5 @@
 import { ffmpegRenderer } from "@/lib/rendering/ffmpegRenderer";
+import { warmUpRenderPipeline } from "@/lib/renderVideo";
 import type {
   RenderEngine,
   RenderRequest,
@@ -35,4 +36,8 @@ export async function cancelRendererWork(request: {
   templateId?: string;
 } = {}): Promise<void> {
   await resolveRenderer(request).cancel?.();
+}
+
+export async function warmUpRenderer(): Promise<void> {
+  await warmUpRenderPipeline();
 }

@@ -713,6 +713,14 @@ export async function renderWholeVideo(options: RenderOptions): Promise<string> 
   return renderVinylVideoWithVariant(options, "whole");
 }
 
+export async function warmUpRenderPipeline(): Promise<void> {
+  try {
+    await getFFmpegKit();
+  } catch {
+    // Warmup is best-effort — ignore errors.
+  }
+}
+
 async function renderVinylVideoWithVariant(
   options: RenderOptions,
   variantId: RenderVariantId,
