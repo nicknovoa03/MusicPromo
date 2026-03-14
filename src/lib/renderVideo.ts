@@ -603,9 +603,20 @@ async function getBetaWatermarkOverlayInputUri(): Promise<string> {
     return downloadUri;
   }
 
-  const preparedUri = await ensureRenderableInputUri(assetUri, "photo");
-  betaWatermarkOverlayInputUriCache = preparedUri;
-  return preparedUri;
+  // Non-HTTP (production bundle path): always copy to cache so FFmpeg can
+  // reliably read it — bundle paths are not guaranteed to be accessible from
+  // FFmpeg's file I/O context.
+  if (!LegacyFileSystem.cacheDirectory) {
+    throw new Error("Unable to access app cache for beta watermark asset.");
+  }
+  const copiedUri = `${LegacyFileSystem.cacheDirectory}beta-watermark-overlay.png`;
+  try {
+    await LegacyFileSystem.copyAsync({ from: assetUri, to: copiedUri });
+  } catch {
+    throw new Error("Unable to copy beta watermark asset to cache.");
+  }
+  betaWatermarkOverlayInputUriCache = copiedUri;
+  return copiedUri;
 }
 
 async function getVinylShellOverlayInputUri(
@@ -646,9 +657,22 @@ async function getVinylShellOverlayInputUri(
     return downloadUri;
   }
 
-  const preparedShellUri = await ensureRenderableInputUri(assetUri, "photo");
-  vinylShellOverlayInputUriCache[size] = preparedShellUri;
-  return preparedShellUri;
+  // Non-HTTP (production bundle path): always copy to cache so FFmpeg can
+  // reliably read it — bundle paths are not guaranteed to be accessible from
+  // FFmpeg's file I/O context.
+  if (!LegacyFileSystem.cacheDirectory) {
+    throw new Error("Unable to access app cache for vinyl shell asset.");
+  }
+  const copiedUri = `${LegacyFileSystem.cacheDirectory}vinyl-shell-${size}-${Date.now()}-${Math.floor(
+    Math.random() * 1_000_000,
+  )}.png`;
+  try {
+    await LegacyFileSystem.copyAsync({ from: assetUri, to: copiedUri });
+  } catch {
+    throw new Error(`Unable to copy vinyl shell asset (${size}) to cache.`);
+  }
+  vinylShellOverlayInputUriCache[size] = copiedUri;
+  return copiedUri;
 }
 
 function summarizeFfmpegLogs(logs: string): string {

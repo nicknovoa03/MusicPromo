@@ -763,6 +763,9 @@ export default function HomeScreen() {
   const selectedCount = selectedProjectIds.length;
   const isCancelSelectionAction = selectedCount === 0;
   const bulkDeleteBottom = Platform.select({ ios: 8, android: 6, default: 6 }) ?? 6;
+  const cancelButtonBackgroundColor = isDarkMode ? colors.accent.fab : colors.light.surface;
+  const cancelButtonBorderColor = isDarkMode ? colors.accent.fab : colors.light.border;
+  const cancelButtonContentColor = isDarkMode ? colors.accent.fabIcon : colors.light.text;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: homeBackgroundColor }]} edges={["top"]}>
@@ -955,6 +958,10 @@ export default function HomeScreen() {
             styles.bulkDeleteButton,
             { bottom: bulkDeleteBottom },
             isCancelSelectionAction && styles.bulkDeleteButtonCancel,
+            isCancelSelectionAction && {
+              backgroundColor: cancelButtonBackgroundColor,
+              borderColor: cancelButtonBorderColor,
+            },
             isBulkDeleting && styles.bulkDeleteButtonDisabled,
             pressed && !isBulkDeleting && styles.bulkDeleteButtonPressed,
           ]}
@@ -973,12 +980,13 @@ export default function HomeScreen() {
               <Ionicons
                 name={isCancelSelectionAction ? "close" : "trash-outline"}
                 size={18}
-                color={colors.accent.onPrimary}
+                color={isCancelSelectionAction ? cancelButtonContentColor : colors.accent.onPrimary}
               />
               <Text
                 style={[
                   styles.bulkDeleteText,
                   isCancelSelectionAction && styles.bulkDeleteTextCancel,
+                  isCancelSelectionAction && { color: cancelButtonContentColor },
                 ]}
               >
                 {isCancelSelectionAction ? "Cancel" : `Delete (${selectedCount})`}
