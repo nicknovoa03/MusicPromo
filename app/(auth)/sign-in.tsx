@@ -16,10 +16,10 @@ import {
 import { usePostHog } from "posthog-react-native";
 import * as AuthSession from "expo-auth-session";
 import * as WebBrowser from "expo-web-browser";
-import Constants from "expo-constants";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
 import { useLocalSession } from "@/providers/localSession";
+import { isRunningInExpoGo } from "@/lib/runtimeEnvironment";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -36,13 +36,11 @@ export default function SignInScreen() {
     path: "sso-callback",
     scheme: "musicpromo",
   });
-  const isExpoGo = Constants.executionEnvironment === "storeClient";
-
   const handleSSO = useCallback(
     async (strategy: "oauth_apple" | "oauth_google") => {
       const provider = strategy === "oauth_apple" ? "apple" : "google";
       setLoading(provider);
-      if (isExpoGo) {
+      if (isRunningInExpoGo()) {
         Alert.alert(
           "Dev build required for OAuth",
           "Apple/Google sign-in needs a development build or production build (not Expo Go). Use `npm run start:dev-client:tunnel`."
@@ -97,7 +95,7 @@ export default function SignInScreen() {
         setLoading(null);
       }
     },
-    [startSSOFlow, posthog, clearLocalSession, ssoRedirectUrl, isExpoGo]
+    [startSSOFlow, posthog, clearLocalSession, ssoRedirectUrl]
   );
 
   const handleGuest = useCallback(async () => {

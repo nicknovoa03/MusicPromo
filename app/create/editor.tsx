@@ -59,6 +59,7 @@ import {
   getIOSNativeUIPhase5Availability,
   loadExpoSwiftUIModule,
 } from "@/lib/iosNativeUi";
+import { warmUpRenderer } from "@/lib/rendering";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const SCREEN_HEIGHT = Dimensions.get("window").height;
@@ -411,6 +412,10 @@ export default function EditorScreen() {
     },
     [posthog],
   );
+
+  useEffect(() => {
+    void warmUpRenderer();
+  }, []);
 
   useEffect(() => {
     if (!existingProjectId) return;

@@ -1,5 +1,6 @@
-import Constants, { ExecutionEnvironment } from "expo-constants";
+import Constants from "expo-constants";
 import * as Device from "expo-device";
+import { isRunningInExpoGo } from "@/lib/runtimeEnvironment";
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 
@@ -25,9 +26,6 @@ function getProjectId() {
   return typeof configProjectId === "string" ? configProjectId : null;
 }
 
-function isExpoGo() {
-  return Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
-}
 
 export async function requestPushPermissionAsync() {
   const current = await Notifications.getPermissionsAsync();
@@ -48,7 +46,7 @@ export async function requestPushPermissionAsync() {
 export async function getExpoPushTokenAsync(options?: {
   requestPermission?: boolean;
 }) {
-  if (isExpoGo()) {
+  if (isRunningInExpoGo()) {
     console.warn(
       "Push registration skipped: use a development or EAS build (Expo Go is not supported)."
     );

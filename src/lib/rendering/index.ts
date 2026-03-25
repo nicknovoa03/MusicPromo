@@ -3,6 +3,7 @@ export {
   renderVideoWithRenderer,
   resolveRenderEngine,
   resolveRenderer,
+  warmUpRenderer,
 } from "@/lib/rendering/renderer";
 export type {
   RenderAspectRatio,

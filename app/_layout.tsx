@@ -12,11 +12,6 @@ import {
 import { tokenCache } from "@/lib/clerk";
 import { convex } from "@/lib/convex";
 import {
-  getIOSNativeUIPhase5Availability,
-  IOS_NATIVE_UI_PHASE5_FLAG_NAME,
-  isIOSNativeUIPhase5FlagValueValid,
-} from "@/lib/iosNativeUi";
-import {
   LocalSessionProvider,
   useLocalSession,
 } from "@/providers/localSession";
@@ -70,30 +65,6 @@ function AppStatusBar() {
   return <StatusBar style={isDarkMode || isDarkSurface ? "light" : "dark"} />;
 }
 
-function IOSNativeUIPhase5Bootstrap() {
-  useEffect(() => {
-    const availability = getIOSNativeUIPhase5Availability({ minIOSVersion: 14 });
-
-    if (!availability.isIOS) {
-      return;
-    }
-
-    if (!isIOSNativeUIPhase5FlagValueValid(availability.flagValue)) {
-      console.warn(
-        `${IOS_NATIVE_UI_PHASE5_FLAG_NAME} has an invalid value. Use "0"/"false"/"off" to disable, or omit it to keep iOS-native UI enabled.`,
-      );
-    }
-
-    if (availability.flagEnabled && !availability.runtimeAvailable) {
-      console.info(
-        "iOS-native UI is enabled, but Expo UI is unavailable in this runtime. Falling back to React Native surfaces.",
-      );
-    }
-  }, []);
-
-  return null;
-}
-
 function useConvexAuthFromClerk() {
   const { isLoaded, isSignedIn, getToken, orgId, orgRole } = useAuth();
 
@@ -131,7 +102,6 @@ function AppWithProviders() {
     <ConvexProviderWithAuth client={convex} useAuth={useConvexAuthFromClerk}>
       <AuthGate />
       <AppStatusBar />
-      <IOSNativeUIPhase5Bootstrap />
     </ConvexProviderWithAuth>
   );
 }

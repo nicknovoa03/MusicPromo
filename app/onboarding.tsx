@@ -87,12 +87,17 @@ export default function OnboardingScreen() {
     setLocalCompletionReady(false);
 
     (async () => {
-      const completed = await getLocalOnboardingCompleted(userId, {
-        localGuest: isLocalGuest,
-      });
-      if (!isActive) return;
-      setLocalCompletion(completed);
-      setLocalCompletionReady(true);
+      try {
+        const completed = await getLocalOnboardingCompleted(userId, {
+          localGuest: isLocalGuest,
+        });
+        if (!isActive) return;
+        setLocalCompletion(completed);
+      } catch (error) {
+        console.warn("Failed to read onboarding state:", error);
+      } finally {
+        if (isActive) setLocalCompletionReady(true);
+      }
     })();
 
     return () => {
@@ -443,7 +448,7 @@ const styles = StyleSheet.create({
   },
   dotActive: {
     width: 28,
-    backgroundColor: colors.accent.primary,
+    backgroundColor: colors.light.text,
   },
   primaryButton: {
     height: 56,
