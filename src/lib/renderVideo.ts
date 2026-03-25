@@ -740,6 +740,18 @@ export async function renderWholeVideo(options: RenderOptions): Promise<string> 
 export async function warmUpRenderPipeline(): Promise<void> {
   try {
     await getFFmpegKit();
+    // Pre-cache vinyl shell assets to eliminate cold start delay on export
+    const { getVinylShellFallbackOrder, DEFAULT_VINYL_SHELL_SIZE } = await import(
+      "@/lib/vinylShellAssets"
+    );
+    const shellSizes = getVinylShellFallbackOrder(DEFAULT_VINYL_SHELL_SIZE);
+    await Promise.all(
+      shellSizes.map((size) =>
+        getVinylShellOverlayInputUri(size).catch(() => {
+          // Warmup is best-effort — ignore errors
+        }),
+      ),
+    );
   } catch {
     // Warmup is best-effort — ignore errors.
   }
@@ -931,8 +943,8 @@ async function renderVinylVideoWithVariant(
             (centerArtworkRadiusRangeMax - centerArtworkBaseRadius) *
               artworkScaleProgress,
         ),
-      )
-    : labelRadius;
+      ) + 1
+    : labelRadius + 1;
   const centerArtworkDiameter = Math.max(centerArtworkRadius * 2, 2);
   const centerArtworkInset = Math.round(
     (discSize - centerArtworkDiameter) / 2,
@@ -982,6 +994,8 @@ async function renderVinylVideoWithVariant(
   let watermarkInputUri: string | null = null;
   let vinylShellInputUri: string | null = null;
   let preparedDiscInputUri: string | null = null;
+  let activeBackgroundInputUri: string | null = preparedBackgroundUri;
+  let isBackgroundBaked = false;
   let selectedVinylShellSize: VinylShellSize = DEFAULT_VINYL_SHELL_SIZE;
   let vinylRenderPathDescriptor = "procedural";
   let exportWatermarkEnabled = false;
@@ -1053,13 +1067,17 @@ async function renderVinylVideoWithVariant(
     };
 
     if (hasBackgroundImage) {
-      const blurFilter =
-        backgroundBlurSigma > 0
-          ? `,gblur=sigma=${backgroundBlurSigma.toFixed(2)}:steps=2`
-          : "";
-      lines.push(
-        `[1:v]${buildPhotoScaleCropFilter(width, height)}${blurFilter}[bg]`,
-      );
+      if (isBackgroundBaked) {
+        lines.push(`[1:v]format=rgba[bg]`);
+      } else {
+        const blurFilter =
+          backgroundBlurSigma > 0
+            ? `,gblur=sigma=${backgroundBlurSigma.toFixed(2)}:steps=2`
+            : "";
+        lines.push(
+          `[1:v]${buildPhotoScaleCropFilter(width, height)}${blurFilter}[bg]`,
+        );
+      }
     } else {
       lines.push(
         `color=c=${toFfmpegColor(stageBackgroundHex, 255)}:s=${width}x${height}:r=${fps}:d=${duration}[bg]`,
@@ -1298,13 +1316,17 @@ async function renderVinylVideoWithVariant(
       : null;
     const lines: string[] = [];
     if (hasBackgroundImage) {
-      const blurFilter =
-        backgroundBlurSigma > 0
-          ? `,gblur=sigma=${backgroundBlurSigma.toFixed(2)}:steps=2`
-          : "";
-      lines.push(
-        `[1:v]${buildPhotoScaleCropFilter(width, height)}${blurFilter}[safe_bg]`,
-      );
+      if (isBackgroundBaked) {
+        lines.push(`[1:v]format=rgba[safe_bg]`);
+      } else {
+        const blurFilter =
+          backgroundBlurSigma > 0
+            ? `,gblur=sigma=${backgroundBlurSigma.toFixed(2)}:steps=2`
+            : "";
+        lines.push(
+          `[1:v]${buildPhotoScaleCropFilter(width, height)}${blurFilter}[safe_bg]`,
+        );
+      }
     } else {
       lines.push(
         `color=c=${toFfmpegColor(stageBackgroundHex, 255)}:s=${width}x${height}:r=${fps}:d=${duration}[safe_bg]`,
@@ -1516,9 +1538,26 @@ async function renderVinylVideoWithVariant(
 
   let statisticsCallback: ((stats: Statistics) => void) | undefined;
   let sessionId: number | null = null;
+  let setupProgressInterval: NodeJS.Timeout | null = null;
 
   if (onProgress) {
+    // Auto-progress from 0% to 10% during setup for UX feedback
+    let setupProgress = 0;
+    setupProgressInterval = setInterval(() => {
+      setupProgress += Math.random() * 3;
+      if (setupProgress < 10) {
+        onProgress(Math.round(setupProgress));
+      } else {
+        clearInterval(setupProgressInterval!);
+        setupProgressInterval = null;
+      }
+    }, 100);
+
     statisticsCallback = (stats: Statistics) => {
+      if (setupProgressInterval) {
+        clearInterval(setupProgressInterval);
+        setupProgressInterval = null;
+      }
       if (
         sessionId === null ||
         activeRenderToken !== renderToken ||
@@ -1531,7 +1570,7 @@ async function renderVinylVideoWithVariant(
         return;
       }
       const percent = Math.max(
-        0,
+        10,
         Math.min(Math.round((frame / totalFrames) * 100), 99),
       );
       onProgress(percent);
@@ -1540,6 +1579,7 @@ async function renderVinylVideoWithVariant(
 
   try {
     const { FFmpegKit, ReturnCode } = await getFFmpegKit();
+
     if (variantId === "simple-spin") {
       const shellLoadErrors: string[] = [];
       for (const shellSize of getVinylShellFallbackOrder(requestedVinylShellSize)) {
@@ -1810,6 +1850,47 @@ async function renderVinylVideoWithVariant(
       }
     }
 
+    if (preparedBackgroundUri) {
+      const bakedBackgroundPath = Paths.join(
+        Paths.cache,
+        `bg_baked_${width}x${height}_${Date.now()}.png`,
+      );
+      const bgBlurFilter =
+        backgroundBlurSigma > 0
+          ? `,gblur=sigma=${backgroundBlurSigma.toFixed(2)}:steps=2`
+          : "";
+      const bakeBackgroundCommand = [
+        "-y",
+        "-i",
+        preparedBackgroundUri,
+        "-vf",
+        `${buildPhotoScaleCropFilter(width, height)}${bgBlurFilter}`,
+        "-frames:v",
+        "1",
+        "-c:v",
+        "png",
+        "-update",
+        "1",
+        bakedBackgroundPath,
+      ];
+      const bakeBackgroundResult = await runCommand(bakeBackgroundCommand, {
+        withStatistics: false,
+        label: "bake_background",
+      });
+      if (ReturnCode.isSuccess(bakeBackgroundResult.returnCode)) {
+        const bakedInfo = await LegacyFileSystem.getInfoAsync(bakedBackgroundPath);
+        if (bakedInfo.exists) {
+          activeBackgroundInputUri = bakedBackgroundPath;
+          isBackgroundBaked = true;
+        }
+      } else if (__DEV__) {
+        console.warn(
+          `[renderVinylVideoWithVariant:${variantId}] Background bake failed, using original background input:`,
+          summarizeFfmpegLogs(bakeBackgroundResult.logs),
+        );
+      }
+    }
+
     if (extensionFromUri(preparedAudioUri) === "mp3") {
       const normalizedAudioPath = Paths.join(
         Paths.cache,
@@ -1867,7 +1948,7 @@ async function renderVinylVideoWithVariant(
           : null;
     const primaryCommand = buildPrimaryCommand(
       audioInputUri,
-      preparedBackgroundUri,
+      activeBackgroundInputUri,
       supplementalDiscInputUri,
       watermarkInputUri,
       audioTrimStartForRender,
@@ -1877,7 +1958,7 @@ async function renderVinylVideoWithVariant(
     );
     const fallbackCommand = buildPrimaryCommand(
       audioInputUri,
-      preparedBackgroundUri,
+      activeBackgroundInputUri,
       supplementalDiscInputUri,
       watermarkInputUri,
       audioTrimStartForRender,
@@ -1887,7 +1968,7 @@ async function renderVinylVideoWithVariant(
     );
     const safeFallbackCommand = buildSafeFallbackCommand(
       audioInputUri,
-      preparedBackgroundUri,
+      activeBackgroundInputUri,
       watermarkInputUri,
       audioTrimStartForRender,
       audioTrimEndForRender,

@@ -5,7 +5,6 @@ import {
   StyleSheet,
   Pressable,
   Alert,
-  ScrollView,
   useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -33,7 +32,7 @@ function firstParam(param: string | string[] | undefined) {
 export default function ShareScreen() {
   const router = useRouter();
   const posthog = usePostHog();
-  const { height: windowHeight } = useWindowDimensions();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const params = useLocalSearchParams<{
     videoUri: string;
     projectId: string;
@@ -54,8 +53,18 @@ export default function ShareScreen() {
   const TemplateStageComponent = templateDefinition.StageComponent;
   const aspectRatio = firstParam(params.aspectRatio) === "1:1" ? "1:1" : "9:16";
   const showTemplateInfo = firstParam(params.showTemplateInfo) === "1";
-  const isCompactHeight = windowHeight < 760;
-  const previewSize = isCompactHeight ? 152 : 184;
+
+  // Compute large preview dimensions based on aspect ratio
+  const horizontalPadding = spacing.md * 2;
+  const maxPreviewWidth = windowWidth - horizontalPadding;
+  const maxPreviewHeight = windowHeight * 0.50;
+
+  const previewWidth =
+    aspectRatio === "9:16"
+      ? Math.min(maxPreviewHeight * (9 / 16), maxPreviewWidth)
+      : maxPreviewWidth;
+  const previewHeight =
+    aspectRatio === "9:16" ? previewWidth * (16 / 9) : previewWidth;
 
   const [savedToRoll, setSavedToRoll] = useState(false);
   const [saveError, setSaveError] = useState<"permission" | "failed" | null>(
@@ -114,10 +123,6 @@ export default function ShareScreen() {
     void handleShare("instagram");
   }, [handleShare]);
 
-  const handleShareTikTok = useCallback(() => {
-    void handleShare("tiktok");
-  }, [handleShare]);
-
   const handleDone = useCallback(() => {
     router.dismissAll();
     router.replace("/" as const);
@@ -139,123 +144,106 @@ export default function ShareScreen() {
       </View>
 
       {/* Content */}
-      <ScrollView
-        style={styles.contentScroll}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-        <Text style={[styles.heading, isCompactHeight && styles.headingCompact]}>
-          Ready to share
-        </Text>
-
-        {/* Save status */}
-        {savedToRoll && (
-          <View style={styles.savedBadge}>
-            <Ionicons
-              name="checkmark-circle"
-              size={18}
-              color={colors.accent.success}
-            />
-            <Text style={styles.savedText}>
-              This video was saved to your camera roll.
-            </Text>
-          </View>
-        )}
-        {saveError === "permission" && (
-          <View style={styles.savedBadge}>
-            <Ionicons
-              name="alert-circle"
-              size={18}
-              color={colors.accent.warning}
-            />
-            <Text style={styles.savedText}>
-              Permission denied. Grant Photos access in Settings.
-            </Text>
-          </View>
-        )}
-        {saveError === "failed" && (
-          <View style={styles.savedBadge}>
-            <Ionicons
-              name="alert-circle"
-              size={18}
-              color={colors.accent.warning}
-            />
-            <Text style={styles.savedText}>
-              Could not save to camera roll.
-            </Text>
-          </View>
-        )}
-
-        {/* Video preview */}
-        <View
-          style={[
-            styles.previewContainer,
-            isCompactHeight && styles.previewContainerCompact,
-          ]}
-        >
-          {posterUri ? (
-            <TemplateStageComponent
-              width={previewSize}
-              height={previewSize}
-              aspectRatio={aspectRatio}
-              photoUri={posterUri}
-              isPlaying={false}
-              playbackLabel="Share preview"
-              trackTitle="Preview"
-              subtitle={templateDefinition.name}
-              templateTweaks={templateTweaks}
-              showWatermark={false}
-            />
-          ) : (
-            <Ionicons
-              name="videocam"
-              size={48}
-              color={colors.dark.textSecondary}
-            />
+      <View style={styles.content}>
+        {/* Top info section */}
+        <View style={styles.infoSection}>
+          <Text style={styles.heading}>Ready to share</Text>
+          {savedToRoll && (
+            <View style={styles.savedBadge}>
+              <Ionicons
+                name="checkmark-circle"
+                size={16}
+                color={colors.accent.success}
+              />
+              <Text style={styles.savedText}>
+                This video was saved to your camera roll.
+              </Text>
+            </View>
           )}
-          {showTemplateInfo ? (
-            <TemplateInfoBadge
-              templateId={templateId}
-              templateTweaks={templateTweaks}
-              aspectRatio={aspectRatio}
-              compact
-              style={styles.shareTemplateInfoBadge}
-            />
-          ) : null}
+          {saveError === "permission" && (
+            <View style={styles.savedBadge}>
+              <Ionicons
+                name="alert-circle"
+                size={16}
+                color={colors.accent.warning}
+              />
+              <Text style={styles.savedText}>
+                Permission denied. Grant Photos access in Settings.
+              </Text>
+            </View>
+          )}
+          {saveError === "failed" && (
+            <View style={styles.savedBadge}>
+              <Ionicons
+                name="alert-circle"
+                size={16}
+                color={colors.accent.warning}
+              />
+              <Text style={styles.savedText}>
+                Could not save to camera roll.
+              </Text>
+            </View>
+          )}
         </View>
 
-        {/* Share buttons */}
+        {/* Video preview - takes up most of the space */}
+        <View style={[styles.previewWrapper, { height: previewHeight }]}>
+          <View
+            style={[
+              styles.previewContainer,
+              { width: previewWidth, height: previewHeight },
+            ]}
+          >
+            {posterUri ? (
+              <TemplateStageComponent
+                width={previewWidth}
+                height={previewHeight}
+                aspectRatio={aspectRatio}
+                photoUri={posterUri}
+                isPlaying={false}
+                playbackLabel="Share preview"
+                trackTitle="Preview"
+                subtitle={templateDefinition.name}
+                templateTweaks={templateTweaks}
+                showWatermark={false}
+              />
+            ) : (
+              <Ionicons
+                name="videocam"
+                size={48}
+                color={colors.dark.textSecondary}
+              />
+            )}
+            {showTemplateInfo ? (
+              <TemplateInfoBadge
+                templateId={templateId}
+                templateTweaks={templateTweaks}
+                aspectRatio={aspectRatio}
+                compact
+                style={styles.shareTemplateInfoBadge}
+              />
+            ) : null}
+          </View>
+        </View>
+      </View>
+
+      {/* Bottom actions */}
+      <View style={styles.footer}>
         <View style={styles.actions}>
           <Pressable
             onPress={handleShareInstagram}
             style={({ pressed }) => [
-              styles.instagramButton,
+              styles.shareButton,
               pressed && styles.buttonPressed,
             ]}
-            accessibilityLabel="Share to Instagram"
+            accessibilityLabel="Share video"
             accessibilityRole="button"
           >
-            <Ionicons name="logo-instagram" size={20} color="#FFFFFF" />
-            <Text style={styles.instagramText}>Share to Instagram</Text>
-          </Pressable>
-
-          <Pressable
-            onPress={handleShareTikTok}
-            style={({ pressed }) => [
-              styles.tiktokButton,
-              pressed && styles.buttonPressed,
-            ]}
-            accessibilityLabel="Share to TikTok"
-            accessibilityRole="button"
-          >
-            <Ionicons name="musical-notes" size={20} color={colors.dark.text} />
-            <Text style={styles.tiktokText}>Share to TikTok</Text>
+            <Ionicons name="share-social" size={20} color={colors.dark.background} />
+            <Text style={styles.shareText}>Share</Text>
           </Pressable>
         </View>
-      </ScrollView>
 
-      {/* Done button */}
-      <View style={styles.footer}>
         <Pressable
           onPress={handleDone}
           style={({ pressed }) => [
@@ -295,48 +283,40 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    flexGrow: 1,
-    alignItems: "center",
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.lg,
-  },
-  contentScroll: {
     flex: 1,
+    alignItems: "center",
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.lg,
+  },
+  infoSection: {
+    alignItems: "center",
+    marginBottom: spacing.xl,
   },
   heading: {
     ...typography.h1,
     color: colors.dark.text,
     marginBottom: spacing.sm,
   },
-  headingCompact: {
-    marginBottom: spacing.xs,
-  },
-  savedBadge: {
-    flexDirection: "row",
+  previewWrapper: {
     alignItems: "center",
-    gap: spacing.xs,
-    marginBottom: spacing.lg,
-  },
-  savedText: {
-    ...typography.caption,
-    color: colors.dark.textSecondary,
+    justifyContent: "center",
+    marginBottom: spacing.xxl,
   },
   previewContainer: {
-    width: 200,
-    height: 200,
     borderRadius: radius.lg,
     backgroundColor: "transparent",
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: spacing.lg,
     position: "relative",
-  },
-  previewContainerCompact: {
-    width: 168,
-    height: 168,
-    marginBottom: spacing.md,
+    // Subtle glow effect
+    shadowColor: "#FFFFFF",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    elevation: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
   },
   shareTemplateInfoBadge: {
     position: "absolute",
@@ -344,48 +324,43 @@ const styles = StyleSheet.create({
     right: spacing.xs,
     bottom: spacing.xs,
   },
+  savedBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  savedText: {
+    ...typography.caption,
+    color: colors.dark.textSecondary,
+  },
+  footer: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.lg,
+    gap: spacing.xl,
+  },
   actions: {
     width: "100%",
     gap: spacing.md,
-    marginTop: spacing.sm,
   },
-  instagramButton: {
+  shareButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: spacing.sm,
     paddingVertical: spacing.md,
     borderRadius: radius.full,
-    backgroundColor: colors.instagram.mid,
+    backgroundColor: "#FFFFFF",
   },
-  instagramText: {
+  shareText: {
     ...typography.button,
-    color: "#FFFFFF",
-  },
-  tiktokButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm,
-    paddingVertical: spacing.md,
-    borderRadius: radius.full,
-    backgroundColor: colors.dark.surface,
-    borderWidth: 1,
-    borderColor: colors.dark.border,
-  },
-  tiktokText: {
-    ...typography.button,
-    color: colors.dark.text,
+    color: colors.dark.background,
   },
   buttonPressed: {
     opacity: 0.8,
     transform: [{ scale: 0.97 }],
   },
-  footer: {
-    paddingHorizontal: spacing.xl,
-    paddingBottom: spacing.lg,
-  },
   doneButton: {
+    width: "100%",
     alignItems: "center",
     paddingVertical: spacing.md,
     borderRadius: radius.full,
