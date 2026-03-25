@@ -1533,6 +1533,48 @@ async function renderVinylVideoWithVariant(
     return args;
   };
 
+  const buildEmergencyFallbackCommand = (
+    audioInputUri: string,
+    audioTrimStartSec: number,
+    audioTrimEndSec: number,
+  ) => {
+    const args = [
+      "-y",
+      "-loop",
+      "1",
+      "-framerate",
+      String(fps),
+      "-i",
+      photoInputUriForRender,
+      "-i",
+      audioInputUri,
+      "-filter_complex",
+      `[0:v]${buildPhotoScaleCropFilter(width, height)},format=yuv420p[out];` +
+        `[1:a]atrim=start=${audioTrimStartSec}:end=${audioTrimEndSec},asetpts=PTS-STARTPTS[audio_out]`,
+      "-map",
+      "[out]",
+      "-map",
+      "[audio_out]",
+      ...buildVideoEncodeArgs("software", {
+        fastMode,
+        highQualityVideoBitrate: resolvedHighQualityVideoBitrate,
+      }),
+      "-c:a",
+      "aac",
+      "-b:a",
+      AUDIO_BITRATE,
+      "-fps_mode",
+      "cfr",
+      "-r",
+      String(fps),
+      "-t",
+      String(duration),
+      "-shortest",
+      outputPath,
+    ];
+    return args;
+  };
+
   let statisticsCallback: ((stats: Statistics) => void) | undefined;
   let sessionId: number | null = null;
   let setupProgressInterval: NodeJS.Timeout | null = null;
@@ -2042,20 +2084,47 @@ async function renderVinylVideoWithVariant(
       );
     }
 
+    const emergencyFallbackResult = await runCommand(
+      buildEmergencyFallbackCommand(
+        audioInputUri,
+        audioTrimStartForRender,
+        audioTrimEndForRender,
+      ),
+      {
+        label: "emergency_fallback",
+      },
+    );
+    if (ReturnCode.isSuccess(emergencyFallbackResult.returnCode)) {
+      if (__DEV__) {
+        const totalElapsedMs = Date.now() - renderStartedAt;
+        console.info(
+          `[renderVinylVideoWithVariant:${variantId}] Completed via emergency_fallback in ${totalElapsedMs}ms.`,
+        );
+      }
+      onProgress?.(100);
+      return outputPath;
+    }
+    if (ReturnCode.isCancel(emergencyFallbackResult.returnCode)) {
+      throw new Error("Rendering was canceled.");
+    }
+
     const details =
+      summarizeFfmpegLogs(emergencyFallbackResult.logs) ||
       summarizeFfmpegLogs(safeFallbackResult.logs) ||
       summarizeFfmpegLogs(fallbackResult.logs) ||
       summarizeFfmpegLogs(primaryResult.logs);
     const diagnostics =
       `photoScheme=${formatScheme(preparedPhotoUri)} audioScheme=${formatScheme(preparedAudioUri)} ` +
-      `shell=${vinylRenderPathDescriptor} outputPath=${outputPath}`;
+      `shell=${vinylRenderPathDescriptor} outputPath=${outputPath} ` +
+      `codes=primary:${String(primaryResult.returnCode)} fallback:${String(fallbackResult.returnCode)} ` +
+      `safe:${String(safeFallbackResult.returnCode)} emergency:${String(emergencyFallbackResult.returnCode)}`;
     if (details) {
       throw new Error(
-        `FFmpeg rendering failed (code ${safeFallbackResult.returnCode}). ${details} | ${diagnostics}`,
+        `FFmpeg rendering failed (code ${String(emergencyFallbackResult.returnCode)}). ${details} | ${diagnostics}`,
       );
     }
     throw new Error(
-      `FFmpeg rendering failed (code ${safeFallbackResult.returnCode}). ${diagnostics}`,
+      `FFmpeg rendering failed (code ${String(emergencyFallbackResult.returnCode)}). ${diagnostics}`,
     );
   } finally {
     if (setupProgressInterval) {
