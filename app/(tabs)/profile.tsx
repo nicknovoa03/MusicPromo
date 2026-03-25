@@ -134,7 +134,7 @@ export default function ProfileScreen() {
     : colors.light.border;
   const profileAvatarFrameColor = isDarkMode ? "rgba(222, 233, 255, 0.8)" : colors.light.surface;
   const profileAvatarBgColor = isDarkMode ? "#16203A" : colors.light.background;
-  const profileEditButtonBgColor = isDarkMode ? "#EFF3FF" : colors.accent.primary;
+  const profileEditButtonBgColor = isDarkMode ? "#EFF3FF" : "#000000";
   const profileEditButtonTextColor = isDarkMode ? "#11152A" : "#FFFFFF";
 
   // Create dynamic styles based on color scheme
@@ -519,7 +519,7 @@ export default function ProfileScreen() {
       if (isLocalGuest) {
         await clearLocalSession();
         track("sign_out_completed", { method: "local", isGuest: "true" });
-        router.replace("/(auth)/sign-in");
+        // AuthGate detects hasSession=false and redirects to sign-in automatically.
         return;
       }
       await removePushTokenForCurrentDevice();
@@ -536,7 +536,6 @@ export default function ProfileScreen() {
   }, [
     isLocalGuest,
     clearLocalSession,
-    router,
     removePushTokenForCurrentDevice,
     signOut,
     track,
@@ -779,7 +778,7 @@ export default function ProfileScreen() {
                   style={[styles.profileSettingsScreen, { paddingTop: modalTopInset }]}
                   edges={[]}
                 >
-                  <StatusBar style="dark" />
+                  <StatusBar style={isDarkMode ? "light" : "dark"} />
                 <View
                   style={styles.profileSettingsHeader}
                   {...profileSettingsPanResponder.panHandlers}
@@ -793,7 +792,7 @@ export default function ProfileScreen() {
                     accessibilityLabel="Close edit profile"
                     accessibilityRole="button"
                   >
-                    <Ionicons name="chevron-back" size={24} color="#121826" />
+                    <Ionicons name="chevron-back" size={24} color={isDarkMode ? "#D6DEF0" : "#121826"} />
                   </Pressable>
                   <Text style={styles.profileSettingsHeaderTitle}>Edit profile</Text>
                 </View>
@@ -900,7 +899,7 @@ export default function ProfileScreen() {
                         value={artistNameDraft}
                         onChangeText={setArtistNameDraft}
                         placeholder="Add name"
-                        placeholderTextColor="#A7AFC0"
+                        placeholderTextColor={isDarkMode ? "#6B778F" : "#A7AFC0"}
                         editable={!profileSettingsDisabled}
                         onSubmitEditing={() => {
                           void saveProfile({ includeLinks: false });
@@ -956,7 +955,7 @@ export default function ProfileScreen() {
                       accessibilityRole="button"
                     >
                       <View style={styles.actionRowLeft}>
-                        <Ionicons name="trash-outline" size={20} color={colors.accent.error} />
+                        <Ionicons name="trash-outline" size={20} color={isDarkMode ? colors.accent.error : "#C41C1C"} />
                         <Text style={[styles.deleteText, { color: isDarkMode ? colors.accent.error : "#C41C1C" }]}>Delete Account</Text>
                       </View>
                       {isDeleting ? (
@@ -1099,16 +1098,16 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
   },
   profileSettingsScreen: {
     flex: 1,
-    backgroundColor: "#F4F5F7",
+    backgroundColor: isDarkMode ? "#0A0F1C" : "#F4F5F7",
   },
   profileSettingsAnimatedLayer: {
     flex: 1,
-    backgroundColor: "#F4F5F7",
+    backgroundColor: isDarkMode ? "#0A0F1C" : "#F4F5F7",
   },
   profileSettingsHeader: {
     minHeight: 58,
     borderBottomWidth: 1,
-    borderBottomColor: "#E6E8EE",
+    borderBottomColor: isDarkMode ? "rgba(187, 203, 236, 0.15)" : "#E6E8EE",
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: spacing.sm,
@@ -1126,7 +1125,7 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
   },
   profileSettingsHeaderTitle: {
     ...typography.h2,
-    color: "#232938",
+    color: isDarkMode ? "#F4F7FF" : "#232938",
     textAlign: "center",
     position: "absolute",
     left: 56,
@@ -1137,7 +1136,7 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
   },
   profileSettingsAvatarSection: {
     borderBottomWidth: 1,
-    borderBottomColor: "#E6E8EE",
+    borderBottomColor: isDarkMode ? "rgba(187, 203, 236, 0.15)" : "#E6E8EE",
     paddingTop: spacing.lg,
     paddingBottom: spacing.md,
     paddingHorizontal: spacing.lg,
@@ -1192,12 +1191,12 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
     textAlign: "center",
   },
   profileSettingsCard: {
-    backgroundColor: "#F4F5F7",
+    backgroundColor: isDarkMode ? "#0A0F1C" : "#F4F5F7",
   },
   profileSettingsRow: {
     minHeight: 56,
     borderBottomWidth: 1,
-    borderBottomColor: "#E6E8EE",
+    borderBottomColor: isDarkMode ? "rgba(187, 203, 236, 0.15)" : "#E6E8EE",
     paddingHorizontal: spacing.lg,
     flexDirection: "row",
     alignItems: "center",
@@ -1206,12 +1205,12 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
   },
   profileSettingsRowLabel: {
     ...typography.body,
-    color: "#303645",
+    color: isDarkMode ? "#CBD3E8" : "#303645",
     flexShrink: 0,
   },
   profileSettingsNameInput: {
     ...typography.body,
-    color: "#1F2431",
+    color: isDarkMode ? "#F4F7FF" : "#1F2431",
     textAlign: "right",
     flex: 1,
     minHeight: 36,
@@ -1486,6 +1485,8 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
     borderColor: isDarkMode ? "rgba(187, 203, 236, 0.15)" : colors.light.border,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.md,
   },
   actionRow: {
     minHeight: 56,

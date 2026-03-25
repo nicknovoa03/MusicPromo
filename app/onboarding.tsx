@@ -448,7 +448,7 @@ const styles = StyleSheet.create({
   },
   dotActive: {
     width: 28,
-    backgroundColor: colors.accent.primary,
+    backgroundColor: colors.light.text,
   },
   primaryButton: {
     height: 56,
