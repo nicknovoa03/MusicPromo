@@ -18,6 +18,7 @@ import { usePostHog } from "posthog-react-native";
 import { useConvexAuth, useMutation } from "convex/react";
 import { ConvexError } from "convex/values";
 import Constants from "expo-constants";
+import { isRunningInExpoGo } from "@/lib/runtimeEnvironment";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
@@ -40,10 +41,6 @@ import {
   serializeTemplateTweaksParam,
 } from "@/lib/templates";
 
-function isExpoGo(): boolean {
-  return Constants.appOwnership === "expo";
-}
-
 const STAGE_HORIZONTAL_PADDING = spacing.lg * 2;
 const EXPORT_CONTENT_VERTICAL_OFFSET = 0;
 const DEFAULT_TRIM_DURATION = 5;
@@ -57,7 +54,7 @@ async function cancelCurrentRender(params: {
   engine?: RenderEngine;
   templateId?: string;
 }): Promise<void> {
-  if (isExpoGo()) return;
+  if (isRunningInExpoGo()) return;
   try {
     await cancelRendererWork(params);
   } catch {
@@ -318,7 +315,7 @@ export default function RenderingScreen() {
     }
 
     try {
-      if (isExpoGo()) {
+      if (isRunningInExpoGo()) {
         throw new Error(
           "Video rendering requires a development build.\n\nIt cannot run in Expo Go. Run 'npx expo run:android' or 'npx expo run:ios' to test.",
         );

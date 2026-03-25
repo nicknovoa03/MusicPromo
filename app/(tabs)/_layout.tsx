@@ -79,12 +79,17 @@ export default function TabsLayout() {
     setLocalOnboardingReady(false);
 
     (async () => {
-      const completed = await getLocalOnboardingCompleted(userId, {
-        localGuest: isLocalGuest,
-      });
-      if (!isActive) return;
-      setLocalOnboardingCompleted(completed);
-      setLocalOnboardingReady(true);
+      try {
+        const completed = await getLocalOnboardingCompleted(userId, {
+          localGuest: isLocalGuest,
+        });
+        if (!isActive) return;
+        setLocalOnboardingCompleted(completed);
+      } catch (error) {
+        console.warn("Failed to read onboarding state:", error);
+      } finally {
+        if (isActive) setLocalOnboardingReady(true);
+      }
     })();
 
     return () => {

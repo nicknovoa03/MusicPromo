@@ -62,7 +62,7 @@ export default function ShareScreen() {
   const previewWidth =
     aspectRatio === "9:16"
       ? Math.min(maxPreviewHeight * (9 / 16), maxPreviewWidth)
-      : maxPreviewWidth;
+      : Math.min(maxPreviewWidth, maxPreviewHeight);
   const previewHeight =
     aspectRatio === "9:16" ? previewWidth * (16 / 9) : previewWidth;
 

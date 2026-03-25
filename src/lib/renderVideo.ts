@@ -1,6 +1,5 @@
 import { Paths } from "expo-file-system";
 import * as LegacyFileSystem from "expo-file-system/legacy";
-import Constants from "expo-constants";
 import { Image, Platform } from "react-native";
 import {
   getCenterTextureSpec,
@@ -23,6 +22,7 @@ import {
   GRAPHIC_POP_STAGE_BACKGROUND_HEX,
 } from "@/lib/graphicPopTemplateSpec";
 import { isBetaWatermarkEnabled } from "@/lib/betaWatermark";
+import { isRunningInExpoGo } from "@/lib/runtimeEnvironment";
 import { normalizeMediaUri } from "@/lib/mediaUri";
 import {
   DEFAULT_VINYL_SHELL_SIZE,
@@ -40,9 +40,6 @@ import {
   type VinylToneId,
 } from "@/lib/vinylTemplateSpec";
 
-function isExpoGo(): boolean {
-  return Constants.appOwnership === "expo";
-}
 
 export interface RenderOptions {
   photoUri: string;
@@ -79,7 +76,7 @@ let betaWatermarkOverlayInputUriCache: string | null = null;
 const vinylShellOverlayInputUriCache: Partial<Record<VinylShellSize, string>> = {};
 
 async function getFFmpegKit(): Promise<FFmpegKitModule> {
-  if (isExpoGo()) {
+  if (isRunningInExpoGo()) {
     throw new Error(
       "Video rendering requires a development build. It cannot run in Expo Go.\n\nRun 'npx expo run:android' or 'npx expo run:ios' to test rendering.",
     );
@@ -2061,6 +2058,10 @@ async function renderVinylVideoWithVariant(
       `FFmpeg rendering failed (code ${safeFallbackResult.returnCode}). ${diagnostics}`,
     );
   } finally {
+    if (setupProgressInterval) {
+      clearInterval(setupProgressInterval);
+      setupProgressInterval = null;
+    }
     if (activeRenderToken === renderToken) {
       activeRenderSessionId = null;
       activeRenderToken = null;

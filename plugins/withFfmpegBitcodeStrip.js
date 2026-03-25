@@ -53,7 +53,13 @@ function addHelperIfMissing(contents) {
   const anchor = "  post_install do |installer|";
   const index = contents.indexOf(anchor);
   if (index === -1) {
-    throw new Error("Could not find post_install block in Podfile.");
+    // Anchor not found — append helper at end so the build still proceeds.
+    // The call will be skipped too since addCallIfMissing won't find its anchor.
+    console.warn(
+      "[withFfmpegBitcodeStrip] Could not find post_install block in Podfile. " +
+        "FFmpeg bitcode stripping will be skipped. Build will continue."
+    );
+    return contents + `\n${HELPER_SNIPPET}`;
   }
 
   return `${contents.slice(0, index)}${HELPER_SNIPPET}\n${contents.slice(index)}`;
@@ -67,7 +73,18 @@ function addCallIfMissing(contents) {
   const reactNativePostInstallRegex = /react_native_post_install\([\s\S]*?\n\s*\)/;
   const match = contents.match(reactNativePostInstallRegex);
   if (!match) {
-    throw new Error("Could not locate react_native_post_install call in Podfile.");
+    // Try inserting right after the post_install block opening line as a fallback.
+    const anchor = "  post_install do |installer|";
+    const index = contents.indexOf(anchor);
+    if (index === -1) {
+      console.warn(
+        "[withFfmpegBitcodeStrip] Could not locate react_native_post_install or " +
+          "post_install block in Podfile. FFmpeg bitcode stripping call will be skipped."
+      );
+      return contents;
+    }
+    const insertAt = index + anchor.length;
+    return `${contents.slice(0, insertAt)}\n${CALL_LINE}${contents.slice(insertAt)}`;
   }
 
   return contents.replace(
