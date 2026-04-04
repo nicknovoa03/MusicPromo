@@ -50,5 +50,5 @@ Musicians and creators spend too much time (and need too many skills) to make si
 |---|---|---|
 | A1 | v1 is a mobile app (not web-only) | Changes entire tech stack and deployment |
 | A2 | Primary output is a short video (15-60s) for Instagram Stories/Reels, TikTok, etc. | Affects video rendering, aspect ratios, export formats |
-| A3 | v1 supports one video style (e.g., spinning CD visual) — not a template marketplace | Scope control — multiple templates is Phase 2 |
+| A3 | v1 supports a small curated template set (CD-style visuals) — not a template marketplace | Scope control while still giving lightweight creative choice |
 | A4 | Label/agency persona deferred to post-v1 | No multi-user accounts, team features, or batch processing in v1 |

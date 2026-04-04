@@ -1,0 +1,595 @@
+import { useEffect, useMemo, useRef } from "react";
+import { Animated, Easing, Image, StyleSheet, View } from "react-native";
+import Ionicons from "@expo/vector-icons/Ionicons";
+import { colors } from "@/constants/tokens";
+import {
+  getVinylCenterGeometry,
+  getVinylEdgeGeometry,
+  getVinylEdgeSpec,
+  getVinylToneSpec,
+  toRgba,
+  type VinylToneId,
+} from "@/lib/vinylTemplateSpec";
+import {
+  GRAPHIC_POP_CENTER_RING_ALPHA_BYTE,
+  GRAPHIC_POP_CENTER_RING_HEX,
+  GRAPHIC_POP_CENTER_SHADOW_ALPHA_BYTE,
+  GRAPHIC_POP_CENTER_SHADOW_HEX,
+} from "@/lib/graphicPopTemplateSpec";
+import { getCenterTextureSpec } from "@/lib/simpleSpinTemplateSpec";
+
+interface VinylPreviewProps {
+  imageUri?: string | null;
+  size: number;
+  spinning?: boolean;
+  tone?: VinylToneId;
+  holeColor?: string;
+  spinSpeed?: number;
+  discOpacity?: number;
+  artworkScale?: number;
+  rotationStartDeg?: number;
+  rotationDirection?: "cw" | "ccw";
+}
+
+const CD_RING_SCALES = [0.93, 0.78, 0.62, 0.46];
+const CD_RING_COLORS = [
+  "rgba(255,255,255,0.3)",
+  "rgba(188,214,255,0.24)",
+  "rgba(255,201,223,0.2)",
+  "rgba(220,255,244,0.2)",
+];
+const SPIN_DURATION_MS = 4200;
+const GROOVE_RING_COUNT = 18;
+const MIN_ARTWORK_SCALE = 1;
+const MAX_ARTWORK_SCALE = 5;
+
+function buildGrooveScales(size: number, labelSize: number): number[] {
+  const safeSize = Math.max(size, 1);
+  const innerScale = Math.max(Math.min((labelSize + safeSize * 0.04) / safeSize, 0.9), 0.3);
+  const outerScale = 0.96;
+  const range = outerScale - innerScale;
+  if (range <= 0.01) return [outerScale];
+  return Array.from({ length: GROOVE_RING_COUNT }, (_, index) => {
+    const t = index / (GROOVE_RING_COUNT - 1);
+    return outerScale - range * t;
+  });
+}
+
+export function VinylPreview({
+  imageUri,
+  size,
+  spinning = true,
+  tone = "simple-spin",
+  holeColor,
+  spinSpeed = 1,
+  discOpacity = 1,
+  artworkScale = 1,
+  rotationStartDeg = 0,
+  rotationDirection = "cw",
+}: VinylPreviewProps) {
+  const spinProgress = useRef(new Animated.Value(0)).current;
+  const toneSpec = getVinylToneSpec(tone);
+  const isVinylTone = toneSpec.id === "simple-spin";
+  const isGraphicTone = toneSpec.id === "graphic-pop";
+  const usesCenterLabelArtwork = isVinylTone;
+  const normalizedSpinSpeed = Math.min(Math.max(spinSpeed, 0.25), 4);
+  const normalizedRotationStartDeg = Math.max(
+    -180,
+    Math.min(rotationStartDeg, 180),
+  );
+  const normalizedRotationDirection =
+    rotationDirection === "ccw" ? "ccw" : "cw";
+  const rotationDelta = normalizedRotationDirection === "ccw" ? -360 : 360;
+  const spinDurationMs = Math.max(
+    Math.round(SPIN_DURATION_MS / normalizedSpinSpeed),
+    400,
+  );
+  const normalizedDiscOpacity = Math.min(Math.max(discOpacity, 0.35), 1);
+  const normalizedArtworkScale = Math.min(
+    Math.max(artworkScale, MIN_ARTWORK_SCALE),
+    MAX_ARTWORK_SCALE,
+  );
+  const artworkScaleProgress =
+    (normalizedArtworkScale - MIN_ARTWORK_SCALE) /
+    (MAX_ARTWORK_SCALE - MIN_ARTWORK_SCALE);
+
+  useEffect(() => {
+    if (!spinning) {
+      spinProgress.stopAnimation();
+      spinProgress.setValue(0);
+      return;
+    }
+
+    spinProgress.setValue(0);
+    const loop = Animated.loop(
+      Animated.timing(spinProgress, {
+        toValue: 1,
+        duration: spinDurationMs,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
+    );
+    loop.start();
+
+    return () => {
+      loop.stop();
+      spinProgress.stopAnimation();
+    };
+  }, [spinning, spinDurationMs, spinProgress]);
+
+  const rotation = spinProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [
+      `${normalizedRotationStartDeg}deg`,
+      `${normalizedRotationStartDeg + rotationDelta}deg`,
+    ],
+  });
+
+  const centerGeometry = getVinylCenterGeometry(toneSpec.id, size);
+  const labelSize = centerGeometry.labelDiameter;
+  const holeSize = centerGeometry.holeDiameter;
+  const spindleRingSize = Math.max(holeSize * (isGraphicTone ? 1.7 : 2.3), 14);
+  const baseCenterArtworkSize = Math.max(
+    holeSize * 2.2,
+    Math.round(labelSize - Math.max(size * 0.024, 7)),
+  );
+  const centerArtworkSizeMax = Math.max(
+    baseCenterArtworkSize,
+    Math.round(size * 0.68),
+  );
+  const centerArtworkSize = usesCenterLabelArtwork
+    ? Math.round(
+        baseCenterArtworkSize +
+          (centerArtworkSizeMax - baseCenterArtworkSize) * artworkScaleProgress,
+      )
+    : baseCenterArtworkSize;
+  const grooveScales = useMemo(
+    () => buildGrooveScales(size, Math.max(labelSize, centerArtworkSize)),
+    [centerArtworkSize, labelSize, size],
+  );
+  const edgeGeometry = getVinylEdgeGeometry(size);
+  const edgeSpec = getVinylEdgeSpec();
+  const outerRimColor = toRgba(
+    edgeSpec.outerRimHexColor,
+    edgeSpec.outerRimAlphaByte,
+  );
+  const innerRimColor = toRgba(
+    edgeSpec.innerRimHexColor,
+    edgeSpec.innerRimAlphaByte,
+  );
+  const centerTexture = getCenterTextureSpec(size);
+  const graphicInnerRingSize = centerTexture.ringRadius * 2;
+  const graphicInnerRingBorderWidth = centerTexture.ringThickness;
+  const graphicInnerShadowSize = centerTexture.shadowOuterRadius * 2;
+  const graphicInnerShadowOffsetX = centerTexture.shadowOffsetX;
+  const graphicInnerShadowOffsetY = centerTexture.shadowOffsetY;
+  const graphicCenterRingColor = toRgba(
+    GRAPHIC_POP_CENTER_RING_HEX,
+    GRAPHIC_POP_CENTER_RING_ALPHA_BYTE,
+  );
+  const graphicCenterShadowColor = toRgba(
+    GRAPHIC_POP_CENTER_SHADOW_HEX,
+    GRAPHIC_POP_CENTER_SHADOW_ALPHA_BYTE,
+  );
+  const iconSize = Math.max(size * 0.2, 32);
+  const centerIconSize = Math.max(Math.round(centerArtworkSize * 0.35), 14);
+  const artworkSource = useMemo(
+    () => (imageUri ? { uri: imageUri } : null),
+    [imageUri],
+  );
+
+  return (
+    <View
+      style={[
+        styles.shell,
+        {
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          backgroundColor: "transparent",
+        },
+      ]}
+    >
+      <Animated.View
+        style={[
+          styles.surface,
+          {
+            width: size,
+            height: size,
+            borderRadius: size / 2,
+            opacity: normalizedDiscOpacity,
+            transform: [{ rotate: rotation }],
+            backgroundColor: isGraphicTone
+              ? "#d4d9e0"
+              : isVinylTone
+                ? "#121318"
+                : "#181818",
+          },
+        ]}
+      >
+        {usesCenterLabelArtwork ? null : artworkSource ? (
+          <Image
+            source={artworkSource}
+            style={styles.artwork}
+            resizeMode="cover"
+            accessibilityLabel="Vinyl artwork"
+          />
+        ) : (
+          <View style={styles.placeholder}>
+            <Ionicons
+              name="image-outline"
+              size={iconSize}
+              color={colors.dark.textSecondary}
+            />
+          </View>
+        )}
+
+        <View
+          style={[
+            styles.darken,
+            {
+              backgroundColor: toRgba(
+                toneSpec.shadeHexColor,
+                toneSpec.shadeAlphaByte,
+              ),
+            },
+          ]}
+        />
+        <View
+          style={[
+            styles.outerRim,
+            {
+              borderRadius: size / 2,
+              borderWidth: edgeGeometry.outerRimWidth,
+              borderColor: outerRimColor,
+            },
+          ]}
+        />
+        <View
+          style={[
+            styles.innerRim,
+            {
+              width: edgeGeometry.innerRimDiameter,
+              height: edgeGeometry.innerRimDiameter,
+              borderRadius: edgeGeometry.innerRimRadius,
+              borderWidth: edgeGeometry.innerRimThickness,
+              borderColor: innerRimColor,
+              top: (size - edgeGeometry.innerRimDiameter) / 2,
+              left: (size - edgeGeometry.innerRimDiameter) / 2,
+            },
+          ]}
+        />
+        {toneSpec.showGroovesInPreview ? (
+          <View style={styles.groovesLayer}>
+            {grooveScales.map((scale, index) => {
+              const grooveSize = size * scale;
+              return (
+                <View
+                  key={String(scale)}
+                  style={[
+                    styles.groove,
+                    {
+                      width: grooveSize,
+                      height: grooveSize,
+                      borderRadius: grooveSize / 2,
+                      borderColor:
+                        index % 3 === 0
+                          ? "rgba(255,255,255,0.13)"
+                          : index % 2 === 0
+                            ? "rgba(0,0,0,0.38)"
+                            : "rgba(255,255,255,0.07)",
+                    },
+                  ]}
+                />
+              );
+            })}
+          </View>
+        ) : null}
+        {isVinylTone && toneSpec.showSheenInPreview ? (
+          <View style={styles.cdRingsLayer}>
+            {CD_RING_SCALES.map((scale, index) => {
+              const ringSize = size * scale;
+              return (
+                <View
+                  key={String(scale)}
+                  style={[
+                    styles.cdRing,
+                    {
+                      width: ringSize,
+                      height: ringSize,
+                      borderRadius: ringSize / 2,
+                      borderColor: CD_RING_COLORS[index] ?? "rgba(255,255,255,0.16)",
+                    },
+                  ]}
+                />
+              );
+            })}
+          </View>
+        ) : null}
+
+        <View
+          style={[
+            styles.label,
+            {
+              width: labelSize,
+              height: labelSize,
+              borderRadius: labelSize / 2,
+              backgroundColor: toRgba(
+                toneSpec.labelHexColor,
+                toneSpec.labelAlphaByte,
+              ),
+            },
+          ]}
+        />
+        {usesCenterLabelArtwork ? (
+          <View
+            style={[
+              styles.centerArtworkWrap,
+              {
+                width: centerArtworkSize,
+                height: centerArtworkSize,
+                borderRadius: centerArtworkSize / 2,
+                top: (size - centerArtworkSize) / 2,
+                left: (size - centerArtworkSize) / 2,
+              },
+            ]}
+          >
+            {artworkSource ? (
+              <Image
+                source={artworkSource}
+                style={styles.centerArtwork}
+                resizeMode="cover"
+                accessibilityLabel="Vinyl center label artwork"
+              />
+            ) : (
+              <View style={styles.centerArtworkPlaceholder}>
+                <Ionicons
+                  name="image-outline"
+                  size={centerIconSize}
+                  color="rgba(255,255,255,0.72)"
+                />
+              </View>
+            )}
+          </View>
+        ) : null}
+        {isGraphicTone && toneSpec.showCenterTextureInPreview ? (
+          <>
+            <View
+              style={[
+                styles.graphicInnerShadowRing,
+                {
+                  width: graphicInnerShadowSize,
+                  height: graphicInnerShadowSize,
+                  borderRadius: graphicInnerShadowSize / 2,
+                  borderWidth: graphicInnerRingBorderWidth + 0.8,
+                  top:
+                    (size - graphicInnerShadowSize) / 2 + graphicInnerShadowOffsetY,
+                  left:
+                    (size - graphicInnerShadowSize) / 2 + graphicInnerShadowOffsetX,
+                  borderColor: graphicCenterShadowColor,
+                },
+              ]}
+            />
+            <View
+              style={[
+                styles.graphicInnerRing,
+                {
+                  width: graphicInnerRingSize,
+                  height: graphicInnerRingSize,
+                  borderRadius: graphicInnerRingSize / 2,
+                  borderWidth: graphicInnerRingBorderWidth,
+                  top: (size - graphicInnerRingSize) / 2,
+                  left: (size - graphicInnerRingSize) / 2,
+                  borderColor: graphicCenterRingColor,
+                },
+              ]}
+            />
+          </>
+        ) : null}
+        {isGraphicTone ? null : (
+          <View
+            style={[
+              styles.spindleRing,
+              {
+                width: spindleRingSize,
+                height: spindleRingSize,
+                borderRadius: spindleRingSize / 2,
+              },
+            ]}
+          />
+        )}
+        <View
+          style={[
+            styles.hole,
+            {
+              width: holeSize,
+              height: holeSize,
+              borderRadius: holeSize / 2,
+              backgroundColor:
+                holeColor ??
+                toRgba(toneSpec.holeHexColor, toneSpec.holeAlphaByte),
+            },
+          ]}
+        />
+        {isVinylTone && toneSpec.showSheenInPreview ? (
+          <>
+            <View style={styles.cdIridescentStripeA} />
+            <View style={styles.cdIridescentStripeB} />
+          </>
+        ) : null}
+        {toneSpec.showSheenInPreview ? <View style={styles.sheen} /> : null}
+      </Animated.View>
+      {isGraphicTone || !toneSpec.showSheenInPreview ? null : (
+        <>
+          <View
+            pointerEvents="none"
+            style={[
+              styles.staticSpecular,
+              {
+                width: size * 0.84,
+                height: size * 0.32,
+                borderRadius: size * 0.42,
+                top: size * 0.11,
+                left: size * 0.08,
+              },
+            ]}
+          />
+          <View
+            pointerEvents="none"
+            style={[
+              styles.staticEdgeShadow,
+              {
+                width: size * 0.88,
+                height: size * 0.24,
+                borderRadius: size * 0.44,
+                bottom: size * 0.1,
+                left: size * 0.06,
+              },
+            ]}
+          />
+        </>
+      )}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  shell: {
+    overflow: "hidden",
+    backgroundColor: "#121212",
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.42,
+    shadowRadius: 24,
+    elevation: 16,
+  },
+  surface: {
+    overflow: "hidden",
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#181818",
+  },
+  artwork: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  placeholder: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#101012",
+  },
+  darken: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  outerRim: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  innerRim: {
+    position: "absolute",
+  },
+  groovesLayer: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 0,
+  },
+  cdRingsLayer: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cdRing: {
+    position: "absolute",
+    borderWidth: 1,
+  },
+  groove: {
+    position: "absolute",
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  label: {
+    borderWidth: 0,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 4,
+  },
+  centerArtworkWrap: {
+    position: "absolute",
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.36)",
+    backgroundColor: "rgba(12,14,21,0.48)",
+  },
+  centerArtwork: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  centerArtworkPlaceholder: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(18,22,30,0.92)",
+  },
+  graphicInnerRing: {
+    position: "absolute",
+    backgroundColor: "transparent",
+  },
+  graphicInnerShadowRing: {
+    position: "absolute",
+    backgroundColor: "transparent",
+  },
+  spindleRing: {
+    position: "absolute",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.28)",
+    backgroundColor: "rgba(14,17,27,0.3)",
+  },
+  hole: {
+    position: "absolute",
+    borderWidth: 0,
+  },
+  sheen: {
+    position: "absolute",
+    width: "78%",
+    height: "78%",
+    borderRadius: 9999,
+    borderTopWidth: 2,
+    borderLeftWidth: 2,
+    borderTopColor: "rgba(255,255,255,0.09)",
+    borderLeftColor: "rgba(255,255,255,0.06)",
+    borderBottomWidth: 0,
+    borderRightWidth: 0,
+    transform: [{ rotate: "-18deg" }],
+  },
+  cdIridescentStripeA: {
+    position: "absolute",
+    width: "78%",
+    height: "24%",
+    top: "18%",
+    left: "12%",
+    borderRadius: 9999,
+    backgroundColor: "rgba(176,226,255,0.16)",
+    transform: [{ rotate: "-21deg" }],
+  },
+  cdIridescentStripeB: {
+    position: "absolute",
+    width: "72%",
+    height: "22%",
+    bottom: "16%",
+    right: "10%",
+    borderRadius: 9999,
+    backgroundColor: "rgba(255,194,226,0.14)",
+    transform: [{ rotate: "-24deg" }],
+  },
+  staticSpecular: {
+    position: "absolute",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    transform: [{ rotate: "-20deg" }],
+  },
+  staticEdgeShadow: {
+    position: "absolute",
+    backgroundColor: "rgba(0,0,0,0.13)",
+    transform: [{ rotate: "14deg" }],
+  },
+});

@@ -26,7 +26,7 @@ Design decisions informed by Meta's Edits app (primary reference), Snapchat trim
 
 ### 3. Home / Projects
 - **Purpose:** View all past projects, entry to create flow
-- **Layout:** White/light background. "Projects" header top-left, profile icon top-right, filter icon. 2-column grid of project thumbnails with title + metadata (date, size). Black "+" FAB button bottom-right to create new project.
+- **Layout:** White/light background. "Projects" header top-left, multi-select toggle + profile icon top-right. 2-column grid of project thumbnails with title + metadata (date, size), per-card actions menu in browse mode, and selection checkmarks in multi-select mode. Black "+" FAB button bottom-right to create new project in browse mode.
 - **Empty state:** Illustration + "Create your first project" + subtitle "Keep track of your drafts and finished videos all in one place." (Edits-style)
 - **Entry points:** App launch (authenticated), bottom tab "Home"
 - **Exit points:** → Create (tap "+"), → Profile (tap profile icon or tab), → Project detail (tap project)
@@ -36,7 +36,7 @@ Design decisions informed by Meta's Edits app (primary reference), Snapchat trim
 
 ### 4. Create — Media Picker (Screen 1)
 - **Purpose:** Select photo and audio files from device
-- **Layout:** Tabbed interface at top (Photo / Audio tabs — same visual layout for both). Cancel button top-left, Add button top-right. Search bar below tabs. Grid of items from device camera roll / file system. "Select Items" footer.
+- **Layout:** Single-screen media selector. Cancel button top-left, Add button top-right, "Select Media" title centered. Two stacked full-width square cards: audio selector on top, photo selector on bottom. Optional one-tap album-artwork quick-fill for photo when artwork exists.
 - **Entry points:** Tap "+" from Home, bottom tab "Create"
 - **Exit points:** → Editor (after selecting both files), → Home (cancel)
 - **Primary CTA:** "Add" (once items selected)
@@ -45,11 +45,11 @@ Design decisions informed by Meta's Edits app (primary reference), Snapchat trim
 
 ### 5. Create — Editor/Trimmer (Screen 2)
 - **Purpose:** Preview and trim the generated promo video
-- **Layout:** Dark/black background. Video preview centered (top half). Play/pause button, timestamp display (current / total), undo/redo. Timeline strip at bottom with frame thumbnails and scrubber/playhead. Aspect ratio toggle. Trim handles on the audio waveform/timeline. "Export" button top-right.
+- **Layout:** Dark/black background. Large video preview near top with in-preview action controls (template settings, info toggle, edit template), aspect ratio toggle on preview, and centered "Trim Audio" waveform section below. "Export" button top-right.
 - **Entry points:** After selecting photo + audio in picker
 - **Exit points:** → Post-Export (tap Export), → Media Picker (back/swap media)
 - **Primary CTA:** "Export" button
-- **Secondary actions:** Play/pause, trim handles, aspect ratio toggle, undo/redo
+- **Secondary actions:** Play/pause, trim handles, aspect ratio toggle, template/media editing surfaces
 - **Theme:** Dark/black background (editing mode)
 - **Reference:** `create-flow/Create Flow - final media trimmer - screens 0.png` (Snapchat-style simple trimmer), `Create Flow - final media trimmer - screens 1.png` (Shopee-style with toolbar), `general-vibe/Edits iOS Creating a project 3.png` (Edits editor)
 
@@ -89,7 +89,7 @@ Dual-theme approach inspired by Edits:
 ## Key Design Patterns
 
 - **FAB button** for primary create action (black rounded square with "+" icon)
-- **Tabbed pickers** with consistent interface for photo and audio selection
-- **Timeline/trimmer** at bottom of editor with frame thumbnails
+- **Stacked media selectors** with audio-first flow (then photo) on one screen
+- **Waveform trimmer** at bottom of editor with draggable trim handles
 - **Gradient buttons** for share actions (Instagram gradient: orange → pink)
-- **Grid layouts** for projects (2-column) and media picker (3-column)
+- **Grid layout** for projects (2-column)

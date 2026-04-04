@@ -6,7 +6,7 @@
 - Product name: MusicPromo
 - Owners: Nick
 - Date: 2026-02-20
-- Version: 1.0 (initial intake)
+- Version: 1.1 (phase mapping updated through Phase 5)
 - Links: PRD at `docs/requirements/PRODUCT_DESIGN_REQUIREMENTS.md`
 
 ## 1) Guideline (Shared AI-Human Understanding)
@@ -76,6 +76,28 @@
 - 2026-02-20: **Bottom tab bar with 3 tabs (Home, Create, Profile)** → Simple, standard mobile pattern → Hamburger menu rejected (less discoverable)
 - 2026-02-20: **2-screen create flow (Picker → Editor)** → Separates media selection from editing, cleaner UX → Single screen rejected (too cramped)
 - 2026-02-20: **Spotify-style profile/settings** → Clean list-based settings, prominent avatar → Custom design rejected (unnecessary for POC)
+- 2026-02-25: **ffmpeg-kit-react-native + @config-plugins v11 for video rendering** → Single FFmpeg command handles spinning CD rotation, audio trimming, and MP4 encoding. Original ffmpeg-kit was retired/archived Jan-Apr 2025 but the Expo config plugin v11 (June 2025) bundles working binaries for SDK 53+. Alternatives evaluated and rejected: react-native-skia-video (beta, no audio support), expo-image-sequence-encoder (no audio muxing), @sheehanmunim/react-native-ffmpeg (wraps same retired lib, less transparent). If ffmpeg-kit fails at runtime, fallback is expo-image-sequence-encoder for frames + native audio mux module.
+- 2026-02-25: **No expo-task-manager for background rendering** → FFmpeg-kit runs on a native thread that may survive JS backgrounding. expo-task-manager is designed for periodic short tasks (location, fetch), not long-running processes. Background rendering is best-effort only because iOS/Android can still terminate backgrounded apps under resource or policy constraints, so users should keep the app foregrounded for long renders.
+- 2026-02-25: **expo-sharing for Instagram/TikTok share** → Uses the native share sheet which routes to the correct app. Direct API posting rejected (TOS complexity, requires app review from platforms).
+- 2026-02-26: **Project History uses a 2-column FlatList with reactive `listByUser` + pull-to-refresh** → Meets v1 UX quickly while keeping data fresh. Cursor pagination is intentionally deferred with a TODO for when list size grows.
+- 2026-02-26: **Re-export updates existing project records instead of creating duplicates** → Added `projects.update` mutation for ownership-checked patching of media/settings/export metadata on re-export.
+- 2026-02-26: **Editor validates local file URIs before export** → Uses `expo-file-system/legacy` `getInfoAsync` to detect deleted/moved media and shows a non-destructive "Files not found" path to swap missing media.
+- 2026-02-26: **Push registration runs post-auth in tabs bootstrap and degrades gracefully** → App requests notification permission once after auth, registers Expo token in Convex (`pushTokens.upsertForCurrentUser`), and continues core create/export flows when permission or token registration fails.
+- 2026-02-26: **Push delivery uses Expo Push API via Convex action with persisted notification records** → Added `pushNotifications.sendTestPush` for QA and `notifications.createInternal` for durable per-user notification records (`reminder`, `new-template`, `export-complete`, `announcement`) even when delivery fails.
+- 2026-02-26: **Profile preferences save immediately with constrained presets** → `defaultAspectRatio` and `defaultVideoLength` are updated from Profile via one-tap controls (9:16/1:1 and 15s/30s/60s) and reused as defaults for new create sessions.
+- 2026-02-26: **Account deletion is soft-delete plus forced sign-out** → Added `users.isDeleted`/`users.deletedAt` and `users.softDeleteCurrent`; deleted users are treated as inactive for queries/mutations and app bootstrap routes them back to auth.
+- 2026-02-27: **Onboarding completion uses Convex-backed state with AsyncStorage fallback** → Added `users.onboardingCompletedAt` + `users.completeOnboarding` for durable cross-device routing gates, and local per-user fallback (`musicpromo:onboarding-complete:<clerkUserId>`) so onboarding completion is never blocked by transient offline/write failures.
+- 2026-03-04: **Phase 4 renderer strategy is local-first with a Remotion decision gate** → We want preview/export parity without cloud rendering. Phase 4 runs a local Remotion spike (single composition for preview+export) with explicit pass/fail gates (performance, sync, stability, fidelity). If it fails, fallback is a maintained FFmpeg fork behind a renderer abstraction so templates stay standardized.
+- 2026-03-04: **Phase 4 implementation keeps FFmpeg active while preserving Remotion path behind abstraction** → Added runtime engine selection (`EXPO_PUBLIC_RENDER_ENGINE`) and shared `spinning-cd` composition inputs used by preview + export. `remotion-local` adapter now executes local rendering through FFmpeg fallback because a production-ready native Remotion runtime is not yet available in this Expo architecture; go/no-go gates remain manual device validation.
+- 2026-03-04: **Editor controls split into dedicated `Edit Media` and `Template` surfaces** → Keeps the fast path (media/layout swaps in 1-2 taps) while isolating advanced polish controls (spin/transparency/background) in a separate surface. Chosen to reduce control crowding, preserve trimmer space, and maintain non-destructive state handoff through picker/editor/rendering route params via a typed template tweak contract.
+- 2026-03-05: **Template tweak naming standardized to transparency-first (`recordTransparency`)** → Aligns UI language and control semantics with user mental model while preserving legacy `recordOpacity` route payload compatibility in normalization/parsing paths.
+- 2026-03-05: **Template-info parity diagnostics shipped across editor → rendering → share** → Added a reusable `TemplateInfoBadge` plus route-param handoff (`showTemplateInfo`) so users can compare preview/export configuration without extra debugging tools.
+- 2026-03-05: **Rotation start presets reduced to 4 cardinal angles with explicit direction control** → Simplifies interaction and reduces misconfiguration while keeping creative intent via CW/CCW spin direction.
+- 2026-03-06: **Create picker unified into a single audio-first media selection screen** → Replaced split photo/audio browsing with stacked full-size selectors (audio on top, photo on bottom) to reduce context switching and keep both required inputs visible at once.
+- 2026-03-06: **Home project management now supports multi-select bulk delete** → Added explicit selection mode (header toggle + long-press entry) and a bottom-centered destructive CTA so users can clean up multiple drafts in one pass without card-by-card deletion.
+- 2026-03-06: **Editor actions were anchored directly on preview with modal sheet parity behavior** → Consolidated controls into preview overlays (`settings`, info toggle, `Edit Template`) and standardized template/media surfaces as partial-height sheets with outside-tap and swipe-down dismissal expectations.
+- 2026-03-06: **Roadmap sequencing updated to introduce an iOS-native UI adoption phase before broader post-MVP template expansion** → Phase 5 is now dedicated to iOS-native surface/liquid-glass adoption with explicit Android and unsupported-iOS fallbacks.
+- 2026-03-11: **Vinyl export path now prefers pre-baked shell compositing by artwork-size state** → Added `vinyl_shell_{small|normal|large}.png` overlays and explicit artwork-scale mapping in the FFmpeg pipeline to remove per-frame groove/rim synthesis on the Vinyl template while preserving procedural fallback reliability.
 
 ## 2) Guidance (Methodology for Evolving Prompts)
 
@@ -172,7 +194,7 @@ Project: MusicPromo
 Stack: React Native + Expo, Clerk, Convex, PostHog
 PRD: docs/requirements/PRODUCT_DESIGN_REQUIREMENTS.md
 Agent Design: docs/requirements/AGENT_DESIGN_REQUIREMENTS.md
-Current phase: [Phase 0/1/2]
+Current phase: [Phase 0/1/2/3/4/5]
 Focus: [epic name]
 ```
 
@@ -191,6 +213,17 @@ Phase 2 — Polish
   ├── Epic: Push Notifications
   ├── Epic: Profile & Settings
   └── Epic: Onboarding
+
+Phase 3 — Stabilization
+  └── Epic: Release Hardening & Regression
+
+Phase 4 — MVP Finalization
+  └── Epic: Template Fidelity & Export Standardization (Local-Only)
+      Current status (2026-03-04): renderer abstraction + shared composition shipped for `spinning-cd`; Remotion path is feature-flagged with FFmpeg fallback pending gate results on real devices
+
+Phase 5 — iOS Native Surface Adoption
+  └── Epic: iOS Native Surface + Liquid Glass Adoption
+      Goal: iOS-native interaction polish (context menus, grouped settings/forms, selective glass surfaces) with strict fallback behavior for Android/unsupported capability paths
 ```
 
 Work through epics within a phase, then move to the next phase. Update "Current phase" and "Focus" as you go. Examples:
@@ -208,6 +241,16 @@ Focus: Create Promo Video
 ```
 Current phase: Phase 2
 Focus: Push Notifications
+```
+
+```
+Current phase: Phase 4
+Focus: Template Fidelity & Export Standardization
+```
+
+```
+Current phase: Phase 5
+Focus: iOS Native Surface + Liquid Glass Adoption
 ```
 
 ## 3) Guardrails (AI-Assisted Reviews and Quality Gates)
@@ -260,6 +303,26 @@ Focus: Push Notifications
     9. Sign out → continue as guest → create video
     10. Delete account from profile
   - Expected results: All steps complete without crashes, errors are graceful
+
+#### Phase 1 Render Flow Regression Checklist (Manual)
+
+- Preconditions:
+  - Use a development build (`expo run:ios` or `expo run:android`), not Expo Go
+  - Use one valid local photo and one valid local audio file
+- Checklist:
+  1. Start export, then tap `Cancel` while progress is moving.
+  2. Confirm the app returns to the editor and does **not** auto-navigate to Share later.
+  3. Trigger a render failure (for example, remove/replace the selected media so export fails), then tap `Try Again`.
+  4. Confirm retry starts a new render and completes successfully.
+  5. Open Home, verify only one project entry exists for that export attempt (no duplicate draft projects from retry).
+  6. Re-open that project, adjust trim and/or aspect ratio, export again, and confirm the same project updates.
+  7. On Share, confirm camera-roll save still works and the preview uses the selected photo cover (not a broken video thumbnail).
+  8. Tap `Done` and confirm navigation returns cleanly to Home without stale create-flow screens.
+- Expected results:
+  - Cancel stops rendering behavior and prevents late Share navigation
+  - Retry does not create duplicate draft projects
+  - Re-export updates existing project metadata
+  - Share flow remains functional (save + share intents + clean navigation)
 
 ### 3.4 Drift Controls
 
