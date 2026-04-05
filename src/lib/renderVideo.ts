@@ -137,8 +137,7 @@ const MAX_BACKGROUND_BLUR = 24;
 const MIN_ROTATION_START_DEG = -180;
 const MAX_ROTATION_START_DEG = 180;
 const ENABLE_BETA_WATERMARK = isBetaWatermarkEnabled();
-const EXPORT_WATERMARK_OPACITY_MULTIPLIER = 0.45;
-const BETA_WATERMARK_IMAGE_MODULE = require("../../assets/beta-watermark.png");
+const BETA_WATERMARK_IMAGE_MODULE = require("../../assets/MusicPromo-Logo.png");
 
 const RENDER_PATH_COLORS: Record<RenderPath, string> = {
   primary: "#38d17b",
@@ -376,13 +375,13 @@ function buildWatermarkFilterGraph(params: {
     return [`${inputLabel}format=yuv420p[out]`];
   }
 
-  const watermarkWidth = Math.max(190, Math.round(width * 0.22));
-  const inset = Math.max(8, Math.round(width * 0.008));
+  const watermarkWidth = Math.round(width * 0.13);
+  const inset = Math.max(8, Math.round(width * 0.03));
 
   return [
-    `${watermarkInputLabel}format=rgba,scale=${watermarkWidth}:-1,colorchannelmixer=aa=${EXPORT_WATERMARK_OPACITY_MULTIPLIER.toFixed(2)}[beta_watermark_scaled]`,
-    `${inputLabel}[beta_watermark_scaled]overlay=x=W-w-${inset}:y=H-h-${inset}:format=auto:eof_action=repeat[beta_watermark_out]`,
-    "[beta_watermark_out]format=yuv420p[out]",
+    `${watermarkInputLabel}format=rgba,scale=${watermarkWidth}:-1[watermark_scaled]`,
+    `${inputLabel}[watermark_scaled]overlay=x=W-w-${inset}:y=H-h-${inset}:format=auto:eof_action=repeat[watermark_out]`,
+    "[watermark_out]format=yuv420p[out]",
   ];
 }
 
@@ -578,7 +577,7 @@ async function getBetaWatermarkOverlayInputUri(): Promise<string> {
       throw new Error("Unable to access app cache for beta watermark download.");
     }
 
-    const downloadUri = `${LegacyFileSystem.cacheDirectory}beta-watermark-overlay.png`;
+    const downloadUri = `${LegacyFileSystem.cacheDirectory}musicpromo-logo-overlay.png`;
     try {
       const existingInfo = await LegacyFileSystem.getInfoAsync(downloadUri);
       if (existingInfo.exists) {
@@ -606,7 +605,7 @@ async function getBetaWatermarkOverlayInputUri(): Promise<string> {
   if (!LegacyFileSystem.cacheDirectory) {
     throw new Error("Unable to access app cache for beta watermark asset.");
   }
-  const copiedUri = `${LegacyFileSystem.cacheDirectory}beta-watermark-overlay.png`;
+  const copiedUri = `${LegacyFileSystem.cacheDirectory}musicpromo-logo-overlay.png`;
   try {
     await LegacyFileSystem.copyAsync({ from: assetUri, to: copiedUri });
   } catch {

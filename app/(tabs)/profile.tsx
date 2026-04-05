@@ -1458,8 +1458,10 @@ export default function ProfileScreen() {
 
               {/* Footer */}
               <View style={styles.shareCardFooter}>
-                <Ionicons name="musical-notes" size={12} color="rgba(255,255,255,0.35)" />
-                <Text style={styles.shareCardFooterText}>musicpromo.app</Text>
+                <Image
+                  source={require("../../assets/MusicPromo-Logo.png")}
+                  style={styles.shareCardFooterLogo}
+                />
               </View>
             </View>
           </ViewShot>
@@ -1860,7 +1862,7 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
   shareCard: {
     width: 360,
     height: 640,
-    backgroundColor: "#080C18",
+    backgroundColor: "#000000",
     overflow: "hidden",
   },
   shareCardBanner: {
@@ -1931,19 +1933,16 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
   },
   shareCardFooter: {
     position: "absolute",
-    bottom: 22,
+    bottom: 16,
     left: 0,
     right: 0,
-    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 5,
   },
-  shareCardFooterText: {
-    fontSize: 12,
-    color: "rgba(255,255,255,0.3)",
-    fontWeight: "500",
-    letterSpacing: 0.3,
+  shareCardFooterLogo: {
+    width: 48,
+    height: 48,
+    resizeMode: "contain",
   },
   guestCard: {
     borderRadius: radius.lg,

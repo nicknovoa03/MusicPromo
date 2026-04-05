@@ -216,7 +216,7 @@ export function GraphicPopTemplateStage({
         />
       ) : null}
 
-      {shouldShowWatermark ? <BetaWatermark containerWidth={width} /> : null}
+      <BetaWatermark containerWidth={width} visible={shouldShowWatermark} />
     </View>
   );
 }
