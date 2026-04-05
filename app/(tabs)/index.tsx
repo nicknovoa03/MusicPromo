@@ -43,15 +43,10 @@ import {
   parseTemplateTweaksParam,
   resolveTemplateId,
 } from "@/lib/templates";
+import { ProjectThumbnail } from "@/components/ProjectThumbnail";
 
 type Project = Doc<"projects"> | LocalProject;
 type ProjectAction = "rename" | "duplicate" | "delete";
-type ProjectThumbnailProps = {
-  project: Project;
-  title: string;
-  surfaceColor: string;
-  fallbackIconColor: string;
-};
 
 function isLocalProject(project: Project): project is LocalProject {
   return "id" in project;
@@ -73,65 +68,6 @@ function normalizeAvatarUri(value: string | null | undefined): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
-}
-
-function ProjectThumbnail({
-  project,
-  title,
-  surfaceColor,
-  fallbackIconColor,
-}: ProjectThumbnailProps) {
-  const [thumbnailSize, setThumbnailSize] = useState(0);
-  const photoUri = normalizeMediaUri(project.photoUri);
-  const fallbackPreviewUri = normalizeMediaUri(project.exportedVideoUri);
-  const templateId = resolveTemplateId(project.templateId);
-  const templateTweaks = useMemo(
-    () => parseTemplateTweaksParam(project.templateTweaks),
-    [project.templateTweaks],
-  );
-  const templateDefinition = useMemo(
-    () => getTemplateDefinition(templateId),
-    [templateId],
-  );
-  const TemplateStageComponent = templateDefinition.StageComponent;
-  const canRenderTemplateThumbnail = thumbnailSize > 0;
-
-  return (
-    <View
-      style={[styles.thumbnail, { backgroundColor: surfaceColor }]}
-      onLayout={(event) => {
-        const nextSize = Math.round(event.nativeEvent.layout.width);
-        setThumbnailSize((current) => (current === nextSize ? current : nextSize));
-      }}
-    >
-      {canRenderTemplateThumbnail ? (
-        <TemplateStageComponent
-          width={thumbnailSize}
-          height={thumbnailSize}
-          aspectRatio={project.aspectRatio}
-          photoUri={photoUri}
-          isPlaying={false}
-          playbackLabel="Project thumbnail"
-          trackTitle={title}
-          subtitle={templateDefinition.name}
-          templateTweaks={templateTweaks ?? undefined}
-          showWatermark={false}
-        />
-      ) : fallbackPreviewUri ? (
-        <Image
-          source={{ uri: fallbackPreviewUri }}
-          style={styles.thumbnailImage}
-          resizeMode="cover"
-        />
-      ) : (
-        <Ionicons
-          name="image-outline"
-          size={30}
-          color={fallbackIconColor}
-        />
-      )}
-    </View>
-  );
 }
 
 let hasWarnedHapticsUnavailable = false;
@@ -1147,17 +1083,6 @@ const styles = StyleSheet.create({
   },
   cardSelectBadgeSelected: {
     backgroundColor: colors.accent.primary,
-  },
-  thumbnail: {
-    width: "100%",
-    aspectRatio: 1,
-    backgroundColor: colors.light.surface,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  thumbnailImage: {
-    width: "100%",
-    height: "100%",
   },
   cardBody: {
     paddingHorizontal: spacing.sm,
