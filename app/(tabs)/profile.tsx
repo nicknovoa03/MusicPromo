@@ -822,7 +822,7 @@ export default function ProfileScreen() {
                               style={styles.profileSettingsMediaImage}
                             />
                           ) : (
-                            <Ionicons name="person" size={44} color="#8792AA" />
+                            <Image source={require("../../assets/MusicPromo-DefaultAvatar.png")} style={styles.profileSettingsMediaImage} />
                           )}
                         </Pressable>
                         <Text style={styles.profileSettingsMediaLabel}>Avatar</Text>
@@ -866,7 +866,7 @@ export default function ProfileScreen() {
                               style={styles.profileSettingsMediaImage}
                             />
                           ) : (
-                            <Ionicons name="image-outline" size={40} color="#8792AA" />
+                            <Image source={require("../../assets/MusicPromo-Banner.png")} style={styles.profileSettingsMediaImage} />
                           )}
                         </Pressable>
                         <Text style={styles.profileSettingsMediaLabel}>Banner</Text>
@@ -989,7 +989,11 @@ export default function ProfileScreen() {
                 resizeMode="cover"
               />
             ) : (
-              <View style={[styles.heroBannerFallback, { backgroundColor: profileBannerFallbackColor }]} />
+              <Image
+                source={require("../../assets/MusicPromo-Banner.png")}
+                style={styles.heroBannerImage}
+                resizeMode="cover"
+              />
             )}
           </View>
 
@@ -1012,7 +1016,7 @@ export default function ProfileScreen() {
                   {avatarImageUrlDraft ? (
                     <Image source={{ uri: avatarImageUrlDraft }} style={styles.heroAvatarImage} />
                   ) : (
-                    <Ionicons name="person" size={52} color="#9EABC8" />
+                    <Image source={require("../../assets/MusicPromo-DefaultAvatar.png")} style={styles.heroAvatarImage} />
                   )}
                 </View>
                 <View style={styles.heroAvatarPlaceholder}>

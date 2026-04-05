@@ -11,7 +11,7 @@
       "fallbackToCacheTimeout": 0
     },
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/MusicPromo-App-Icon.png",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "scheme": "musicpromo",
