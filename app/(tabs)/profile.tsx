@@ -48,6 +48,7 @@ import { persistPickedMediaFile } from "@/lib/mediaStorage";
 import { sleep } from "@/lib/utils";
 import { ProjectThumbnail } from "@/components/ProjectThumbnail";
 import * as Sharing from "expo-sharing";
+import ViewShot from "react-native-view-shot";
 
 const PLATFORM_LABELS: Record<ProfileLinkPlatform, string> = {
   spotify: "Spotify",
@@ -58,6 +59,88 @@ const PLATFORM_LABELS: Record<ProfileLinkPlatform, string> = {
   tiktok: "TikTok",
   x: "X",
   website: "Website",
+};
+
+const LINK_PLACEHOLDERS: Record<ProfileLinkPlatform, string> = {
+  spotify: "Artist name",
+  soundcloud: "yourname",
+  "apple-music": "Artist name",
+  youtube: "yourname",
+  instagram: "yourhandle",
+  tiktok: "yourhandle",
+  x: "yourhandle",
+  website: "yourwebsite.com",
+};
+
+const PLATFORM_BASE_URLS: Record<ProfileLinkPlatform, string> = {
+  spotify: "https://open.spotify.com/search/",
+  soundcloud: "https://soundcloud.com/",
+  "apple-music": "https://music.apple.com/search?term=",
+  youtube: "https://youtube.com/@",
+  instagram: "https://instagram.com/",
+  tiktok: "https://tiktok.com/@",
+  x: "https://x.com/",
+  website: "",
+};
+
+// Platforms where user just types a handle/name (we construct the URL)
+const HANDLE_PLATFORMS = new Set<ProfileLinkPlatform>(["spotify", "soundcloud", "apple-music", "youtube", "instagram", "tiktok", "x"]);
+
+function extractHandle(platform: ProfileLinkPlatform, fullUrl: string): string {
+  if (!HANDLE_PLATFORMS.has(platform)) return fullUrl;
+  let s = fullUrl.replace(/^https?:\/\/(www\.)?/, "");
+  const prefixes: Partial<Record<ProfileLinkPlatform, string>> = {
+    spotify: "open.spotify.com/search/",
+    "apple-music": "music.apple.com/search?term=",
+    soundcloud: "soundcloud.com/",
+    youtube: "youtube.com/",
+    instagram: "instagram.com/",
+    tiktok: "tiktok.com/@",
+    x: "x.com/",
+  };
+  const prefix = prefixes[platform];
+  if (prefix && s.startsWith(prefix)) {
+    s = s.slice(prefix.length);
+  } else if (platform === "x" && s.startsWith("twitter.com/")) {
+    s = s.slice("twitter.com/".length);
+  }
+  return decodeURIComponent(s.replace(/^@/, "").split("/")[0].split("?")[0]);
+}
+
+function buildLinkUrl(platform: ProfileLinkPlatform, input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) return "";
+  if (HANDLE_PLATFORMS.has(platform)) {
+    const handle = trimmed.replace(/^@/, "");
+    if (!handle) return "";
+    return PLATFORM_BASE_URLS[platform] + handle;
+  }
+  // URL-based platforms — ensure https://
+  if (!/^https?:\/\//i.test(trimmed)) return "https://" + trimmed;
+  return trimmed;
+}
+
+const PLATFORM_DEEP_LINKS: Record<ProfileLinkPlatform, (url: string) => string> = {
+  spotify: (url) => {
+    const artist = extractHandle("spotify", url);
+    return `spotify://search/${encodeURIComponent(artist)}`;
+  },
+  instagram: (url) => {
+    const handle = extractHandle("instagram", url);
+    return `instagram://user?username=${handle}`;
+  },
+  tiktok: (url) => {
+    const handle = extractHandle("tiktok", url);
+    return `snssdk1233://user/profile/${handle}`;
+  },
+  youtube: (url) => url.replace("https://youtube.com", "youtube://").replace("https://www.youtube.com", "youtube://"),
+  x: (url) => {
+    const handle = extractHandle("x", url);
+    return `twitter://user?screen_name=${handle}`;
+  },
+  soundcloud: (url) => url,
+  "apple-music": (url) => url.replace("https://music.apple.com/search?term=", "music://music.apple.com/search?term="),
+  website: (url) => url,
 };
 
 type DraftProfileLink = {
@@ -166,7 +249,7 @@ export default function ProfileScreen() {
   const [errorText, setErrorText] = useState<string | null>(null);
   const [isShareCardVisible, setIsShareCardVisible] = useState(false);
   const [isSharingProfile, setIsSharingProfile] = useState(false);
-  const shareCardRef = useRef<any>(null);
+  const shareCardRef = useRef<ViewShot>(null);
 
   const [localArtistProfile, setLocalArtistProfileState] = useState(
     DEFAULT_LOCAL_ARTIST_PROFILE,
@@ -223,7 +306,7 @@ export default function ProfileScreen() {
 
   const sourceAvatarImageUrl = usesLocalProfile
     ? localArtistProfile.avatarImageUrl
-    : convexUser?.avatarImageUrl ?? convexUser?.avatarUrl ?? localArtistProfile.avatarImageUrl ?? null;
+    : convexUser?.avatarImageUrl ?? localArtistProfile.avatarImageUrl ?? null;
   const sourceHeroImageUrl = usesLocalProfile
     ? localArtistProfile.heroImageUrl
     : convexUser?.heroImageUrl ?? localArtistProfile.heroImageUrl ?? null;
@@ -687,10 +770,18 @@ export default function ProfileScreen() {
   }, [closeProfileSettings]);
 
   const handleShareProfile = useCallback(async () => {
-    setIsShareCardVisible(true);
     setIsSharingProfile(true);
-    await sleep(300);
     try {
+      // Prefetch remote images so they're in cache before the card renders
+      const prefetches: Promise<unknown>[] = [];
+      if (sourceAvatarImageUrl) prefetches.push(Image.prefetch(sourceAvatarImageUrl));
+      if (sourceHeroImageUrl) prefetches.push(Image.prefetch(sourceHeroImageUrl));
+      await Promise.all(prefetches);
+
+      setIsShareCardVisible(true);
+      // Give React time to render the off-screen card with loaded images
+      await sleep(800);
+
       const uri = await shareCardRef.current?.capture?.();
       if (!uri) return;
       setIsShareCardVisible(false);
@@ -700,7 +791,7 @@ export default function ProfileScreen() {
     } finally {
       setIsSharingProfile(false);
     }
-  }, []);
+  }, [sourceAvatarImageUrl, sourceHeroImageUrl]);
 
   const profileSettingsPanResponder = useMemo(
     () =>
@@ -939,6 +1030,59 @@ export default function ProfileScreen() {
                   </View>
 
                   <View style={[styles.accountSection, { backgroundColor: isDarkMode ? "#11192C" : colors.light.surface, borderColor: isDarkMode ? "rgba(187, 203, 236, 0.15)" : colors.light.border }]}>
+                    <Text style={[styles.sectionEyebrow, { color: profileTextSecondaryColor }]}>Profile</Text>
+                    <Text style={[styles.sectionTitle, { color: profileTextColor }]}>Social Links</Text>
+
+                    {linksDraft.map((link) => (
+                      <View key={link.platform} style={styles.profileSettingsRow}>
+                        <Text style={[styles.linkInputLabel, { color: profileTextSecondaryColor }]}>{PLATFORM_LABELS[link.platform]}</Text>
+                        <TextInput
+                          value={extractHandle(link.platform, link.url)}
+                          onChangeText={(text) => handleUpdateLinkUrl(link.platform, buildLinkUrl(link.platform, text))}
+                          placeholder={LINK_PLACEHOLDERS[link.platform]}
+                          placeholderTextColor={isDarkMode ? "#3D4A63" : "#A7AFC0"}
+                          autoCapitalize="none"
+                          autoCorrect={false}
+                          keyboardType="url"
+                          returnKeyType="done"
+                          onSubmitEditing={() => { void saveProfile({ includeLinks: true }); }}
+                          onBlur={() => { void saveProfile({ includeLinks: true }); }}
+                          style={[styles.profileSettingsNameInput, { color: profileTextColor }]}
+                        />
+                        <Pressable
+                          onPress={() => handleRemoveLink(link.platform)}
+                          style={styles.linkInputRemove}
+                          accessibilityLabel={`Remove ${PLATFORM_LABELS[link.platform]}`}
+                          accessibilityRole="button"
+                        >
+                          <Ionicons name="close-circle" size={18} color={isDarkMode ? "#4A5266" : "#A7AFC0"} />
+                        </Pressable>
+                      </View>
+                    ))}
+
+                    {availablePlatforms.length > 0 ? (
+                      <View style={styles.linkAddRow}>
+                        {availablePlatforms.map((platform) => (
+                          <Pressable
+                            key={platform}
+                            onPress={() => handleAddLink(platform)}
+                            style={({ pressed }) => [
+                              styles.linkAddChip,
+                              { borderColor: profileBorderColor, backgroundColor: isDarkMode ? "#0D1627" : "#F0F2F7" },
+                              pressed && styles.optionChipPressed,
+                            ]}
+                            accessibilityLabel={`Add ${PLATFORM_LABELS[platform]}`}
+                            accessibilityRole="button"
+                          >
+                            <Ionicons name="add" size={13} color={profileTextSecondaryColor} />
+                            <Text style={[styles.linkAddChipText, { color: profileTextSecondaryColor }]}>{PLATFORM_LABELS[platform]}</Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                    ) : null}
+                  </View>
+
+                  <View style={[styles.accountSection, { backgroundColor: isDarkMode ? "#11192C" : colors.light.surface, borderColor: isDarkMode ? "rgba(187, 203, 236, 0.15)" : colors.light.border }]}>
                     <Text style={[styles.sectionEyebrow, { color: profileTextSecondaryColor }]}>Account Actions</Text>
                     <Text style={[styles.sectionTitle, { color: profileTextColor }]}>Security & Session</Text>
 
@@ -1005,19 +1149,12 @@ export default function ProfileScreen() {
         >
         <View style={[styles.heroShell, { minHeight: heroHeight, backgroundColor: profileBackgroundColor }]}>
           <View style={[styles.heroBanner, { height: heroBannerHeight }]}>
-            {heroImageUrlDraft ? (
-              <Image
-                source={{ uri: heroImageUrlDraft }}
-                style={styles.heroBannerImage}
-                resizeMode="cover"
-              />
-            ) : (
-              <Image
-                source={require("../../assets/MusicPromo-Banner.jpg")}
-                style={styles.heroBannerImage}
-                resizeMode="cover"
-              />
-            )}
+            <Image
+              source={heroImageUrlDraft ? { uri: heroImageUrlDraft } : require("../../assets/MusicPromo-Banner.jpg")}
+              style={styles.heroBannerImage}
+              resizeMode="cover"
+              onError={() => setHeroImageUrlDraft(null)}
+            />
           </View>
 
           <View style={[styles.heroIdentityBlock, { backgroundColor: profileBackgroundColor, borderTopColor: profileBorderColor }]}>
@@ -1036,11 +1173,11 @@ export default function ProfileScreen() {
             >
               <View style={[styles.heroAvatarFrame, { backgroundColor: profileAvatarFrameColor }]}>
                 <View style={[styles.heroAvatar, { backgroundColor: profileAvatarBgColor }]}>
-                  {avatarImageUrlDraft ? (
-                    <Image source={{ uri: avatarImageUrlDraft }} style={styles.heroAvatarImage} />
-                  ) : (
-                    <Image source={require("../../assets/MusicPromo-DefaultAvatar.jpg")} style={styles.heroAvatarImage} />
-                  )}
+                  <Image
+                    source={avatarImageUrlDraft ? { uri: avatarImageUrlDraft } : require("../../assets/MusicPromo-DefaultAvatar.jpg")}
+                    style={styles.heroAvatarImage}
+                    onError={() => setAvatarImageUrlDraft(null)}
+                  />
                 </View>
                 <View style={styles.heroAvatarPlaceholder}>
                   <Ionicons name="camera-outline" size={14} color="#F4F7FF" />
@@ -1135,25 +1272,17 @@ export default function ProfileScreen() {
             const activeLinks = sourceLinks.filter(l => l.url.trim().length > 0);
             const recentPromos = (projects ?? []).slice(0, 5);
 
-            const PLATFORM_DEEP_LINKS: Record<string, (url: string) => string> = {
-              spotify: (url) => url.replace("https://open.spotify.com", "spotify://"),
-              instagram: (url) => url.replace("https://www.instagram.com", "instagram://user?username=").replace("https://instagram.com", "instagram://user?username="),
-              tiktok: (url) => url.replace("https://www.tiktok.com/@", "snssdk1233://user/profile/"),
-              youtube: (url) => url.replace("https://www.youtube.com", "youtube://"),
-              x: (url) => url.replace("https://x.com", "twitter://"),
-              soundcloud: (url) => url,
-              "apple-music": (url) => url,
-              website: (url) => url,
-            };
-
             const handleLinkPress = async (platform: string, url: string) => {
-              const deepLink = PLATFORM_DEEP_LINKS[platform]?.(url) ?? url;
-              const canOpen = await Linking.canOpenURL(deepLink);
-              if (canOpen) {
-                await Linking.openURL(deepLink);
-              } else {
-                await Linking.openURL(url);
-              }
+              const webUrl = buildLinkUrl(platform as ProfileLinkPlatform, extractHandle(platform as ProfileLinkPlatform, url) || url);
+              const deepLink = PLATFORM_DEEP_LINKS[platform as ProfileLinkPlatform]?.(webUrl) ?? webUrl;
+              try {
+                const canOpen = await Linking.canOpenURL(deepLink);
+                if (canOpen) {
+                  await Linking.openURL(deepLink);
+                  return;
+                }
+              } catch (_) {}
+              await Linking.openURL(webUrl);
             };
 
             const PLATFORM_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
@@ -1263,24 +1392,58 @@ export default function ProfileScreen() {
 
       {isShareCardVisible ? (
         <View style={styles.shareCardOffscreen} pointerEvents="none">
-          <View ref={shareCardRef}>
+          <ViewShot ref={shareCardRef} options={{ format: "png", quality: 1 }}>
             <View style={styles.shareCard}>
-              <View style={styles.shareCardHeader}>
-                <View style={styles.shareCardAvatar}>
-                  {sourceAvatarImageUrl ? (
-                    <Image source={{ uri: sourceAvatarImageUrl }} style={styles.shareCardAvatarImage} />
-                  ) : (
-                    <Image source={require("../../assets/MusicPromo-DefaultAvatar.jpg")} style={styles.shareCardAvatarImage} />
-                  )}
-                </View>
-                <View style={styles.shareCardIdentity}>
-                  <Text style={styles.shareCardName} numberOfLines={1}>{sourceArtistName || displayName}</Text>
-                  <Text style={styles.shareCardSub}>MusicPromo</Text>
-                </View>
+              {/* Banner */}
+              <View style={styles.shareCardBanner}>
+                <Image
+                  source={sourceHeroImageUrl ? { uri: sourceHeroImageUrl } : require("../../assets/MusicPromo-Banner.jpg")}
+                  style={styles.shareCardBannerImage}
+                  resizeMode="cover"
+                />
+                <View style={styles.shareCardBannerGradient} />
               </View>
-              {(projects ?? []).length > 0 ? (
+
+              {/* Avatar overlapping banner */}
+              <View style={styles.shareCardAvatarWrap}>
+                <Image
+                  source={sourceAvatarImageUrl ? { uri: sourceAvatarImageUrl } : require("../../assets/MusicPromo-DefaultAvatar.jpg")}
+                  style={styles.shareCardAvatarImage}
+                />
+              </View>
+
+              {/* Name below banner */}
+              <Text style={styles.shareCardName} numberOfLines={1}>{sourceArtistName || displayName}</Text>
+
+              {/* Social links: icon + handle */}
+              {sourceLinks.length > 0 && (
+                <View style={styles.shareCardLinks}>
+                  {sourceLinks.slice(0, 5).map((link) => {
+                    const SHARE_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
+                      spotify: "musical-notes",
+                      soundcloud: "cloud",
+                      "apple-music": "musical-note",
+                      youtube: "logo-youtube",
+                      instagram: "logo-instagram",
+                      tiktok: "logo-tiktok",
+                      x: "logo-twitter",
+                      website: "globe-outline",
+                    };
+                    const handle = extractHandle(link.platform as ProfileLinkPlatform, link.url);
+                    return (
+                      <View key={link.platform} style={styles.shareCardLinkRow}>
+                        <Ionicons name={SHARE_ICONS[link.platform] ?? "link-outline"} size={14} color="rgba(255,255,255,0.7)" />
+                        <Text style={styles.shareCardLinkText} numberOfLines={1}>{handle || PLATFORM_LABELS[link.platform as ProfileLinkPlatform]}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+
+              {/* 3 promo thumbnails */}
+              {(projects ?? []).length > 0 && (
                 <View style={styles.shareCardGrid}>
-                  {(projects ?? []).slice(0, 6).map(project => (
+                  {(projects ?? []).slice(0, 3).map(project => (
                     <View key={String(project._id)} style={styles.shareCardThumb}>
                       <ProjectThumbnail
                         project={project}
@@ -1291,9 +1454,11 @@ export default function ProfileScreen() {
                     </View>
                   ))}
                 </View>
-              ) : null}
+              )}
+
+              {/* Footer */}
               <View style={styles.shareCardFooter}>
-                <Ionicons name="musical-notes" size={12} color="rgba(255,255,255,0.4)" />
+                <Ionicons name="musical-notes" size={12} color="rgba(255,255,255,0.35)" />
                 <Text style={styles.shareCardFooterText}>musicpromo.app</Text>
               </View>
             </View>
@@ -1428,6 +1593,48 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
     ...typography.body,
     color: isDarkMode ? "#CBD3E8" : "#303645",
     flexShrink: 0,
+  },
+  linkInputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: radius.md,
+    borderWidth: 1,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    gap: spacing.xs,
+  },
+  linkInputLabel: {
+    ...typography.caption,
+    fontWeight: "600",
+    width: 96,
+  },
+  linkInputField: {
+    ...typography.caption,
+    flex: 1,
+    paddingVertical: 4,
+  },
+  linkInputRemove: {
+    padding: 2,
+  },
+  linkAddRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  linkAddChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    borderWidth: 1,
+    borderRadius: radius.full,
+    paddingVertical: 5,
+    paddingHorizontal: spacing.sm,
+  },
+  linkAddChipText: {
+    ...typography.caption,
+    fontWeight: "600",
   },
   profileSettingsNameInput: {
     ...typography.body,
@@ -1652,57 +1859,91 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
   },
   shareCard: {
     width: 360,
-    backgroundColor: "#0A0F1C",
-    padding: 20,
-    gap: 16,
-  },
-  shareCardHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  shareCardAvatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    height: 640,
+    backgroundColor: "#080C18",
     overflow: "hidden",
+  },
+  shareCardBanner: {
+    width: 360,
+    height: 220,
+    position: "relative",
+  },
+  shareCardBannerImage: {
+    width: "100%",
+    height: "100%",
+  },
+  shareCardBannerGradient: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 220,
+    backgroundColor: "rgba(8,12,24,0.45)",
+  },
+  shareCardAvatarWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    overflow: "hidden",
+    borderWidth: 3,
+    borderColor: "#080C18",
     backgroundColor: "#16203A",
+    marginTop: -32,
+    marginLeft: 20,
   },
   shareCardAvatarImage: {
     width: "100%",
     height: "100%",
   },
-  shareCardIdentity: {
-    gap: 2,
-  },
   shareCardName: {
-    fontSize: 18,
-    fontWeight: "700",
+    fontSize: 20,
+    fontWeight: "800",
     color: "#F8FAFF",
+    letterSpacing: -0.4,
+    paddingHorizontal: 20,
+    paddingTop: 10,
   },
-  shareCardSub: {
-    fontSize: 12,
-    color: "rgba(255,255,255,0.4)",
+  shareCardLinks: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    gap: 10,
+  },
+  shareCardLinkRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  shareCardLinkText: {
+    fontSize: 13,
+    color: "rgba(255,255,255,0.65)",
+    fontWeight: "500",
   },
   shareCardGrid: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
+    gap: 4,
+    paddingHorizontal: 20,
+    paddingTop: 20,
   },
   shareCardThumb: {
-    width: "31.5%",
-    borderRadius: 8,
+    flex: 1,
+    borderRadius: 10,
     overflow: "hidden",
   },
   shareCardFooter: {
+    position: "absolute",
+    bottom: 22,
+    left: 0,
+    right: 0,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 4,
+    gap: 5,
   },
   shareCardFooterText: {
-    fontSize: 11,
-    color: "rgba(255,255,255,0.4)",
+    fontSize: 12,
+    color: "rgba(255,255,255,0.3)",
+    fontWeight: "500",
+    letterSpacing: 0.3,
   },
   guestCard: {
     borderRadius: radius.lg,

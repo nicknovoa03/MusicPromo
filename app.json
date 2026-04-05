@@ -24,7 +24,15 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.musicpromo.app",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "LSApplicationQueriesSchemes": [
+          "instagram",
+          "snssdk1233",
+          "spotify",
+          "youtube",
+          "twitter",
+          "music"
+        ]
       }
     },
     "android": {

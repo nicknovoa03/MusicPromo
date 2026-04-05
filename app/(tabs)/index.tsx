@@ -730,15 +730,11 @@ export default function HomeScreen() {
             accessibilityLabel="Open profile"
             accessibilityRole="button"
           >
-            {profileAvatarUri ? (
-              <Image source={{ uri: profileAvatarUri }} style={styles.avatarImage} />
-            ) : (
-              <Ionicons
-                name="person-circle-outline"
-                size={32}
-                color={homeTextColor}
-              />
-            )}
+            <Image
+              source={profileAvatarUri ? { uri: profileAvatarUri } : require("../../assets/MusicPromo-DefaultAvatar.jpg")}
+              style={styles.avatarImage}
+              onError={() => setLocalAvatarUrl(null)}
+            />
           </Pressable>
         </View>
       </View>
