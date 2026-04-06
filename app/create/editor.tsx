@@ -280,7 +280,7 @@ export default function EditorScreen() {
   const { isLocalGuest } = useLocalSession();
   const paramTitle = firstParam(params.title)?.trim() || "";
   const initialProjectTitle =
-    paramTitle || DEFAULT_PROJECT_TITLE;
+    paramTitle || firstParam(params.audioName)?.trim() || DEFAULT_PROJECT_TITLE;
   const paramPhotoUri = normalizeMediaUri(decodeUriParam(firstParam(params.photoUri)));
   const paramAudioUri = normalizeMediaUri(decodeUriParam(firstParam(params.audioUri)));
   const paramPhotoName = firstParam(params.photoName);
@@ -1788,7 +1788,8 @@ export default function EditorScreen() {
               accessibilityLabel="Open template settings"
               accessibilityRole="button"
             >
-              <Ionicons name="settings-outline" size={18} color={colors.dark.text} />
+              <Ionicons name="settings-outline" size={15} color={colors.dark.text} />
+              <Text style={styles.previewTrimToggleText}>Template Settings</Text>
             </Pressable>
             <Pressable
               onPress={handleToggleTrimPanel}
@@ -2136,11 +2137,12 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   previewTemplateButton: {
-    width: 40,
-    height: 40,
-    borderRadius: radius.full,
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    gap: 6,
+    minHeight: 40,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.full,
     backgroundColor: colors.dark.surface,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.12)",

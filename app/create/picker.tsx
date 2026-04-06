@@ -729,7 +729,7 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
                     accessibilityLabel="Detected album artwork"
                   />
                   <View style={styles.quickFillTextWrap}>
-                    <Text style={styles.quickFillTitle}>Use album artwork</Text>
+                    <Text style={[styles.quickFillTitle, { color: pickerTextColor }]}>Use album artwork</Text>
                     <Text style={[styles.quickFillHint, { color: pickerTextColor }]} numberOfLines={2}>
                       Reuse the track artwork as your photo in one tap.
                     </Text>

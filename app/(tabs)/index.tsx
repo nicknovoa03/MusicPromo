@@ -46,7 +46,7 @@ import {
 import { ProjectThumbnail } from "@/components/ProjectThumbnail";
 
 type Project = Doc<"projects"> | LocalProject;
-type ProjectAction = "rename" | "duplicate" | "delete";
+type ProjectAction = "duplicate" | "delete";
 
 function isLocalProject(project: Project): project is LocalProject {
   return "id" in project;
@@ -160,7 +160,7 @@ export default function HomeScreen() {
   const convexUser = useQuery(api.users.current);
   const projectsQuery = useQuery(api.projects.listByUser);
   const deleteProject = useMutation(api.projects.remove);
-  const [localProjects, setLocalProjects] = useState<LocalProject[] | null>(null);
+const [localProjects, setLocalProjects] = useState<LocalProject[] | null>(null);
   const [localAvatarUrl, setLocalAvatarUrl] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [actionProject, setActionProject] = useState<Project | null>(null);
@@ -168,7 +168,7 @@ export default function HomeScreen() {
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
-  const longPressProjectIdRef = useRef<string | null>(null);
+const longPressProjectIdRef = useRef<string | null>(null);
   const isDarkMode = colorScheme === "dark";
   const homeBackgroundColor = isDarkMode ? colors.dark.background : colors.light.background;
   const homeSurfaceColor = isDarkMode ? colors.dark.surface : colors.light.surface;
@@ -470,7 +470,7 @@ export default function HomeScreen() {
 
       closeProjectActions();
       Alert.alert(
-        action === "rename" ? "Rename coming soon" : "Duplicate coming soon",
+        "Duplicate coming soon",
         "This action is part of the next project-management pass.",
       );
     },
@@ -506,25 +506,23 @@ export default function HomeScreen() {
     async (projects: Project[]) => {
       if (!projects.length) return;
       setIsBulkDeleting(true);
-      let failedCount = 0;
       try {
-        for (const project of projects) {
-          try {
+        const results = await Promise.allSettled(
+          projects.map(async (project) => {
             if (isLocalProject(project)) {
               await removeLocalProject(project.id);
             } else {
               await deleteProject({ projectId: project._id });
             }
             track("project_deleted", { projectId: getProjectId(project) });
-          } catch {
-            failedCount += 1;
-          }
-        }
+          })
+        );
 
         if (isLocalGuest) {
           await refreshLocalProjects();
         }
 
+        const failedCount = results.filter(r => r.status === "rejected").length;
         if (failedCount > 0) {
           Alert.alert(
             "Some projects could not be deleted",
@@ -814,25 +812,6 @@ export default function HomeScreen() {
           {actionProject ? (
             <>
               <View style={[styles.actionsCard, { backgroundColor: homeBackgroundColor }]}>
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.actionsRow,
-                    { borderBottomColor: homeBorderColor },
-                    pressed && styles.actionsRowPressed,
-                    pressed && { backgroundColor: homeSurfaceColor },
-                  ]}
-                  onPress={() => handleModalProjectAction("rename")}
-                  accessibilityLabel="Rename project"
-                  accessibilityRole="button"
-                >
-                  <Ionicons
-                    name="create-outline"
-                    size={18}
-                    color={homeTextColor}
-                  />
-                  <Text style={[styles.actionsText, { color: homeTextColor }]}>Rename</Text>
-                </Pressable>
-
                 <Pressable
                   style={({ pressed }) => [
                     styles.actionsRow,

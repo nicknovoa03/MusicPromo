@@ -24,6 +24,7 @@ export type ProfileLink = {
 };
 export type LocalArtistProfile = {
   artistName: string;
+  bio: string;
   avatarImageUrl: string | null;
   heroImageUrl: string | null;
   links: ProfileLink[];
@@ -41,6 +42,7 @@ export const DEFAULT_LOCAL_PROFILE_PREFERENCES: LocalProfilePreferences = {
 
 export const DEFAULT_LOCAL_ARTIST_PROFILE: LocalArtistProfile = {
   artistName: "",
+  bio: "",
   avatarImageUrl: null,
   heroImageUrl: null,
   links: [],
@@ -104,6 +106,7 @@ function normalizeArtistProfile(value: unknown): LocalArtistProfile {
   const input = value as Record<string, unknown>;
   return {
     artistName: typeof input.artistName === "string" ? input.artistName.trim() : "",
+    bio: typeof input.bio === "string" ? input.bio.trim() : "",
     avatarImageUrl:
       typeof input.avatarImageUrl === "string" && input.avatarImageUrl.trim()
         ? input.avatarImageUrl.trim()

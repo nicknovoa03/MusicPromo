@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   ScrollView,
   TextInput,
+  InputAccessoryView,
   Image,
   Linking,
   useWindowDimensions,
@@ -212,15 +213,13 @@ export default function ProfileScreen() {
   const isDarkMode = colorScheme === "dark";
 
   // Dynamic colors based on color scheme
-  const profileBackgroundColor = isDarkMode ? "#03050A" : colors.light.background;
-  const profileBannerFallbackColor = isDarkMode ? "#0F172D" : colors.light.surface;
-  const profileTextColor = isDarkMode ? "#F8FAFF" : colors.light.text;
-  const profileTextSecondaryColor = isDarkMode ? "#D6DEEF" : colors.light.textSecondary;
-  const profileBorderColor = isDarkMode
-    ? "rgba(184, 200, 236, 0.15)"
-    : colors.light.border;
-  const profileAvatarFrameColor = isDarkMode ? "rgba(222, 233, 255, 0.8)" : colors.light.surface;
-  const profileAvatarBgColor = isDarkMode ? "#16203A" : colors.light.background;
+  const profileBackgroundColor = isDarkMode ? colors.dark.background : colors.light.background;
+  const profileBannerFallbackColor = isDarkMode ? colors.dark.surface : colors.light.surface;
+  const profileTextColor = isDarkMode ? colors.dark.text : colors.light.text;
+  const profileTextSecondaryColor = isDarkMode ? colors.dark.textSecondary : colors.light.textSecondary;
+  const profileBorderColor = isDarkMode ? colors.dark.border : colors.light.border;
+  const profileAvatarFrameColor = isDarkMode ? colors.dark.surfaceMuted : colors.light.surface;
+  const profileAvatarBgColor = isDarkMode ? colors.dark.surfaceMuted : colors.light.background;
   const profileEditButtonBgColor = isDarkMode ? "#EFF3FF" : "#000000";
   const profileEditButtonTextColor = isDarkMode ? "#11152A" : "#FFFFFF";
 
@@ -252,6 +251,8 @@ export default function ProfileScreen() {
   const [isSharingProfile, setIsSharingProfile] = useState(false);
   const shareCardRef = useRef<ViewShot>(null);
   const shareCardBannerReadyRef = useRef<(() => void) | null>(null);
+  const bioInputRef = useRef<TextInput>(null);
+  const [isBioFocused, setIsBioFocused] = useState(false);
 
   const [localArtistProfile, setLocalArtistProfileState] = useState(
     DEFAULT_LOCAL_ARTIST_PROFILE,
@@ -260,6 +261,7 @@ export default function ProfileScreen() {
     useState(false);
 
   const [artistNameDraft, setArtistNameDraft] = useState("");
+  const [bioDraft, setBioDraft] = useState("");
   const [heroImageUrlDraft, setHeroImageUrlDraft] = useState<string | null>(null);
   const [avatarImageUrlDraft, setAvatarImageUrlDraft] = useState<string | null>(
     null,
@@ -313,6 +315,10 @@ export default function ProfileScreen() {
     ? localArtistProfile.heroImageUrl
     : convexUser?.heroImageUrl ?? localArtistProfile.heroImageUrl ?? null;
 
+  const sourceBio = usesLocalProfile
+    ? localArtistProfile.bio
+    : convexUser?.bio ?? localArtistProfile.bio ?? "";
+
   const sourceLinks = useMemo(
     () =>
       normalizeDraftLinks(
@@ -326,10 +332,11 @@ export default function ProfileScreen() {
   useEffect(() => {
     if (isProfileLoading) return;
     setArtistNameDraft(sourceArtistName);
+    setBioDraft(sourceBio);
     setHeroImageUrlDraft(sourceHeroImageUrl);
     setAvatarImageUrlDraft(sourceAvatarImageUrl);
     setLinksDraft(sourceLinks);
-  }, [isProfileLoading, sourceArtistName, sourceHeroImageUrl, sourceAvatarImageUrl, sourceLinks]);
+  }, [isProfileLoading, sourceArtistName, sourceBio, sourceHeroImageUrl, sourceAvatarImageUrl, sourceLinks]);
 
   const track = useCallback(
     (event: EventName, props?: Record<string, string>) => {
@@ -479,8 +486,10 @@ export default function ProfileScreen() {
           }
         }
 
+        const bio = bioDraft.trim();
         const cached = await setLocalArtistProfile({
           artistName,
+          bio,
           heroImageUrl,
           avatarImageUrl,
           ...(includeLinks ? { links: normalizedLinks } : {}),
@@ -493,6 +502,7 @@ export default function ProfileScreen() {
           await ensureUserRecord(convexUser);
           await updateProfile({
             artistName: artistName || null,
+            bio: bio || null,
             heroImageUrl,
             avatarImageUrl,
             ...(includeLinks ? { links: normalizedLinks } : {}),
@@ -520,6 +530,7 @@ export default function ProfileScreen() {
     },
     [
       artistNameDraft,
+      bioDraft,
       heroImageUrlDraft,
       avatarImageUrlDraft,
       convexUser,
@@ -778,11 +789,16 @@ export default function ProfileScreen() {
 
       setIsShareCardVisible(true);
 
-      // Wait for the banner image to fully load before capturing
-      await new Promise<void>((resolve) => {
-        shareCardBannerReadyRef.current = resolve;
-        setTimeout(resolve, 2000); // fallback in case onLoad never fires
-      });
+      // Wait for the banner image to load AND a minimum delay for project thumbnails.
+      // Local file URIs load nearly instantly, so the minimum delay ensures thumbnail
+      // images inside ProjectThumbnail have time to render before capture.
+      await Promise.all([
+        new Promise<void>((resolve) => {
+          shareCardBannerReadyRef.current = resolve;
+          setTimeout(resolve, 2000); // fallback in case onLoad never fires
+        }),
+        sleep(800),
+      ]);
       shareCardBannerReadyRef.current = null;
 
       const uri = await shareCardRef.current?.capture?.();
@@ -956,7 +972,7 @@ export default function ProfileScreen() {
                           accessibilityRole="button"
                         >
                           {isPickingAvatar ? (
-                            <ActivityIndicator size="small" color="#4A5BEA" />
+                            <ActivityIndicator size="small" color={isDarkMode ? colors.dark.text : colors.light.text} />
                           ) : (
                             <Text style={styles.profileSettingsMediaCtaText}>Edit avatar</Text>
                           )}
@@ -1000,7 +1016,7 @@ export default function ProfileScreen() {
                           accessibilityRole="button"
                         >
                           {isPickingHero ? (
-                            <ActivityIndicator size="small" color="#4A5BEA" />
+                            <ActivityIndicator size="small" color={isDarkMode ? colors.dark.text : colors.light.text} />
                           ) : (
                             <Text style={styles.profileSettingsMediaCtaText}>Edit banner</Text>
                           )}
@@ -1030,11 +1046,31 @@ export default function ProfileScreen() {
                         returnKeyType="done"
                       />
                     </View>
+                    <View style={[styles.profileSettingsRow, styles.profileSettingsBioRow]}>
+                      <Text style={styles.profileSettingsRowLabel}>Bio</Text>
+                      <TextInput
+                        ref={bioInputRef}
+                        value={bioDraft}
+                        onChangeText={setBioDraft}
+                        placeholder="Tell people about yourself"
+                        placeholderTextColor={isDarkMode ? "#6B778F" : "#A7AFC0"}
+                        editable={!profileSettingsDisabled}
+                        onBlur={() => {
+                          void saveProfile({ includeLinks: false });
+                        }}
+                        style={[styles.profileSettingsNameInput, styles.profileSettingsBioInput]}
+                        autoCapitalize="sentences"
+                        autoCorrect
+                        multiline
+                        maxLength={200}
+                        inputAccessoryViewID="bioInputAccessory"
+                      />
+                    </View>
                   </View>
 
-                  <View style={[styles.accountSection, { backgroundColor: isDarkMode ? "#11192C" : colors.light.surface, borderColor: isDarkMode ? "rgba(187, 203, 236, 0.15)" : colors.light.border }]}>
+                  <View style={[styles.accountSection, { backgroundColor: isDarkMode ? colors.dark.surface : colors.light.surface, borderColor: isDarkMode ? colors.dark.border : colors.light.border }]}>
                     <Text style={[styles.sectionEyebrow, { color: profileTextSecondaryColor }]}>Profile</Text>
-                    <Text style={[styles.sectionTitle, { color: profileTextColor }]}>Social Links</Text>
+                    <Text style={[styles.sectionTitle, { color: profileTextColor }]}>Social Platforms</Text>
 
                     {linksDraft.map((link) => (
                       <View key={link.platform} style={styles.profileSettingsRow}>
@@ -1058,7 +1094,7 @@ export default function ProfileScreen() {
                           accessibilityLabel={`Remove ${PLATFORM_LABELS[link.platform]}`}
                           accessibilityRole="button"
                         >
-                          <Ionicons name="close-circle" size={18} color={isDarkMode ? "#4A5266" : "#A7AFC0"} />
+                          <Ionicons name="close-circle" size={18} color={isDarkMode ? colors.dark.textSecondary : colors.light.textSecondary} />
                         </Pressable>
                       </View>
                     ))}
@@ -1071,7 +1107,7 @@ export default function ProfileScreen() {
                             onPress={() => handleAddLink(platform)}
                             style={({ pressed }) => [
                               styles.linkAddChip,
-                              { borderColor: profileBorderColor, backgroundColor: isDarkMode ? "#0D1627" : "#F0F2F7" },
+                              { borderColor: profileBorderColor, backgroundColor: isDarkMode ? colors.dark.surface : "#F0F2F7" },
                               pressed && styles.optionChipPressed,
                             ]}
                             accessibilityLabel={`Add ${PLATFORM_LABELS[platform]}`}
@@ -1085,14 +1121,14 @@ export default function ProfileScreen() {
                     ) : null}
                   </View>
 
-                  <View style={[styles.accountSection, { backgroundColor: isDarkMode ? "#11192C" : colors.light.surface, borderColor: isDarkMode ? "rgba(187, 203, 236, 0.15)" : colors.light.border }]}>
+                  <View style={[styles.accountSection, { backgroundColor: isDarkMode ? colors.dark.surface : colors.light.surface, borderColor: isDarkMode ? colors.dark.border : colors.light.border }]}>
                     <Text style={[styles.sectionEyebrow, { color: profileTextSecondaryColor }]}>Account Actions</Text>
                     <Text style={[styles.sectionTitle, { color: profileTextColor }]}>Security & Session</Text>
 
                     <Pressable
                       style={({ pressed }) => [
                         styles.actionRow,
-                        { backgroundColor: isDarkMode ? "#0F1724" : colors.light.surface, borderColor: profileBorderColor },
+                        { backgroundColor: isDarkMode ? colors.dark.surface : colors.light.surface, borderColor: profileBorderColor },
                         pressed && !actionsDisabled && styles.actionRowPressed,
                       ]}
                       onPress={handleSignOut}
@@ -1116,7 +1152,7 @@ export default function ProfileScreen() {
                     <Pressable
                       style={({ pressed }) => [
                         styles.actionRow,
-                        { backgroundColor: isDarkMode ? "#0F1724" : colors.light.surface, borderColor: profileBorderColor },
+                        { backgroundColor: isDarkMode ? colors.dark.surface : colors.light.surface, borderColor: profileBorderColor },
                         pressed && !actionsDisabled && styles.deleteRowPressed,
                       ]}
                       onPress={handleDeleteAccount}
@@ -1135,9 +1171,6 @@ export default function ProfileScreen() {
                       )}
                     </Pressable>
 
-                    <Text style={[styles.warningText, { color: profileTextSecondaryColor }]}>
-                      Deleting deactivates your account for v1 while keeping records recoverable.
-                    </Text>
                   </View>
                 </ScrollView>
               </SafeAreaView>
@@ -1154,7 +1187,7 @@ export default function ProfileScreen() {
           <View style={[styles.heroBanner, { height: heroBannerHeight }]}>
             <Image
               source={heroImageUrlDraft ? { uri: heroImageUrlDraft } : require("../../assets/branding/MusicPromo-Banner.png")}
-              style={styles.heroBannerImage}
+              style={[styles.heroBannerImage, { width: windowWidth + 20 }]}
               resizeMode="cover"
               onError={() => setHeroImageUrlDraft(null)}
             />
@@ -1250,11 +1283,17 @@ export default function ProfileScreen() {
               >
                 {heroArtistName}
               </Text>
+              {bioDraft.trim() ? (
+                <Text style={[styles.heroBioText, { color: profileTextSecondaryColor }]}>
+                  {bioDraft.trim()}
+                </Text>
+              ) : null}
             </View>
           </View>
         </View>
 
         <View style={[styles.mainContent, { backgroundColor: profileBackgroundColor }]}>
+          <View style={[styles.sectionDivider, { borderColor: profileBorderColor }]} />
           {errorText ? (
             <View style={styles.errorPanel}>
               <Ionicons name="alert-circle-outline" size={16} color={colors.accent.error} />
@@ -1263,15 +1302,13 @@ export default function ProfileScreen() {
           ) : null}
 
           {isProfileLoading ? (
-            <View style={[styles.loadingCard, { backgroundColor: isDarkMode ? "#121A2E" : colors.light.surface, borderColor: profileBorderColor }]}>
+            <View style={[styles.loadingCard, { backgroundColor: isDarkMode ? colors.dark.surface : colors.light.surface, borderColor: profileBorderColor }]}>
               <ActivityIndicator color={profileTextColor} />
               <Text style={[styles.loadingText, { color: profileTextSecondaryColor }]}>Loading profile...</Text>
             </View>
           ) : null}
 
           {!isProfileLoading && !isGuest ? (() => {
-            const totalPromos = projects?.length ?? 0;
-            const totalExported = projects?.filter(p => p.status === "exported").length ?? 0;
             const activeLinks = sourceLinks.filter(l => l.url.trim().length > 0);
             const recentPromos = (projects ?? []).slice(0, 5);
 
@@ -1301,21 +1338,9 @@ export default function ProfileScreen() {
 
             return (
               <>
-                <View style={[styles.statsRow, { backgroundColor: isDarkMode ? "#0E1628" : colors.light.surface, borderColor: profileBorderColor }]}>
-                  <View style={styles.statItem}>
-                    <Text style={[styles.statValue, { color: profileTextColor }]}>{totalPromos}</Text>
-                    <Text style={[styles.statLabel, { color: profileTextSecondaryColor }]}>Promos</Text>
-                  </View>
-                  <View style={[styles.statDivider, { backgroundColor: profileBorderColor }]} />
-                  <View style={styles.statItem}>
-                    <Text style={[styles.statValue, { color: profileTextColor }]}>{totalExported}</Text>
-                    <Text style={[styles.statLabel, { color: profileTextSecondaryColor }]}>Exported</Text>
-                  </View>
-                </View>
-
                 {activeLinks.length > 0 ? (
-                  <View style={[styles.linksCard, { backgroundColor: isDarkMode ? "#0E1628" : colors.light.surface, borderColor: profileBorderColor }]}>
-                    <Text style={[styles.sectionEyebrow, { color: profileTextSecondaryColor }]}>Links</Text>
+                  <View style={[styles.linksCard, { backgroundColor: isDarkMode ? colors.dark.surface : colors.light.surface, borderColor: profileBorderColor }]}>
+                    <Text style={[styles.sectionEyebrow, { color: profileTextSecondaryColor }]}>Social Platforms</Text>
                     <View style={styles.linksRow}>
                       {activeLinks.map(link => (
                         <Pressable
@@ -1335,7 +1360,7 @@ export default function ProfileScreen() {
 
                 {recentPromos.length > 0 ? (
                   <View style={styles.recentSection}>
-                    <Text style={[styles.sectionEyebrow, { color: profileTextSecondaryColor }]}>Recent Promos</Text>
+                    <Text style={[styles.sectionTitle, { color: profileTextColor }]}>Music Promos</Text>
                     <View style={styles.thumbnailGrid}>
                       {recentPromos.map(project => {
                         const title = project.title ?? "Untitled";
@@ -1345,7 +1370,7 @@ export default function ProfileScreen() {
                               project={project}
                               title={title}
                               surfaceColor="transparent"
-                              fallbackIconColor={isDarkMode ? "#4A5266" : "#C0C8D8"}
+                              fallbackIconColor={isDarkMode ? colors.dark.textSecondary : colors.light.textSecondary}
                             />
                           </View>
                         );
@@ -1358,7 +1383,7 @@ export default function ProfileScreen() {
           })() : null}
 
           {!isProfileLoading && isGuest ? (
-            <View style={[styles.guestCard, { backgroundColor: isDarkMode ? "#0E1628" : colors.light.surface, borderColor: profileBorderColor }]}>
+            <View style={[styles.guestCard, { backgroundColor: isDarkMode ? colors.dark.surface : colors.light.surface, borderColor: profileBorderColor }]}>
               <View style={styles.guestIconWrap}>
                 <Ionicons name="person-circle-outline" size={48} color={profileTextColor} />
               </View>
@@ -1408,55 +1433,84 @@ export default function ProfileScreen() {
                 <View style={styles.shareCardBannerGradient} />
               </View>
 
-              {/* Avatar overlapping banner */}
-              <View style={styles.shareCardAvatarWrap}>
-                <Image
-                  source={sourceAvatarImageUrl ? { uri: sourceAvatarImageUrl } : require("../../assets/defaults/MusicPromo-DefaultAvatar.jpg")}
-                  style={styles.shareCardAvatarImage}
-                />
+              {/* Avatar + artist name row */}
+              <View style={styles.shareCardNameRow}>
+                <View style={styles.shareCardAvatarWrap}>
+                  <Image
+                    source={sourceAvatarImageUrl ? { uri: sourceAvatarImageUrl } : require("../../assets/defaults/MusicPromo-DefaultAvatar.jpg")}
+                    style={styles.shareCardAvatarImage}
+                  />
+                </View>
+                <Text style={styles.shareCardName} numberOfLines={1}>{sourceArtistName || displayName}</Text>
               </View>
 
-              {/* Name below banner */}
-              <Text style={styles.shareCardName} numberOfLines={1}>{sourceArtistName || displayName}</Text>
+              {/* Bio */}
+              {sourceBio ? (
+                <Text style={styles.shareCardBio} numberOfLines={3}>{sourceBio}</Text>
+              ) : null}
 
-              {/* Social links: icon + handle */}
-              {sourceLinks.length > 0 && (
-                <View style={styles.shareCardLinks}>
-                  {sourceLinks.slice(0, 5).map((link) => {
-                    const SHARE_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
-                      spotify: "musical-notes",
-                      soundcloud: "cloud",
-                      "apple-music": "musical-note",
-                      youtube: "logo-youtube",
-                      instagram: "logo-instagram",
-                      tiktok: "logo-tiktok",
-                      x: "logo-twitter",
-                      website: "globe-outline",
-                    };
-                    const handle = extractHandle(link.platform as ProfileLinkPlatform, link.url);
-                    return (
-                      <View key={link.platform} style={styles.shareCardLinkRow}>
-                        <Ionicons name={SHARE_ICONS[link.platform] ?? "link-outline"} size={14} color="rgba(255,255,255,0.7)" />
-                        <Text style={styles.shareCardLinkText} numberOfLines={1}>{handle || PLATFORM_LABELS[link.platform as ProfileLinkPlatform]}</Text>
-                      </View>
-                    );
-                  })}
+              {/* Two-column body: left = socials, right = featured promos */}
+              <View style={styles.shareCardBody}>
+                {/* Left column: socials */}
+                <View style={styles.shareCardLeft}>
+                  {sourceLinks.length > 0 && (
+                    <View style={styles.shareCardLinks}>
+                      <Text style={styles.shareCardFeaturedLabel}>Socials</Text>
+                      {sourceLinks.slice(0, 4).map((link) => {
+                        const SHARE_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
+                          spotify: "musical-notes",
+                          soundcloud: "cloud",
+                          "apple-music": "musical-note",
+                          youtube: "logo-youtube",
+                          instagram: "logo-instagram",
+                          tiktok: "logo-tiktok",
+                          x: "logo-twitter",
+                          website: "globe-outline",
+                        };
+                        const handle = extractHandle(link.platform as ProfileLinkPlatform, link.url);
+                        return (
+                          <View key={link.platform} style={styles.shareCardLinkRow}>
+                            <Ionicons name={SHARE_ICONS[link.platform] ?? "link-outline"} size={14} color="rgba(255,255,255,0.7)" />
+                            <Text style={styles.shareCardLinkText} numberOfLines={1}>{handle || PLATFORM_LABELS[link.platform as ProfileLinkPlatform]}</Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
                 </View>
-              )}
+
+                {/* Right column: featured promos */}
+                <View style={styles.shareCardRight}>
+                  {(projects ?? []).filter(p => p.audioName ?? p.title).length > 0 && (
+                    <>
+                      <Text style={styles.shareCardFeaturedLabel}>Songs</Text>
+                      {(projects ?? []).filter(p => p.audioName ?? p.title).slice(0, 3).map((project) => (
+                        <View key={String(project._id)} style={styles.shareCardSongRow}>
+                          <Ionicons name="musical-note" size={11} color="rgba(255,255,255,0.4)" />
+                          <Text style={styles.shareCardSongTitle} numberOfLines={1}>{project.audioName ?? project.title}</Text>
+                        </View>
+                      ))}
+                    </>
+                  )}
+                </View>
+              </View>
 
               {/* 3 promo thumbnails */}
               {(projects ?? []).length > 0 && (
-                <View style={styles.shareCardGrid}>
-                  {(projects ?? []).slice(0, 3).map(project => (
-                    <View key={String(project._id)} style={styles.shareCardThumb}>
-                      <ProjectThumbnail
-                        project={project}
-                        title={project.title ?? ""}
-                        surfaceColor="transparent"
-                        fallbackIconColor="#4A5266"
-                      />
-                    </View>
-                  ))}
+                <View style={styles.shareCardGridSection}>
+                  <Text style={styles.shareCardFeaturedLabel}>Music Promos</Text>
+                  <View style={styles.shareCardGrid}>
+                    {(projects ?? []).slice(0, 3).map(project => (
+                      <View key={String(project._id)} style={styles.shareCardThumb}>
+                        <ProjectThumbnail
+                          project={project}
+                          title={project.title ?? ""}
+                          surfaceColor="transparent"
+                          fallbackIconColor={isDarkMode ? colors.dark.textSecondary : colors.light.textSecondary}
+                        />
+                      </View>
+                    ))}
+                  </View>
                 </View>
               )}
 
@@ -1478,7 +1532,7 @@ export default function ProfileScreen() {
 const createStyles = (isDarkMode: boolean) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: isDarkMode ? "#03050A" : colors.light.background,
+    backgroundColor: isDarkMode ? colors.dark.background : colors.light.background,
   },
   content: {
     paddingTop: 0,
@@ -1490,16 +1544,16 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
   },
   profileSettingsScreen: {
     flex: 1,
-    backgroundColor: isDarkMode ? "#0A0F1C" : "#F4F5F7",
+    backgroundColor: isDarkMode ? colors.dark.background : colors.light.background,
   },
   profileSettingsAnimatedLayer: {
     flex: 1,
-    backgroundColor: isDarkMode ? "#0A0F1C" : "#F4F5F7",
+    backgroundColor: isDarkMode ? colors.dark.background : colors.light.background,
   },
   profileSettingsHeader: {
     minHeight: 58,
     borderBottomWidth: 1,
-    borderBottomColor: isDarkMode ? "rgba(187, 203, 236, 0.15)" : "#E6E8EE",
+    borderBottomColor: isDarkMode ? colors.dark.border : colors.light.border,
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: spacing.sm,
@@ -1513,11 +1567,11 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
     justifyContent: "center",
   },
   profileSettingsBackButtonPressed: {
-    backgroundColor: "#E8EBF2",
+    backgroundColor: isDarkMode ? colors.dark.surfaceMuted : colors.light.surfaceMuted,
   },
   profileSettingsHeaderTitle: {
     ...typography.h2,
-    color: isDarkMode ? "#F4F7FF" : "#232938",
+    color: isDarkMode ? colors.dark.text : colors.light.text,
     textAlign: "center",
     position: "absolute",
     left: 56,
@@ -1528,7 +1582,7 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
   },
   profileSettingsAvatarSection: {
     borderBottomWidth: 1,
-    borderBottomColor: isDarkMode ? "rgba(187, 203, 236, 0.15)" : "#E6E8EE",
+    borderBottomColor: isDarkMode ? colors.dark.border : colors.light.border,
     paddingTop: spacing.lg,
     paddingBottom: spacing.md,
     paddingHorizontal: spacing.lg,
@@ -1550,9 +1604,9 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
     width: 96,
     height: 96,
     borderRadius: radius.full,
-    backgroundColor: "#DDE2EC",
+    backgroundColor: isDarkMode ? colors.dark.surfaceMuted : colors.light.surfaceMuted,
     borderWidth: 1,
-    borderColor: "#D4DAE8",
+    borderColor: isDarkMode ? colors.dark.border : colors.light.border,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
@@ -1563,7 +1617,7 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
   },
   profileSettingsMediaLabel: {
     ...typography.caption,
-    color: "#4A5266",
+    color: isDarkMode ? colors.dark.textSecondary : colors.light.textSecondary,
     fontWeight: "700",
     letterSpacing: 0.5,
     textTransform: "uppercase",
@@ -1578,26 +1632,50 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
   },
   profileSettingsMediaCtaText: {
     ...typography.body,
-    color: "#4A5BEA",
+    color: isDarkMode ? colors.dark.text : colors.light.text,
     fontWeight: "600",
     textAlign: "center",
   },
   profileSettingsCard: {
-    backgroundColor: isDarkMode ? "#0A0F1C" : "#F4F5F7",
+    backgroundColor: isDarkMode ? colors.dark.background : colors.light.background,
   },
   profileSettingsRow: {
     minHeight: 56,
     borderBottomWidth: 1,
-    borderBottomColor: isDarkMode ? "rgba(187, 203, 236, 0.15)" : "#E6E8EE",
+    borderBottomColor: isDarkMode ? colors.dark.border : colors.light.border,
     paddingHorizontal: spacing.lg,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: spacing.md,
   },
+  profileSettingsBioRow: {
+    minHeight: 80,
+    alignItems: "flex-start",
+    paddingVertical: spacing.sm,
+  },
+  profileSettingsBioInputCol: {
+    flex: 1,
+    gap: 4,
+  },
+  profileSettingsDoneBtnWrap: {
+    flexShrink: 0,
+    alignSelf: "flex-start",
+    paddingTop: 2,
+  },
+  profileSettingsDoneBtn: {
+    ...typography.caption,
+    fontWeight: "600",
+  },
+  profileSettingsBioInput: {
+    textAlign: "right",
+    textAlignVertical: "top",
+    minHeight: 60,
+  },
   profileSettingsRowLabel: {
     ...typography.body,
-    color: isDarkMode ? "#CBD3E8" : "#303645",
+    color: isDarkMode ? colors.dark.text : colors.light.text,
+    width: 52,
     flexShrink: 0,
   },
   linkInputRow: {
@@ -1644,7 +1722,7 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
   },
   profileSettingsNameInput: {
     ...typography.body,
-    color: isDarkMode ? "#F4F7FF" : "#1F2431",
+    color: isDarkMode ? colors.dark.text : colors.light.text,
     textAlign: "right",
     flex: 1,
     minHeight: 36,
@@ -1666,7 +1744,7 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
   },
   heroBannerFallback: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "#0F172D",
+    backgroundColor: colors.dark.surface,
   },
   heroEditProfileActionRow: {
     marginLeft: 156,
@@ -1703,7 +1781,7 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
     paddingTop: 90,
     paddingBottom: spacing.xs,
     borderTopWidth: 1,
-    borderTopColor: "rgba(184, 200, 236, 0.15)",
+    borderTopColor: colors.dark.border,
   },
   heroAvatarPressable: {
     position: "absolute",
@@ -1717,7 +1795,7 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
     height: 140,
     borderRadius: 72,
     padding: 4,
-    backgroundColor: "rgba(222, 233, 255, 0.8)",
+    backgroundColor: colors.dark.surfaceMuted,
     shadowColor: "#000000",
     shadowOpacity: 0.42,
     shadowRadius: 24,
@@ -1729,7 +1807,7 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
     width: "100%",
     height: "100%",
     borderRadius: 68,
-    backgroundColor: "#16203A",
+    backgroundColor: colors.dark.surfaceMuted,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
@@ -1752,8 +1830,8 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
     backgroundColor: "rgba(18, 26, 44, 0.82)",
   },
   heroIdentityTextWrap: {
-    gap: spacing.xs,
-    paddingBottom: 0,
+    gap: spacing.sm,
+    paddingBottom: spacing.md,
   },
   heroArtistName: {
     ...typography.h1,
@@ -1766,9 +1844,21 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
   heroArtistNamePlaceholder: {
     color: "#D6DEEF",
   },
+  heroBioText: {
+    ...typography.body,
+    fontSize: 15,
+    lineHeight: 22,
+    maxWidth: "92%",
+    opacity: 0.82,
+  },
   mainContent: {
     paddingHorizontal: spacing.lg,
     paddingTop: 0,
+  },
+  sectionDivider: {
+    borderTopWidth: 1,
+    marginBottom: spacing.md,
+    marginTop: 0,
   },
   errorPanel: {
     flexDirection: "row",
@@ -1787,28 +1877,16 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
     color: isDarkMode ? "#FFB8BE" : colors.accent.error,
     flex: 1,
   },
-  statsRow: {
-    flexDirection: "row",
+  bioCard: {
     borderRadius: radius.lg,
     borderWidth: 1,
     marginBottom: spacing.md,
-    overflow: "hidden",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
-  statItem: {
-    flex: 1,
-    alignItems: "center",
-    paddingVertical: spacing.md,
-  },
-  statValue: {
-    ...typography.h2,
-  },
-  statLabel: {
-    ...typography.caption,
-    marginTop: 2,
-  },
-  statDivider: {
-    width: 1,
-    marginVertical: spacing.md,
+  bioText: {
+    ...typography.body,
+    lineHeight: 22,
   },
   linksCard: {
     borderRadius: radius.lg,
@@ -1889,49 +1967,98 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
     right: 0,
     height: 220,
   },
+  shareCardBody: {
+    flexDirection: "row",
+    paddingBottom: 8,
+  },
+  shareCardLeft: {
+    flex: 1,
+    paddingTop: 16,
+  },
+  shareCardRight: {
+    width: 175,
+    paddingTop: 16,
+    marginRight: 30,
+    gap: 10,
+  },
   shareCardAvatarWrap: {
-    width: 110,
-    height: 110,
-    borderRadius: 55,
+    width: 90,
+    height: 90,
+    borderRadius: 45,
     overflow: "hidden",
-    borderWidth: 4,
-    borderColor: "#080C18",
-    backgroundColor: "#16203A",
-    marginTop: -55,
-    marginLeft: 20,
+    borderWidth: 3,
+    borderColor: colors.dark.background,
+    backgroundColor: colors.dark.surfaceMuted,
+    marginTop: -45,
+    marginLeft: 16,
   },
   shareCardAvatarImage: {
     width: "100%",
     height: "100%",
   },
-  shareCardName: {
-    fontSize: 20,
-    fontWeight: "800",
-    color: "#F8FAFF",
-    letterSpacing: -0.4,
-    paddingHorizontal: 20,
+  shareCardNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingRight: 16,
     paddingTop: 10,
   },
+  shareCardName: {
+    flex: 1,
+    fontSize: 34,
+    fontWeight: "700",
+    color: "#F8FAFF",
+    letterSpacing: 0.3,
+    paddingLeft: 24,
+    paddingBottom: 4,
+  },
+  shareCardBio: {
+    fontSize: 12,
+    color: "rgba(255,255,255,0.55)",
+    lineHeight: 17,
+    paddingHorizontal: 16,
+    paddingTop: 6,
+  },
   shareCardLinks: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    gap: 10,
+    paddingHorizontal: 16,
+    gap: 8,
   },
   shareCardLinkRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 6,
   },
   shareCardLinkText: {
-    fontSize: 13,
+    fontSize: 12,
     color: "rgba(255,255,255,0.65)",
     fontWeight: "500",
+  },
+  shareCardFeaturedLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "rgba(255,255,255,0.35)",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    marginBottom: 2,
+  },
+  shareCardSongRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  shareCardSongTitle: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "rgba(255,255,255,0.75)",
+    flex: 1,
+  },
+  shareCardGridSection: {
+    paddingHorizontal: 16,
+    paddingTop: 20,
+    gap: 8,
   },
   shareCardGrid: {
     flexDirection: "row",
     gap: 4,
-    paddingHorizontal: 20,
-    paddingTop: 20,
   },
   shareCardThumb: {
     flex: 1,
@@ -1997,9 +2124,9 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
   loadingCard: {
     minHeight: 120,
     borderRadius: radius.lg,
-    backgroundColor: isDarkMode ? "#121A2E" : colors.light.surface,
+    backgroundColor: isDarkMode ? colors.dark.surface : colors.light.surface,
     borderWidth: 1,
-    borderColor: isDarkMode ? "rgba(187, 203, 236, 0.15)" : colors.light.border,
+    borderColor: isDarkMode ? colors.dark.border : colors.light.border,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
@@ -2012,9 +2139,9 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
   },
   sectionCard: {
     borderRadius: radius.lg,
-    backgroundColor: isDarkMode ? "#11192C" : colors.light.surface,
+    backgroundColor: isDarkMode ? colors.dark.surface : colors.light.surface,
     borderWidth: 1,
-    borderColor: isDarkMode ? "rgba(187, 203, 236, 0.15)" : colors.light.border,
+    borderColor: isDarkMode ? colors.dark.border : colors.light.border,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
     marginBottom: spacing.md,
@@ -2066,7 +2193,7 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: isDarkMode ? "rgba(205, 218, 249, 0.2)" : colors.light.border,
-    backgroundColor: isDarkMode ? "#0F172A" : colors.light.surface,
+    backgroundColor: isDarkMode ? colors.dark.surface : colors.light.surface,
     padding: spacing.sm,
     marginTop: spacing.xs,
     gap: spacing.xs,
@@ -2124,9 +2251,9 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
   },
   accountSection: {
     borderRadius: radius.lg,
-    backgroundColor: isDarkMode ? "#11192C" : colors.light.surface,
+    backgroundColor: isDarkMode ? colors.dark.surface : colors.light.surface,
     borderWidth: 1,
-    borderColor: isDarkMode ? "rgba(187, 203, 236, 0.15)" : colors.light.border,
+    borderColor: isDarkMode ? colors.dark.border : colors.light.border,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
     marginHorizontal: spacing.lg,
@@ -2139,7 +2266,7 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
-    backgroundColor: isDarkMode ? "#0D162A" : colors.light.surface,
+    backgroundColor: isDarkMode ? colors.dark.surface : colors.light.surface,
     borderWidth: 1,
     borderColor: isDarkMode ? "rgba(205, 218, 249, 0.2)" : colors.light.border,
     marginBottom: spacing.sm,

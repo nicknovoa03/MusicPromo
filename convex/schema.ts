@@ -21,6 +21,7 @@ export default defineSchema({
     avatarUrl: v.optional(v.string()),
     avatarImageUrl: v.optional(v.string()),
     heroImageUrl: v.optional(v.string()),
+    bio: v.optional(v.string()),
     links: v.optional(
       v.array(
         v.object({

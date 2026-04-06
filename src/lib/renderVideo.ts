@@ -579,16 +579,6 @@ async function getBetaWatermarkOverlayInputUri(): Promise<string> {
 
     const downloadUri = `${LegacyFileSystem.cacheDirectory}musicpromo-logo-overlay.png`;
     try {
-      const existingInfo = await LegacyFileSystem.getInfoAsync(downloadUri);
-      if (existingInfo.exists) {
-        betaWatermarkOverlayInputUriCache = downloadUri;
-        return downloadUri;
-      }
-    } catch {
-      // Ignore file metadata errors and continue to download.
-    }
-
-    try {
       await LegacyFileSystem.downloadAsync(assetUri, downloadUri);
     } catch {
       throw new Error(

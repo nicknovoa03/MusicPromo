@@ -50,6 +50,13 @@ const ONBOARDING_SLIDES: OnboardingSlide[] = [
     icon: "musical-notes-outline",
   },
   {
+    id: "profile",
+    eyebrow: "Your Artist Card",
+    title: "Share your profile as a single image",
+    body: "Your profile page exports as a shareable card — artist name, socials, and your latest music promos, all in one shot.",
+    icon: "person-circle-outline",
+  },
+  {
     id: "ready",
     eyebrow: "You Are Set",
     title: "Your first promo is one tap away",
