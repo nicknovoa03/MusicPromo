@@ -17,6 +17,7 @@ import {
   Animated,
   Easing,
   PanResponder,
+  PixelRatio,
 } from "react-native";
 import {
   SafeAreaProvider,
@@ -250,6 +251,7 @@ export default function ProfileScreen() {
   const [isShareCardVisible, setIsShareCardVisible] = useState(false);
   const [isSharingProfile, setIsSharingProfile] = useState(false);
   const shareCardRef = useRef<ViewShot>(null);
+  const shareCardBannerReadyRef = useRef<(() => void) | null>(null);
 
   const [localArtistProfile, setLocalArtistProfileState] = useState(
     DEFAULT_LOCAL_ARTIST_PROFILE,
@@ -708,11 +710,7 @@ export default function ProfileScreen() {
     const used = new Set(linksDraft.map((link) => link.platform));
     return PROFILE_LINK_PLATFORMS.filter((platform) => !used.has(platform));
   }, [linksDraft]);
-  const heroHeight = Math.max(380, Math.min(Math.round(windowHeight * 0.5), 560));
-  const heroBannerHeight = Math.max(
-    240,
-    Math.min(Math.round(windowWidth * 0.72), Math.round(heroHeight * 0.76)),
-  );
+  const heroBannerHeight = Math.round(windowWidth * (9 / 16));
   const heroArtistName = artistNameDraft.trim() || "";
   const actionsDisabled = isSigningOut || isDeleting;
   const profileInputsDisabled =
@@ -779,8 +777,13 @@ export default function ProfileScreen() {
       await Promise.all(prefetches);
 
       setIsShareCardVisible(true);
-      // Give React time to render the off-screen card with loaded images
-      await sleep(800);
+
+      // Wait for the banner image to fully load before capturing
+      await new Promise<void>((resolve) => {
+        shareCardBannerReadyRef.current = resolve;
+        setTimeout(resolve, 2000); // fallback in case onLoad never fires
+      });
+      shareCardBannerReadyRef.current = null;
 
       const uri = await shareCardRef.current?.capture?.();
       if (!uri) return;
@@ -936,7 +939,7 @@ export default function ProfileScreen() {
                               style={styles.profileSettingsMediaImage}
                             />
                           ) : (
-                            <Image source={require("../../assets/MusicPromo-DefaultAvatar.jpg")} style={styles.profileSettingsMediaImage} />
+                            <Image source={require("../../assets/defaults/MusicPromo-DefaultAvatar.jpg")} style={styles.profileSettingsMediaImage} />
                           )}
                         </Pressable>
                         <Text style={styles.profileSettingsMediaLabel}>Avatar</Text>
@@ -980,7 +983,7 @@ export default function ProfileScreen() {
                               style={styles.profileSettingsMediaImage}
                             />
                           ) : (
-                            <Image source={require("../../assets/MusicPromo-Banner.jpg")} style={styles.profileSettingsMediaImage} />
+                            <Image source={require("../../assets/branding/MusicPromo-Banner.png")} style={styles.profileSettingsMediaImage} />
                           )}
                         </Pressable>
                         <Text style={styles.profileSettingsMediaLabel}>Banner</Text>
@@ -1147,10 +1150,10 @@ export default function ProfileScreen() {
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
         >
-        <View style={[styles.heroShell, { minHeight: heroHeight, backgroundColor: profileBackgroundColor }]}>
+        <View style={[styles.heroShell, { backgroundColor: profileBackgroundColor }]}>
           <View style={[styles.heroBanner, { height: heroBannerHeight }]}>
             <Image
-              source={heroImageUrlDraft ? { uri: heroImageUrlDraft } : require("../../assets/MusicPromo-Banner.jpg")}
+              source={heroImageUrlDraft ? { uri: heroImageUrlDraft } : require("../../assets/branding/MusicPromo-Banner.png")}
               style={styles.heroBannerImage}
               resizeMode="cover"
               onError={() => setHeroImageUrlDraft(null)}
@@ -1174,7 +1177,7 @@ export default function ProfileScreen() {
               <View style={[styles.heroAvatarFrame, { backgroundColor: profileAvatarFrameColor }]}>
                 <View style={[styles.heroAvatar, { backgroundColor: profileAvatarBgColor }]}>
                   <Image
-                    source={avatarImageUrlDraft ? { uri: avatarImageUrlDraft } : require("../../assets/MusicPromo-DefaultAvatar.jpg")}
+                    source={avatarImageUrlDraft ? { uri: avatarImageUrlDraft } : require("../../assets/defaults/MusicPromo-DefaultAvatar.jpg")}
                     style={styles.heroAvatarImage}
                     onError={() => setAvatarImageUrlDraft(null)}
                   />
@@ -1392,14 +1395,15 @@ export default function ProfileScreen() {
 
       {isShareCardVisible ? (
         <View style={styles.shareCardOffscreen} pointerEvents="none">
-          <ViewShot ref={shareCardRef} options={{ format: "png", quality: 1 }}>
+          <ViewShot ref={shareCardRef} options={{ format: "png", quality: 1, pixelRatio: PixelRatio.get() }}>
             <View style={styles.shareCard}>
               {/* Banner */}
               <View style={styles.shareCardBanner}>
                 <Image
-                  source={sourceHeroImageUrl ? { uri: sourceHeroImageUrl } : require("../../assets/MusicPromo-Banner.jpg")}
+                  source={sourceHeroImageUrl ? { uri: sourceHeroImageUrl } : require("../../assets/branding/MusicPromo-Banner.png")}
                   style={styles.shareCardBannerImage}
                   resizeMode="cover"
+                  onLoad={() => shareCardBannerReadyRef.current?.()}
                 />
                 <View style={styles.shareCardBannerGradient} />
               </View>
@@ -1407,7 +1411,7 @@ export default function ProfileScreen() {
               {/* Avatar overlapping banner */}
               <View style={styles.shareCardAvatarWrap}>
                 <Image
-                  source={sourceAvatarImageUrl ? { uri: sourceAvatarImageUrl } : require("../../assets/MusicPromo-DefaultAvatar.jpg")}
+                  source={sourceAvatarImageUrl ? { uri: sourceAvatarImageUrl } : require("../../assets/defaults/MusicPromo-DefaultAvatar.jpg")}
                   style={styles.shareCardAvatarImage}
                 />
               </View>
@@ -1459,7 +1463,7 @@ export default function ProfileScreen() {
               {/* Footer */}
               <View style={styles.shareCardFooter}>
                 <Image
-                  source={require("../../assets/MusicPromo-Logo.png")}
+                  source={require("../../assets/branding/MusicPromo-Logo.png")}
                   style={styles.shareCardFooterLogo}
                 />
               </View>
@@ -1658,6 +1662,7 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     width: "100%",
     height: "100%",
+    transform: [{ translateX: -20 }],
   },
   heroBannerFallback: {
     ...StyleSheet.absoluteFillObject,
@@ -1837,10 +1842,12 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
   thumbnailGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.sm,
+    marginHorizontal: -spacing.xs,
   },
   thumbnailCell: {
-    width: "30.5%",
+    width: "33.33%",
+    paddingHorizontal: spacing.xs,
+    paddingBottom: spacing.sm,
   },
   thumbnailCardBody: {
     paddingHorizontal: spacing.xs,
@@ -1871,8 +1878,9 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
     position: "relative",
   },
   shareCardBannerImage: {
-    width: "100%",
-    height: "100%",
+    width: 360,
+    height: 220,
+    transform: [{ translateX: -20 }],
   },
   shareCardBannerGradient: {
     position: "absolute",
@@ -1880,7 +1888,6 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
     left: 0,
     right: 0,
     height: 220,
-    backgroundColor: "rgba(8,12,24,0.45)",
   },
   shareCardAvatarWrap: {
     width: 110,

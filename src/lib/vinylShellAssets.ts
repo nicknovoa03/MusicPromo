@@ -12,9 +12,9 @@ const VINYL_SHELL_SIZE_BY_INDEX: readonly VinylShellSize[] = [
 export const DEFAULT_VINYL_SHELL_SIZE: VinylShellSize = "normal";
 
 export const VINYL_SHELL_ASSET_MODULES: Record<VinylShellSize, number> = {
-  small: require("../../assets/vinyl_shell_small.png"),
-  normal: require("../../assets/vinyl_shell_normal.png"),
-  large: require("../../assets/vinyl_shell_large.png"),
+  small: require("../../assets/vinyl/vinyl_shell_small.png"),
+  normal: require("../../assets/vinyl/vinyl_shell_normal.png"),
+  large: require("../../assets/vinyl/vinyl_shell_large.png"),
 };
 
 export function resolveVinylShellSizeFromArtworkScale(

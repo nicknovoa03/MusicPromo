@@ -105,7 +105,7 @@ function AppWithProviders() {
       <AppStatusBar />
       {/* Pre-render watermark logo off-screen so it's decoded before first use */}
       <Image
-        source={require("../assets/MusicPromo-Logo.png")}
+        source={require("../assets/branding/MusicPromo-Logo.png")}
         style={styles.preloadHidden}
         fadeDuration={0}
       />

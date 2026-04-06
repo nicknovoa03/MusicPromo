@@ -11,12 +11,12 @@
       "fallbackToCacheTimeout": 0
     },
     "orientation": "portrait",
-    "icon": "./assets/MusicPromo-App-Icon.png",
+    "icon": "./assets/branding/MusicPromo-App-Icon.png",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "scheme": "musicpromo",
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/branding/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#000000"
     },

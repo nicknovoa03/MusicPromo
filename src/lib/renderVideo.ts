@@ -137,7 +137,7 @@ const MAX_BACKGROUND_BLUR = 24;
 const MIN_ROTATION_START_DEG = -180;
 const MAX_ROTATION_START_DEG = 180;
 const ENABLE_BETA_WATERMARK = isBetaWatermarkEnabled();
-const BETA_WATERMARK_IMAGE_MODULE = require("../../assets/MusicPromo-Logo.png");
+const BETA_WATERMARK_IMAGE_MODULE = require("../../assets/branding/MusicPromo-Logo.png");
 
 const RENDER_PATH_COLORS: Record<RenderPath, string> = {
   primary: "#38d17b",

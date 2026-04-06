@@ -1,7 +1,7 @@
 import { Image, StyleSheet, View } from "react-native";
 import { isBetaWatermarkEnabled } from "@/lib/betaWatermark";
 
-const LOGO = require("../../../assets/MusicPromo-Logo.png");
+const LOGO = require("../../../assets/branding/MusicPromo-Logo.png");
 
 interface BetaWatermarkProps {
   containerWidth?: number;

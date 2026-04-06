@@ -731,7 +731,7 @@ export default function HomeScreen() {
             accessibilityRole="button"
           >
             <Image
-              source={profileAvatarUri ? { uri: profileAvatarUri } : require("../../assets/MusicPromo-DefaultAvatar.jpg")}
+              source={profileAvatarUri ? { uri: profileAvatarUri } : require("../../assets/defaults/MusicPromo-DefaultAvatar.jpg")}
               style={styles.avatarImage}
               onError={() => setLocalAvatarUrl(null)}
             />
