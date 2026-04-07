@@ -54,3 +54,5 @@ stitch_exports/
 # Backup files
 *.bak
 *.bak2
+
+temp/

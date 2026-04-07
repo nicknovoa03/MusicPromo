@@ -1660,7 +1660,7 @@ async function renderVinylVideoWithVariant(
       }
     }
 
-    if (ENABLE_BETA_WATERMARK && shouldShowWatermark) {
+    if (shouldShowWatermark) {
       try {
         watermarkInputUri = await getBetaWatermarkOverlayInputUri();
       } catch (error) {

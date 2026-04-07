@@ -1989,9 +1989,9 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
   },
   shareCard: {
     width: 360,
-    height: 680,
     backgroundColor: "#000000",
     overflow: "hidden",
+    paddingBottom: 88,
   },
   shareCardBanner: {
     width: 360,

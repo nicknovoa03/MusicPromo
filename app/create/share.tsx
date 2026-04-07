@@ -225,7 +225,7 @@ export default function ShareScreen() {
                 trackTitle="Preview"
                 subtitle={templateDefinition.name}
                 templateTweaks={templateTweaks}
-                showWatermark={false}
+                showWatermark={templateTweaks?.showWatermark ?? true}
               />
             ) : (
               <Ionicons
