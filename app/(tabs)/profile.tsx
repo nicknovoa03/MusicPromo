@@ -39,6 +39,7 @@ import {
   PROFILE_LINK_PLATFORMS,
   getLocalArtistProfile,
   setLocalArtistProfile,
+  clearLocalArtistProfile,
   type ProfileLink,
   type ProfileLinkPlatform,
 } from "@/lib/localProfile";
@@ -65,12 +66,12 @@ const PLATFORM_LABELS: Record<ProfileLinkPlatform, string> = {
 
 const LINK_PLACEHOLDERS: Record<ProfileLinkPlatform, string> = {
   spotify: "Artist name",
-  soundcloud: "yourname",
+  soundcloud: "Handle",
   "apple-music": "Artist name",
-  youtube: "yourname",
-  instagram: "yourhandle",
-  tiktok: "yourhandle",
-  x: "yourhandle",
+  youtube: "Handle",
+  instagram: "Handle",
+  tiktok: "Handle",
+  x: "Handle",
   website: "yourwebsite.com",
 };
 
@@ -237,7 +238,7 @@ export default function ProfileScreen() {
   const projects = useQuery(api.projects.listByUser);
   const getOrCreateUser = useMutation(api.users.getOrCreate);
   const updateProfile = useMutation(api.users.updateProfile);
-  const softDeleteCurrent = useMutation(api.users.softDeleteCurrent);
+  const deleteAccount = useMutation(api.users.deleteAccount);
   const removePushToken = useMutation(api.pushTokens.removeForCurrentUser);
 
   const [isBootstrappingUser, setIsBootstrappingUser] = useState(false);
@@ -675,12 +676,13 @@ export default function ProfileScreen() {
     try {
       await removePushTokenForCurrentDevice();
       await ensureUserRecord(convexUser);
-      await softDeleteCurrent({});
+      await deleteAccount({});
       await clearLocalOnboardingCompleted(userId);
       track("account_deleted", { isGuest: String(isGuest) });
       await clearLocalSession();
+      await clearLocalArtistProfile();
       await signOut();
-      router.replace("/(auth)/sign-in");
+      // AuthGate detects signed-out state and redirects automatically.
     } catch (error) {
       console.warn("Failed to delete account:", error);
       const deleteError = isUnauthenticatedError(error)
@@ -699,11 +701,11 @@ export default function ProfileScreen() {
     convexUser,
     removePushTokenForCurrentDevice,
     ensureUserRecord,
-    softDeleteCurrent,
+    deleteAccount,
     userId,
     clearLocalSession,
+    clearLocalArtistProfile,
     signOut,
-    router,
     isUnauthenticatedError,
     isMissingConvexTemplateError,
   ]);
@@ -1378,7 +1380,30 @@ export default function ProfileScreen() {
                       ))}
                     </View>
                   </View>
-                ) : null}
+                ) : (
+                  <Pressable
+                    onPress={handleOpenProfileSettings}
+                    disabled={profileInputsDisabled}
+                    style={({ pressed }) => [
+                      styles.addSocialsNudge,
+                      { backgroundColor: isDarkMode ? colors.dark.surface : colors.light.surface, borderColor: profileBorderColor },
+                      pressed && !profileInputsDisabled && styles.optionChipPressed,
+                    ]}
+                    accessibilityLabel="Add your social platforms"
+                    accessibilityRole="button"
+                  >
+                    <View style={styles.addSocialsNudgeLeft}>
+                      <View style={[styles.addSocialsIconWrap, { backgroundColor: isDarkMode ? colors.dark.surfaceMuted : "#EEF0F8" }]}>
+                        <Ionicons name="link-outline" size={20} color={profileTextSecondaryColor} />
+                      </View>
+                      <View>
+                        <Text style={[styles.addSocialsNudgeTitle, { color: profileTextColor }]}>Add your socials</Text>
+                        <Text style={[styles.addSocialsNudgeSub, { color: profileTextSecondaryColor }]}>Spotify, Instagram, TikTok & more</Text>
+                      </View>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={profileTextSecondaryColor} />
+                  </Pressable>
+                )}
 
                 {recentPromos.length > 0 ? (
                   <View style={styles.recentSection}>
@@ -1937,6 +1962,36 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
     padding: spacing.md,
     marginBottom: spacing.md,
     gap: spacing.sm,
+  },
+  addSocialsNudge: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.md,
+  },
+  addSocialsNudgeLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  addSocialsIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.full,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  addSocialsNudgeTitle: {
+    ...typography.body,
+    fontWeight: "600",
+  },
+  addSocialsNudgeSub: {
+    ...typography.caption,
+    marginTop: 2,
   },
   linksRow: {
     flexDirection: "row",

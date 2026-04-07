@@ -10,7 +10,7 @@ async function getActiveUserByIdentity(ctx: any) {
     .withIndex("by_clerk_id", (q: any) => q.eq("clerkId", identity.subject))
     .unique();
 
-  if (!user || user.isDeleted) return null;
+  if (!user) return null;
   return user;
 }
 
@@ -57,8 +57,7 @@ export const removeForCurrentUser = mutation({
   },
   handler: async (ctx, args) => {
     const user = await getActiveUserByIdentity(ctx);
-
-    if (!user) throw new Error("Unauthenticated");
+    if (!user) return null;
 
     const existing = await ctx.db
       .query("pushTokens")

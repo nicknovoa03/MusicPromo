@@ -33,6 +33,7 @@ export default defineSchema({
     ),
     isGuest: v.boolean(),
     onboardingCompletedAt: v.optional(v.number()),
+    // Legacy fields — no longer written, kept for existing records.
     isDeleted: v.optional(v.boolean()),
     deletedAt: v.optional(v.number()),
     preferences: v.optional(

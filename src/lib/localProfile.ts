@@ -156,6 +156,14 @@ export async function getLocalArtistProfile(): Promise<LocalArtistProfile> {
   }
 }
 
+export async function clearLocalArtistProfile(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(LOCAL_ARTIST_PROFILE_KEY);
+  } catch (error) {
+    console.warn("Failed to clear local artist profile:", error);
+  }
+}
+
 export async function setLocalArtistProfile(
   updates: Partial<LocalArtistProfile>
 ): Promise<LocalArtistProfile> {

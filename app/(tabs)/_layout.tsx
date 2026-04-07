@@ -154,16 +154,6 @@ export default function TabsLayout() {
           console.warn("Convex auth not ready yet. Will retry bootstrap shortly.");
           return;
         }
-        if (message.includes("Account deleted")) {
-          shouldContinue = false;
-          try {
-            await signOut();
-          } catch (signOutError) {
-            console.warn("Failed to sign out deleted account:", signOutError);
-          }
-          router.replace("/(auth)/sign-in");
-          return;
-        }
         console.warn("Failed to bootstrap user:", error);
       }
 

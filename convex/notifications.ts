@@ -28,7 +28,7 @@ async function getUserByClerkIdInternal(
     .query("users")
     .withIndex("by_clerk_id", (q) => q.eq("clerkId", clerkId))
     .unique();
-  if (!user || user.isDeleted) return null;
+  if (!user) return null;
   return user;
 }
 

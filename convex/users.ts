@@ -52,7 +52,6 @@ export const getOrCreate = mutation({
     const existing = await getUserByClerkId(ctx, clerkId);
 
     if (existing) {
-      if (existing.isDeleted) throw new Error("Account deleted");
       return existing._id;
     }
 
@@ -60,7 +59,6 @@ export const getOrCreate = mutation({
     const userDoc: {
       clerkId: string;
       isGuest: boolean;
-      isDeleted: boolean;
       createdAt: number;
       name?: string;
       email?: string;
@@ -68,7 +66,6 @@ export const getOrCreate = mutation({
     } = {
       clerkId,
       isGuest,
-      isDeleted: false,
       createdAt: Date.now(),
     };
     if (identity.name) userDoc.name = identity.name;
@@ -86,7 +83,7 @@ export const current = query({
     if (!identity) return null;
 
     const user = await getUserByClerkId(ctx, identity.subject);
-    if (!user || user.isDeleted) return null;
+    if (!user) return null;
     return user;
   },
 });
@@ -126,7 +123,6 @@ export const updateProfile = mutation({
     const user = await getUserByClerkId(ctx, identity.subject);
 
     if (!user) throw new Error("User not found");
-    if (user.isDeleted) throw new Error("Account deleted");
 
     const updates: Record<string, unknown> = {};
     if (args.name !== undefined) updates.name = args.name;
@@ -166,7 +162,7 @@ export const updateProfile = mutation({
   },
 });
 
-export const softDeleteCurrent = mutation({
+export const deleteAccount = mutation({
   args: {},
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -175,15 +171,35 @@ export const softDeleteCurrent = mutation({
     const user = await getUserByClerkId(ctx, identity.subject);
     if (!user) throw new Error("User not found");
 
-    if (user.isDeleted) {
-      return { userId: user._id, deletedAt: user.deletedAt ?? Date.now() };
+    const deletedAt = Date.now();
+
+    // Delete all user-owned data (Apple App Store compliance).
+    const projects = await ctx.db
+      .query("projects")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .collect();
+    for (const project of projects) {
+      await ctx.db.delete(project._id);
     }
 
-    const deletedAt = Date.now();
-    await ctx.db.patch(user._id, {
-      isDeleted: true,
-      deletedAt,
-    });
+    const pushTokens = await ctx.db
+      .query("pushTokens")
+      .withIndex("by_user_and_token", (q) => q.eq("userId", user._id))
+      .collect();
+    for (const token of pushTokens) {
+      await ctx.db.delete(token._id);
+    }
+
+    const notifications = await ctx.db
+      .query("notifications")
+      .withIndex("by_user_and_sent_at", (q) => q.eq("userId", user._id))
+      .collect();
+    for (const notification of notifications) {
+      await ctx.db.delete(notification._id);
+    }
+
+    // Hard-delete the user record so re-signup with the same Apple ID creates a fresh one.
+    await ctx.db.delete(user._id);
 
     return { userId: user._id, deletedAt };
   },
@@ -205,7 +221,6 @@ export const completeOnboarding = mutation({
         clerkId: string;
         isGuest: boolean;
         onboardingCompletedAt: number;
-        isDeleted: boolean;
         createdAt: number;
         name?: string;
         email?: string;
@@ -214,7 +229,6 @@ export const completeOnboarding = mutation({
         clerkId,
         isGuest,
         onboardingCompletedAt: completedAt,
-        isDeleted: false,
         createdAt: completedAt,
       };
       if (identity.name) userDoc.name = identity.name;
@@ -225,7 +239,6 @@ export const completeOnboarding = mutation({
       return { userId, onboardingCompletedAt: completedAt };
     }
 
-    if (existing.isDeleted) throw new Error("Account deleted");
     if (existing.onboardingCompletedAt) {
       return {
         userId: existing._id,

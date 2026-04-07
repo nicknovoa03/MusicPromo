@@ -10,7 +10,7 @@ async function getActiveUserByIdentity(ctx: any) {
     .withIndex("by_clerk_id", (q: any) => q.eq("clerkId", identity.subject))
     .unique();
 
-  if (!user || user.isDeleted) return null;
+  if (!user) return null;
   return user;
 }
 
