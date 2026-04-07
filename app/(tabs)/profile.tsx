@@ -569,6 +569,10 @@ export default function ProfileScreen() {
       Alert.alert(
         "Permission needed",
         "Allow photo access to use an artist profile image.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Open Settings", onPress: () => void Linking.openSettings() },
+        ],
       );
       return;
     }
@@ -595,6 +599,10 @@ export default function ProfileScreen() {
       Alert.alert(
         "Permission needed",
         "Allow photo access to use a banner image.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Open Settings", onPress: () => void Linking.openSettings() },
+        ],
       );
       return;
     }
@@ -779,6 +787,19 @@ export default function ProfileScreen() {
   }, [closeProfileSettings]);
 
   const handleShareProfile = useCallback(async () => {
+    const isAvailable = await Sharing.isAvailableAsync();
+    if (!isAvailable) {
+      Alert.alert(
+        "Sharing not available",
+        "Sharing is not supported on this device.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Open Settings", onPress: () => void Linking.openSettings() },
+        ],
+      );
+      return;
+    }
+
     setIsSharingProfile(true);
     try {
       // Prefetch remote images so they're in cache before the card renders
@@ -1051,7 +1072,10 @@ export default function ProfileScreen() {
                       <TextInput
                         ref={bioInputRef}
                         value={bioDraft}
-                        onChangeText={setBioDraft}
+                        onChangeText={(text) => {
+                          const lines = text.split("\n");
+                          setBioDraft(lines.slice(0, 3).join("\n"));
+                        }}
                         placeholder="Tell people about yourself"
                         placeholderTextColor={isDarkMode ? "#6B778F" : "#A7AFC0"}
                         editable={!profileSettingsDisabled}
@@ -1068,13 +1092,14 @@ export default function ProfileScreen() {
                     </View>
                   </View>
 
-                  <View style={[styles.accountSection, { backgroundColor: isDarkMode ? colors.dark.surface : colors.light.surface, borderColor: isDarkMode ? colors.dark.border : colors.light.border }]}>
-                    <Text style={[styles.sectionEyebrow, { color: profileTextSecondaryColor }]}>Profile</Text>
-                    <Text style={[styles.sectionTitle, { color: profileTextColor }]}>Social Platforms</Text>
+                  <View style={styles.profileSettingsCard}>
+                    <View style={styles.profileSettingsSectionHeader}>
+                      <Text style={[styles.profileSettingsSectionLabelText, { color: profileTextSecondaryColor }]}>Social Platforms</Text>
+                    </View>
 
                     {linksDraft.map((link) => (
                       <View key={link.platform} style={styles.profileSettingsRow}>
-                        <Text style={[styles.linkInputLabel, { color: profileTextSecondaryColor }]}>{PLATFORM_LABELS[link.platform]}</Text>
+                        <Text style={styles.profileSettingsRowLabel}>{PLATFORM_LABELS[link.platform]}</Text>
                         <TextInput
                           value={extractHandle(link.platform, link.url)}
                           onChangeText={(text) => handleUpdateLinkUrl(link.platform, buildLinkUrl(link.platform, text))}
@@ -1121,14 +1146,14 @@ export default function ProfileScreen() {
                     ) : null}
                   </View>
 
-                  <View style={[styles.accountSection, { backgroundColor: isDarkMode ? colors.dark.surface : colors.light.surface, borderColor: isDarkMode ? colors.dark.border : colors.light.border }]}>
-                    <Text style={[styles.sectionEyebrow, { color: profileTextSecondaryColor }]}>Account Actions</Text>
-                    <Text style={[styles.sectionTitle, { color: profileTextColor }]}>Security & Session</Text>
+                  <View style={styles.profileSettingsCard}>
+                    <View style={styles.profileSettingsSectionHeader}>
+                      <Text style={[styles.profileSettingsSectionLabelText, { color: profileTextSecondaryColor }]}>Account</Text>
+                    </View>
 
                     <Pressable
                       style={({ pressed }) => [
-                        styles.actionRow,
-                        { backgroundColor: isDarkMode ? colors.dark.surface : colors.light.surface, borderColor: profileBorderColor },
+                        styles.profileSettingsRow,
                         pressed && !actionsDisabled && styles.actionRowPressed,
                       ]}
                       onPress={handleSignOut}
@@ -1151,8 +1176,7 @@ export default function ProfileScreen() {
 
                     <Pressable
                       style={({ pressed }) => [
-                        styles.actionRow,
-                        { backgroundColor: isDarkMode ? colors.dark.surface : colors.light.surface, borderColor: profileBorderColor },
+                        styles.profileSettingsRow,
                         pressed && !actionsDisabled && styles.deleteRowPressed,
                       ]}
                       onPress={handleDeleteAccount}
@@ -1293,7 +1317,6 @@ export default function ProfileScreen() {
         </View>
 
         <View style={[styles.mainContent, { backgroundColor: profileBackgroundColor }]}>
-          <View style={[styles.sectionDivider, { borderColor: profileBorderColor }]} />
           {errorText ? (
             <View style={styles.errorPanel}>
               <Ionicons name="alert-circle-outline" size={16} color={colors.accent.error} />
@@ -1446,7 +1469,7 @@ export default function ProfileScreen() {
 
               {/* Bio */}
               {sourceBio ? (
-                <Text style={styles.shareCardBio} numberOfLines={3}>{sourceBio}</Text>
+                <Text style={styles.shareCardBio} numberOfLines={4}>{sourceBio}</Text>
               ) : null}
 
               {/* Two-column body: left = socials, right = featured promos */}
@@ -1589,14 +1612,12 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
     alignItems: "center",
   },
   profileSettingsMediaRow: {
-    width: "100%",
     flexDirection: "row",
-    justifyContent: "space-between",
+    justifyContent: "center",
     alignItems: "flex-start",
-    gap: spacing.md,
+    gap: spacing.xl,
   },
   profileSettingsMediaColumn: {
-    flex: 1,
     alignItems: "center",
     gap: spacing.xs,
   },
@@ -1675,8 +1696,25 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
   profileSettingsRowLabel: {
     ...typography.body,
     color: isDarkMode ? colors.dark.text : colors.light.text,
-    width: 52,
+    width: 100,
     flexShrink: 0,
+  },
+  profileSettingsSectionHeader: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    marginTop: -1,
+    backgroundColor: isDarkMode ? colors.dark.surfaceMuted : colors.light.surfaceMuted,
+    borderTopWidth: 1,
+    borderTopColor: isDarkMode ? colors.dark.border : colors.light.border,
+    borderBottomWidth: 1,
+    borderBottomColor: isDarkMode ? colors.dark.border : colors.light.border,
+  },
+  profileSettingsSectionLabelText: {
+    ...typography.caption,
+    fontSize: 12,
+    fontWeight: "600",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
   },
   linkInputRow: {
     flexDirection: "row",
@@ -1855,11 +1893,6 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: 0,
   },
-  sectionDivider: {
-    borderTopWidth: 1,
-    marginBottom: spacing.md,
-    marginTop: 0,
-  },
   errorPanel: {
     flexDirection: "row",
     alignItems: "center",
@@ -1946,7 +1979,7 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
   },
   shareCard: {
     width: 360,
-    height: 640,
+    height: 680,
     backgroundColor: "#000000",
     overflow: "hidden",
   },
@@ -2062,12 +2095,13 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
   },
   shareCardThumb: {
     flex: 1,
+    height: 110,
     borderRadius: 10,
     overflow: "hidden",
   },
   shareCardFooter: {
     position: "absolute",
-    bottom: 16,
+    bottom: 20,
     left: 0,
     right: 0,
     alignItems: "center",

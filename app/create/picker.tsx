@@ -7,6 +7,7 @@ import {
   Image,
   Alert,
   ActivityIndicator,
+  Linking,
   Platform,
   useColorScheme,
   useWindowDimensions,
@@ -163,6 +164,10 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
       Alert.alert(
         "Permission needed",
         "MusicPromo needs access to your photos to create promo videos.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Open Settings", onPress: () => void Linking.openSettings() },
+        ],
       );
       return;
     }

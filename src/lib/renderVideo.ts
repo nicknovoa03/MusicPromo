@@ -122,7 +122,7 @@ const DEFAULT_HIGH_QUALITY_VIDEO_BITRATE = IS_HIGH_QUALITY_EXPORT ? "12M" : "8M"
 const FAST_MODE_VIDEO_BITRATE = "1.2M";
 const AUDIO_BITRATE = IS_HIGH_QUALITY_EXPORT ? "256k" : "192k";
 const PHOTO_INPUT_RANGE = "pc";
-const VIDEO_OUTPUT_RANGE = "pc";
+const VIDEO_OUTPUT_RANGE = "tv";
 const BASE_SPIN_ROTATION_SECONDS = 4;
 const MIN_SPIN_SPEED = 0.25;
 const MAX_SPIN_SPEED = 4;
@@ -372,7 +372,7 @@ function buildWatermarkFilterGraph(params: {
 }): string[] {
   const { inputLabel, width, enabled, watermarkInputLabel } = params;
   if (!enabled || !watermarkInputLabel) {
-    return [`${inputLabel}format=yuv420p[out]`];
+    return [`${inputLabel}scale=iw:ih:out_color_matrix=bt709:out_range=full,format=yuv420p[out]`];
   }
 
   const watermarkWidth = Math.round(width * 0.13);
@@ -380,8 +380,8 @@ function buildWatermarkFilterGraph(params: {
 
   return [
     `${watermarkInputLabel}format=rgba,scale=${watermarkWidth}:-1[watermark_scaled]`,
-    `${inputLabel}[watermark_scaled]overlay=x=W-w-${inset}:y=H-h-${inset}:format=auto:eof_action=repeat[watermark_out]`,
-    "[watermark_out]format=yuv420p[out]",
+    `${inputLabel}[watermark_scaled]overlay=x=(W-w)/2:y=${inset}:format=auto:eof_action=repeat[watermark_out]`,
+    "[watermark_out]scale=iw:ih:out_color_matrix=bt709:out_range=full,format=yuv420p[out]",
   ];
 }
 
@@ -424,7 +424,7 @@ function buildSafeFallbackVideoFilter(params: {
     );
   }
 
-  filters.push("format=yuv420p");
+  filters.push("scale=iw:ih:out_color_matrix=bt709:out_range=full,format=yuv420p");
   return filters.join(",");
 }
 
@@ -447,10 +447,31 @@ function buildVideoEncodeArgs(
       "yuv420p",
       "-tag:v",
       "avc1",
+      "-colorspace",
+      "bt709",
+      "-color_primaries",
+      "bt709",
+      "-color_trc",
+      "bt709",
+      "-color_range",
+      "2",
     ];
   }
 
-  return ["-c:v", "mpeg4", "-b:v", videoBitrate];
+  return [
+    "-c:v",
+    "mpeg4",
+    "-b:v",
+    videoBitrate,
+    "-colorspace",
+    "bt709",
+    "-color_primaries",
+    "bt709",
+    "-color_trc",
+    "bt709",
+    "-color_range",
+    "2",
+  ];
 }
 
 function extensionFromUri(uri: string): string {
@@ -1538,7 +1559,7 @@ async function renderVinylVideoWithVariant(
       "-i",
       audioInputUri,
       "-filter_complex",
-      `[0:v]${buildPhotoScaleCropFilter(width, height)},format=yuv420p[out];` +
+      `[0:v]${buildPhotoScaleCropFilter(width, height)},scale=iw:ih:out_color_matrix=bt709:out_range=full,format=yuv420p[out];` +
         `[1:a]atrim=start=${audioTrimStartSec}:end=${audioTrimEndSec},asetpts=PTS-STARTPTS[audio_out]`,
       "-map",
       "[out]",

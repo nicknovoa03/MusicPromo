@@ -811,7 +811,7 @@ export default function EditorScreen() {
         ? 0.62
         : 0.78
       : isTrimPanelVisible
-        ? 0.52
+        ? 0.44
         : 0.66);
   const measuredMaxStageWidth =
     previewViewport.width > 0
@@ -1791,37 +1791,38 @@ export default function EditorScreen() {
               <Ionicons name="settings-outline" size={15} color={colors.dark.text} />
               <Text style={styles.previewTrimToggleText}>Template Settings</Text>
             </Pressable>
-            <Pressable
-              onPress={handleToggleTrimPanel}
-              style={({ pressed }) => [
-                styles.previewTrimToggleButton,
-                isTrimPanelVisible && styles.previewTrimToggleButtonActive,
-                pressed && styles.previewTrimToggleButtonPressed,
-              ]}
-              accessibilityLabel={
-                isTrimPanelVisible ? "Hide Trim Audio panel" : "Show Trim Audio panel"
-              }
-              accessibilityRole="button"
-              accessibilityState={{
-                selected: isTrimPanelVisible,
-                expanded: isTrimPanelVisible,
-              }}
-            >
-              <Ionicons
-                name="cut-outline"
-                size={15}
-                color={isTrimPanelVisible ? colors.dark.background : colors.dark.text}
-              />
-              <Text
-                style={[
-                  styles.previewTrimToggleText,
-                  isTrimPanelVisible && styles.previewTrimToggleTextActive,
-                ]}
-              >
-                Trim Audio
-              </Text>
-            </Pressable>
           </View>
+          <Pressable
+            onPress={handleToggleTrimPanel}
+            style={({ pressed }) => [
+              styles.previewTrimToggleButton,
+              styles.previewTrimToggleButtonRight,
+              isTrimPanelVisible && styles.previewTrimToggleButtonActive,
+              pressed && styles.previewTrimToggleButtonPressed,
+            ]}
+            accessibilityLabel={
+              isTrimPanelVisible ? "Hide Trim Audio panel" : "Show Trim Audio panel"
+            }
+            accessibilityRole="button"
+            accessibilityState={{
+              selected: isTrimPanelVisible,
+              expanded: isTrimPanelVisible,
+            }}
+          >
+            <Ionicons
+              name="cut-outline"
+              size={15}
+              color={isTrimPanelVisible ? colors.dark.background : colors.dark.text}
+            />
+            <Text
+              style={[
+                styles.previewTrimToggleText,
+                isTrimPanelVisible && styles.previewTrimToggleTextActive,
+              ]}
+            >
+              Trim Audio
+            </Text>
+          </Pressable>
           <Pressable
             onPress={handleToggleTemplateInfo}
             style={({ pressed }) => [
@@ -2181,6 +2182,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.12)",
   },
+  previewTrimToggleButtonRight: {
+    position: "absolute",
+    right: spacing.sm,
+    bottom: spacing.sm,
+  },
   previewTrimToggleButtonActive: {
     backgroundColor: colors.dark.text,
     borderColor: "rgba(255,255,255,0.85)",
@@ -2238,6 +2244,7 @@ const styles = StyleSheet.create({
   },
   trimmerPanelWrap: {
     overflow: "hidden",
+    marginTop: spacing.sm,
   },
   trimmerPanelAnimatedContent: {
     width: "100%",

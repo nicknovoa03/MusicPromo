@@ -5,6 +5,7 @@ import {
   StyleSheet,
   Pressable,
   Alert,
+  Linking,
   useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -161,16 +162,21 @@ export default function ShareScreen() {
             </View>
           )}
           {saveError === "permission" && (
-            <View style={styles.savedBadge}>
+            <Pressable
+              style={styles.savedBadge}
+              onPress={() => void Linking.openSettings()}
+              accessibilityRole="button"
+              accessibilityLabel="Open Settings to grant Photos access"
+            >
               <Ionicons
                 name="alert-circle"
                 size={16}
                 color={colors.accent.warning}
               />
               <Text style={styles.savedText}>
-                Permission denied. Grant Photos access in Settings.
+                Permission denied. Tap to open Settings.
               </Text>
-            </View>
+            </Pressable>
           )}
           {saveError === "failed" && (
             <View style={styles.savedBadge}>

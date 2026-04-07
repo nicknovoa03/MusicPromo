@@ -37,7 +37,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/branding/MusicPromo-App-Icon.png",
         "backgroundColor": "#000000"
       },
       "edgeToEdgeEnabled": true,

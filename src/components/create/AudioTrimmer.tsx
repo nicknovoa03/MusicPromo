@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { Picker } from "@react-native-picker/picker";
+import * as Haptics from "expo-haptics";
 import { colors, spacing, radius, typography } from "@/constants/tokens";
 interface AudioTrimmerProps {
   durationSec: number;
@@ -84,6 +85,7 @@ export function AudioTrimmer({
   const lastProgressTickRef = useRef<number | null>(null);
   const didAutoPauseRef = useRef(false);
   const shouldAutoPauseRef = useRef(false);
+  const lastHapticSecRef = useRef<number | null>(null);
 
   const onTrimChangeRef = useRef(onTrimChange);
   const railGestureStartRef = useRef(safeStart);
@@ -327,6 +329,18 @@ export function AudioTrimmer({
   }, [safeStart, currentDuration]);
 
   useEffect(() => {
+    const currentSec = Math.floor(safeStart);
+    if (lastHapticSecRef.current === null) {
+      lastHapticSecRef.current = currentSec;
+      return;
+    }
+    if (currentSec !== lastHapticSecRef.current) {
+      lastHapticSecRef.current = currentSec;
+      void Haptics.selectionAsync().catch(() => undefined);
+    }
+  }, [safeStart]);
+
+  useEffect(() => {
     if (typeof playbackProgressSec === "number") return;
     if (!isPlaying) {
       lastProgressTickRef.current = null;
@@ -393,7 +407,7 @@ export function AudioTrimmer({
               <Picker
                 selectedValue={durationDraftSec}
                 onValueChange={(value) => setDurationDraftSec(Number(value))}
-                style={styles.durationPicker}
+                style={[styles.durationPicker, { backgroundColor: "#111318" }]}
                 itemStyle={styles.durationPickerItem}
                 accessibilityLabel="Clip duration picker"
               >
@@ -576,7 +590,7 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
   },
   durationModalSheet: {
-    backgroundColor: "#020A15",
+    backgroundColor: "#111318",
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,
     borderWidth: 1,
@@ -600,7 +614,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderColor: "rgba(255,255,255,0.08)",
     overflow: "hidden",
-    backgroundColor: "#030B17",
+    backgroundColor: "#111318",
   },
   durationPicker: {
     height: DURATION_WHEEL_HEIGHT,
