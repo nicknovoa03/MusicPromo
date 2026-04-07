@@ -310,7 +310,7 @@ export default function ProfileScreen() {
 
   const sourceAvatarImageUrl = usesLocalProfile
     ? localArtistProfile.avatarImageUrl
-    : convexUser?.avatarImageUrl ?? localArtistProfile.avatarImageUrl ?? null;
+    : convexUser?.avatarImageUrl ?? convexUser?.avatarUrl ?? localArtistProfile.avatarImageUrl ?? null;
   const sourceHeroImageUrl = usesLocalProfile
     ? localArtistProfile.heroImageUrl
     : convexUser?.heroImageUrl ?? localArtistProfile.heroImageUrl ?? null;
@@ -823,7 +823,10 @@ export default function ProfileScreen() {
       shareCardBannerReadyRef.current = null;
 
       const uri = await shareCardRef.current?.capture?.();
-      if (!uri) return;
+      if (!uri) {
+        setIsShareCardVisible(false);
+        return;
+      }
       setIsShareCardVisible(false);
       await Sharing.shareAsync(uri, { mimeType: "image/png", dialogTitle: "Share your profile" });
     } catch {
@@ -1167,10 +1170,8 @@ export default function ProfileScreen() {
                           {isLocalGuest ? "Exit Guest Mode" : "Sign Out"}
                         </Text>
                       </View>
-                      {isSigningOut ? (
+                      {isSigningOut && (
                         <ActivityIndicator size="small" color={profileTextSecondaryColor} />
-                      ) : (
-                        <Ionicons name="chevron-forward" size={16} color={profileTextSecondaryColor} />
                       )}
                     </Pressable>
 
@@ -1188,10 +1189,8 @@ export default function ProfileScreen() {
                         <Ionicons name="trash-outline" size={20} color={isDarkMode ? colors.accent.error : "#C41C1C"} />
                         <Text style={[styles.deleteText, { color: isDarkMode ? colors.accent.error : "#C41C1C" }]}>Delete Account</Text>
                       </View>
-                      {isDeleting ? (
+                      {isDeleting && (
                         <ActivityIndicator size="small" color={colors.accent.error} />
-                      ) : (
-                        <Ionicons name="chevron-forward" size={16} color={profileTextSecondaryColor} />
                       )}
                     </Pressable>
 
@@ -1548,6 +1547,17 @@ export default function ProfileScreen() {
           </ViewShot>
         </View>
       ) : null}
+      <InputAccessoryView nativeID="bioInputAccessory">
+        <View style={styles.bioAccessory}>
+          <Pressable
+            onPress={() => bioInputRef.current?.blur()}
+            accessibilityLabel="Dismiss keyboard"
+            accessibilityRole="button"
+          >
+            <Text style={styles.bioAccessoryDone}>Done</Text>
+          </Pressable>
+        </View>
+      </InputAccessoryView>
     </SafeAreaView>
   );
 }
@@ -2331,5 +2341,19 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
     color: isDarkMode ? "#8F9DBE" : colors.light.textSecondary,
     lineHeight: 18,
     marginTop: spacing.xs,
+  },
+  bioAccessory: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    backgroundColor: isDarkMode ? colors.dark.surfaceMuted : "#D1D5DB",
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: isDarkMode ? colors.dark.border : colors.light.border,
+  },
+  bioAccessoryDone: {
+    ...typography.body,
+    fontWeight: "600",
+    color: colors.accent.primary,
   },
 });

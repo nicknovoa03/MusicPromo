@@ -50,3 +50,7 @@ yarn-error.*
 
 # Design exports — ephemeral artifacts, not tracked in git
 stitch_exports/
+
+# Backup files
+*.bak
+*.bak2

@@ -279,8 +279,14 @@ export default function EditorScreen() {
   const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
   const { isLocalGuest } = useLocalSession();
   const paramTitle = firstParam(params.title)?.trim() || "";
+  const rawAudioName = firstParam(params.audioName)?.trim() || "";
+  // Strip common audio file extensions and cache-generated names (e.g. "track_cache_123.m4a")
+  const cleanedAudioName = rawAudioName
+    .replace(/\.(mp3|m4a|wav|aac|flac|ogg|opus)$/i, "")
+    .replace(/^(REC|recording|audio|track|clip)[_\s-]*\d+$/i, "")
+    .trim();
   const initialProjectTitle =
-    paramTitle || firstParam(params.audioName)?.trim() || DEFAULT_PROJECT_TITLE;
+    paramTitle || cleanedAudioName || DEFAULT_PROJECT_TITLE;
   const paramPhotoUri = normalizeMediaUri(decodeUriParam(firstParam(params.photoUri)));
   const paramAudioUri = normalizeMediaUri(decodeUriParam(firstParam(params.audioUri)));
   const paramPhotoName = firstParam(params.photoName);

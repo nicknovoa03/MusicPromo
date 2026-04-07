@@ -18,7 +18,7 @@ export function BetaWatermark({
 }: BetaWatermarkProps) {
   if (!isBetaWatermarkEnabled()) return null;
 
-  const resolvedInset = inset ?? Math.max(4, Math.round(containerWidth * 0.03));
+  const resolvedInset = inset ?? Math.max(8, Math.round(containerWidth * 0.03));
   const size = Math.max(28, Math.min(48, Math.round(containerWidth * 0.13)));
   const topInset = aspectRatio === "1:1"
     ? Math.max(2, resolvedInset - Math.round(containerWidth * 0.04))
