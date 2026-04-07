@@ -216,7 +216,7 @@ export function SimpleSpinTemplateStage({
         />
       ) : null}
 
-      {shouldShowWatermark ? <BetaWatermark containerWidth={width} /> : null}
+      <BetaWatermark containerWidth={width} visible={shouldShowWatermark} aspectRatio={aspectRatio} />
     </View>
   );
 }

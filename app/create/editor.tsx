@@ -279,8 +279,14 @@ export default function EditorScreen() {
   const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
   const { isLocalGuest } = useLocalSession();
   const paramTitle = firstParam(params.title)?.trim() || "";
+  const rawAudioName = firstParam(params.audioName)?.trim() || "";
+  // Strip common audio file extensions and cache-generated names (e.g. "track_cache_123.m4a")
+  const cleanedAudioName = rawAudioName
+    .replace(/\.(mp3|m4a|wav|aac|flac|ogg|opus)$/i, "")
+    .replace(/^(REC|recording|audio|track|clip)[_\s-]*\d+$/i, "")
+    .trim();
   const initialProjectTitle =
-    paramTitle || DEFAULT_PROJECT_TITLE;
+    paramTitle || cleanedAudioName || DEFAULT_PROJECT_TITLE;
   const paramPhotoUri = normalizeMediaUri(decodeUriParam(firstParam(params.photoUri)));
   const paramAudioUri = normalizeMediaUri(decodeUriParam(firstParam(params.audioUri)));
   const paramPhotoName = firstParam(params.photoName);
@@ -811,7 +817,7 @@ export default function EditorScreen() {
         ? 0.62
         : 0.78
       : isTrimPanelVisible
-        ? 0.52
+        ? 0.44
         : 0.66);
   const measuredMaxStageWidth =
     previewViewport.width > 0
@@ -1788,39 +1794,41 @@ export default function EditorScreen() {
               accessibilityLabel="Open template settings"
               accessibilityRole="button"
             >
-              <Ionicons name="settings-outline" size={18} color={colors.dark.text} />
-            </Pressable>
-            <Pressable
-              onPress={handleToggleTrimPanel}
-              style={({ pressed }) => [
-                styles.previewTrimToggleButton,
-                isTrimPanelVisible && styles.previewTrimToggleButtonActive,
-                pressed && styles.previewTrimToggleButtonPressed,
-              ]}
-              accessibilityLabel={
-                isTrimPanelVisible ? "Hide Trim Audio panel" : "Show Trim Audio panel"
-              }
-              accessibilityRole="button"
-              accessibilityState={{
-                selected: isTrimPanelVisible,
-                expanded: isTrimPanelVisible,
-              }}
-            >
-              <Ionicons
-                name="cut-outline"
-                size={15}
-                color={isTrimPanelVisible ? colors.dark.background : colors.dark.text}
-              />
-              <Text
-                style={[
-                  styles.previewTrimToggleText,
-                  isTrimPanelVisible && styles.previewTrimToggleTextActive,
-                ]}
-              >
-                Trim Audio
-              </Text>
+              <Ionicons name="settings-outline" size={15} color={colors.dark.text} />
+              <Text style={styles.previewTrimToggleText}>Template Settings</Text>
             </Pressable>
           </View>
+          <Pressable
+            onPress={handleToggleTrimPanel}
+            style={({ pressed }) => [
+              styles.previewTrimToggleButton,
+              styles.previewTrimToggleButtonRight,
+              isTrimPanelVisible && styles.previewTrimToggleButtonActive,
+              pressed && styles.previewTrimToggleButtonPressed,
+            ]}
+            accessibilityLabel={
+              isTrimPanelVisible ? "Hide Trim Audio panel" : "Show Trim Audio panel"
+            }
+            accessibilityRole="button"
+            accessibilityState={{
+              selected: isTrimPanelVisible,
+              expanded: isTrimPanelVisible,
+            }}
+          >
+            <Ionicons
+              name="cut-outline"
+              size={15}
+              color={isTrimPanelVisible ? colors.dark.background : colors.dark.text}
+            />
+            <Text
+              style={[
+                styles.previewTrimToggleText,
+                isTrimPanelVisible && styles.previewTrimToggleTextActive,
+              ]}
+            >
+              Trim Audio
+            </Text>
+          </Pressable>
           <Pressable
             onPress={handleToggleTemplateInfo}
             style={({ pressed }) => [
@@ -2136,11 +2144,12 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   previewTemplateButton: {
-    width: 40,
-    height: 40,
-    borderRadius: radius.full,
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    gap: 6,
+    minHeight: 40,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.full,
     backgroundColor: colors.dark.surface,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.12)",
@@ -2178,6 +2187,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.dark.surface,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.12)",
+  },
+  previewTrimToggleButtonRight: {
+    position: "absolute",
+    right: spacing.sm,
+    bottom: spacing.sm,
   },
   previewTrimToggleButtonActive: {
     backgroundColor: colors.dark.text,
@@ -2236,6 +2250,7 @@ const styles = StyleSheet.create({
   },
   trimmerPanelWrap: {
     overflow: "hidden",
+    marginTop: spacing.sm,
   },
   trimmerPanelAnimatedContent: {
     width: "100%",

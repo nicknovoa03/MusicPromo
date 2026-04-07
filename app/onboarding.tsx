@@ -18,7 +18,8 @@ import { api } from "../convex/_generated/api";
 import { colors, radius, spacing, typography } from "@/constants/tokens";
 import type { EventName } from "@/lib/analytics";
 import {
-  getLocalOnboardingCompleted,
+  CURRENT_ONBOARDING_VERSION,
+  getLocalOnboardingVersion,
   setLocalOnboardingCompleted,
 } from "@/lib/onboarding";
 import { useLocalSession } from "@/providers/localSession";
@@ -50,6 +51,13 @@ const ONBOARDING_SLIDES: OnboardingSlide[] = [
     icon: "musical-notes-outline",
   },
   {
+    id: "profile",
+    eyebrow: "Your Artist Card",
+    title: "Share your profile as a single image",
+    body: "Your profile page exports as a shareable card — artist name, socials, and your latest music promos, all in one shot.",
+    icon: "person-circle-outline",
+  },
+  {
     id: "ready",
     eyebrow: "You Are Set",
     title: "Your first promo is one tap away",
@@ -74,7 +82,7 @@ export default function OnboardingScreen() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isCompleting, setIsCompleting] = useState(false);
   const [localCompletionReady, setLocalCompletionReady] = useState(false);
-  const [localCompletion, setLocalCompletion] = useState(false);
+  const [localVersion, setLocalVersion] = useState(0);
 
   useEffect(() => {
     return () => {
@@ -88,11 +96,11 @@ export default function OnboardingScreen() {
 
     (async () => {
       try {
-        const completed = await getLocalOnboardingCompleted(userId, {
+        const version = await getLocalOnboardingVersion(userId, {
           localGuest: isLocalGuest,
         });
         if (!isActive) return;
-        setLocalCompletion(completed);
+        setLocalVersion(version);
       } catch (error) {
         console.warn("Failed to read onboarding state:", error);
       } finally {
@@ -105,9 +113,11 @@ export default function OnboardingScreen() {
     };
   }, [userId, isLocalGuest]);
 
-  const hasServerCompletion =
-    isAuthenticated && Boolean(currentUser?.onboardingCompletedAt);
-  const isOnboardingCompleted = localCompletion || hasServerCompletion;
+  // Version-aware: only skip onboarding if local storage reflects the current
+  // version. Existing users with an older version (or a fresh install) will see
+  // onboarding once, then we write the current version on completion.
+  const localCompletion = localVersion >= CURRENT_ONBOARDING_VERSION;
+  const isOnboardingCompleted = localCompletion;
   const hasCompletionState = localCompletionReady && (
     isLocalGuest
       ? true
@@ -146,7 +156,7 @@ export default function OnboardingScreen() {
       if (isCompleting) return;
 
       setIsCompleting(true);
-      setLocalCompletion(true);
+      setLocalVersion(CURRENT_ONBOARDING_VERSION);
 
       await setLocalOnboardingCompleted(userId, { localGuest: isLocalGuest });
       posthog?.capture("onboarding_completed" satisfies EventName, { method });

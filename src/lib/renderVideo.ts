@@ -122,7 +122,7 @@ const DEFAULT_HIGH_QUALITY_VIDEO_BITRATE = IS_HIGH_QUALITY_EXPORT ? "12M" : "8M"
 const FAST_MODE_VIDEO_BITRATE = "1.2M";
 const AUDIO_BITRATE = IS_HIGH_QUALITY_EXPORT ? "256k" : "192k";
 const PHOTO_INPUT_RANGE = "pc";
-const VIDEO_OUTPUT_RANGE = "pc";
+const VIDEO_OUTPUT_RANGE = "tv";
 const BASE_SPIN_ROTATION_SECONDS = 4;
 const MIN_SPIN_SPEED = 0.25;
 const MAX_SPIN_SPEED = 4;
@@ -137,8 +137,7 @@ const MAX_BACKGROUND_BLUR = 24;
 const MIN_ROTATION_START_DEG = -180;
 const MAX_ROTATION_START_DEG = 180;
 const ENABLE_BETA_WATERMARK = isBetaWatermarkEnabled();
-const EXPORT_WATERMARK_OPACITY_MULTIPLIER = 0.45;
-const BETA_WATERMARK_IMAGE_MODULE = require("../../assets/beta-watermark.png");
+const BETA_WATERMARK_IMAGE_MODULE = require("../../assets/branding/MusicPromo-Logo.png");
 
 const RENDER_PATH_COLORS: Record<RenderPath, string> = {
   primary: "#38d17b",
@@ -373,16 +372,16 @@ function buildWatermarkFilterGraph(params: {
 }): string[] {
   const { inputLabel, width, enabled, watermarkInputLabel } = params;
   if (!enabled || !watermarkInputLabel) {
-    return [`${inputLabel}format=yuv420p[out]`];
+    return [`${inputLabel}scale=iw:ih:out_color_matrix=bt709:out_range=full,format=yuv420p[out]`];
   }
 
-  const watermarkWidth = Math.max(190, Math.round(width * 0.22));
-  const inset = Math.max(8, Math.round(width * 0.008));
+  const watermarkWidth = Math.round(width * 0.13);
+  const inset = Math.max(8, Math.round(width * 0.03));
 
   return [
-    `${watermarkInputLabel}format=rgba,scale=${watermarkWidth}:-1,colorchannelmixer=aa=${EXPORT_WATERMARK_OPACITY_MULTIPLIER.toFixed(2)}[beta_watermark_scaled]`,
-    `${inputLabel}[beta_watermark_scaled]overlay=x=W-w-${inset}:y=H-h-${inset}:format=auto:eof_action=repeat[beta_watermark_out]`,
-    "[beta_watermark_out]format=yuv420p[out]",
+    `${watermarkInputLabel}format=rgba,scale=${watermarkWidth}:-1[watermark_scaled]`,
+    `${inputLabel}[watermark_scaled]overlay=x=(W-w)/2:y=${inset}:format=auto:eof_action=repeat[watermark_out]`,
+    "[watermark_out]scale=iw:ih:out_color_matrix=bt709:out_range=full,format=yuv420p[out]",
   ];
 }
 
@@ -425,7 +424,7 @@ function buildSafeFallbackVideoFilter(params: {
     );
   }
 
-  filters.push("format=yuv420p");
+  filters.push("scale=iw:ih:out_color_matrix=bt709:out_range=full,format=yuv420p");
   return filters.join(",");
 }
 
@@ -448,10 +447,31 @@ function buildVideoEncodeArgs(
       "yuv420p",
       "-tag:v",
       "avc1",
+      "-colorspace",
+      "bt709",
+      "-color_primaries",
+      "bt709",
+      "-color_trc",
+      "bt709",
+      "-color_range",
+      "2",
     ];
   }
 
-  return ["-c:v", "mpeg4", "-b:v", videoBitrate];
+  return [
+    "-c:v",
+    "mpeg4",
+    "-b:v",
+    videoBitrate,
+    "-colorspace",
+    "bt709",
+    "-color_primaries",
+    "bt709",
+    "-color_trc",
+    "bt709",
+    "-color_range",
+    "2",
+  ];
 }
 
 function extensionFromUri(uri: string): string {
@@ -578,17 +598,7 @@ async function getBetaWatermarkOverlayInputUri(): Promise<string> {
       throw new Error("Unable to access app cache for beta watermark download.");
     }
 
-    const downloadUri = `${LegacyFileSystem.cacheDirectory}beta-watermark-overlay.png`;
-    try {
-      const existingInfo = await LegacyFileSystem.getInfoAsync(downloadUri);
-      if (existingInfo.exists) {
-        betaWatermarkOverlayInputUriCache = downloadUri;
-        return downloadUri;
-      }
-    } catch {
-      // Ignore file metadata errors and continue to download.
-    }
-
+    const downloadUri = `${LegacyFileSystem.cacheDirectory}musicpromo-logo-overlay.png`;
     try {
       await LegacyFileSystem.downloadAsync(assetUri, downloadUri);
     } catch {
@@ -606,7 +616,7 @@ async function getBetaWatermarkOverlayInputUri(): Promise<string> {
   if (!LegacyFileSystem.cacheDirectory) {
     throw new Error("Unable to access app cache for beta watermark asset.");
   }
-  const copiedUri = `${LegacyFileSystem.cacheDirectory}beta-watermark-overlay.png`;
+  const copiedUri = `${LegacyFileSystem.cacheDirectory}musicpromo-logo-overlay.png`;
   try {
     await LegacyFileSystem.copyAsync({ from: assetUri, to: copiedUri });
   } catch {
@@ -1549,7 +1559,7 @@ async function renderVinylVideoWithVariant(
       "-i",
       audioInputUri,
       "-filter_complex",
-      `[0:v]${buildPhotoScaleCropFilter(width, height)},format=yuv420p[out];` +
+      `[0:v]${buildPhotoScaleCropFilter(width, height)},scale=iw:ih:out_color_matrix=bt709:out_range=full,format=yuv420p[out];` +
         `[1:a]atrim=start=${audioTrimStartSec}:end=${audioTrimEndSec},asetpts=PTS-STARTPTS[audio_out]`,
       "-map",
       "[out]",

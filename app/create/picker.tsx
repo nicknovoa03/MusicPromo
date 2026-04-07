@@ -7,6 +7,7 @@ import {
   Image,
   Alert,
   ActivityIndicator,
+  Linking,
   Platform,
   useColorScheme,
   useWindowDimensions,
@@ -163,6 +164,10 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
       Alert.alert(
         "Permission needed",
         "MusicPromo needs access to your photos to create promo videos.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Open Settings", onPress: () => void Linking.openSettings() },
+        ],
       );
       return;
     }
@@ -729,7 +734,7 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
                     accessibilityLabel="Detected album artwork"
                   />
                   <View style={styles.quickFillTextWrap}>
-                    <Text style={styles.quickFillTitle}>Use album artwork</Text>
+                    <Text style={[styles.quickFillTitle, { color: pickerTextColor }]}>Use album artwork</Text>
                     <Text style={[styles.quickFillHint, { color: pickerTextColor }]} numberOfLines={2}>
                       Reuse the track artwork as your photo in one tap.
                     </Text>

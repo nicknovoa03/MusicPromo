@@ -9,13 +9,16 @@ import {
   ActivityIndicator,
   ScrollView,
   TextInput,
+  InputAccessoryView,
   Image,
+  Linking,
   useWindowDimensions,
   useColorScheme,
   Modal,
   Animated,
   Easing,
   PanResponder,
+  PixelRatio,
 } from "react-native";
 import {
   SafeAreaProvider,
@@ -45,6 +48,9 @@ import type { EventName } from "@/lib/analytics";
 import { useLocalSession } from "@/providers/localSession";
 import { persistPickedMediaFile } from "@/lib/mediaStorage";
 import { sleep } from "@/lib/utils";
+import { ProjectThumbnail } from "@/components/ProjectThumbnail";
+import * as Sharing from "expo-sharing";
+import ViewShot from "react-native-view-shot";
 
 const PLATFORM_LABELS: Record<ProfileLinkPlatform, string> = {
   spotify: "Spotify",
@@ -55,6 +61,88 @@ const PLATFORM_LABELS: Record<ProfileLinkPlatform, string> = {
   tiktok: "TikTok",
   x: "X",
   website: "Website",
+};
+
+const LINK_PLACEHOLDERS: Record<ProfileLinkPlatform, string> = {
+  spotify: "Artist name",
+  soundcloud: "yourname",
+  "apple-music": "Artist name",
+  youtube: "yourname",
+  instagram: "yourhandle",
+  tiktok: "yourhandle",
+  x: "yourhandle",
+  website: "yourwebsite.com",
+};
+
+const PLATFORM_BASE_URLS: Record<ProfileLinkPlatform, string> = {
+  spotify: "https://open.spotify.com/search/",
+  soundcloud: "https://soundcloud.com/",
+  "apple-music": "https://music.apple.com/search?term=",
+  youtube: "https://youtube.com/@",
+  instagram: "https://instagram.com/",
+  tiktok: "https://tiktok.com/@",
+  x: "https://x.com/",
+  website: "",
+};
+
+// Platforms where user just types a handle/name (we construct the URL)
+const HANDLE_PLATFORMS = new Set<ProfileLinkPlatform>(["spotify", "soundcloud", "apple-music", "youtube", "instagram", "tiktok", "x"]);
+
+function extractHandle(platform: ProfileLinkPlatform, fullUrl: string): string {
+  if (!HANDLE_PLATFORMS.has(platform)) return fullUrl;
+  let s = fullUrl.replace(/^https?:\/\/(www\.)?/, "");
+  const prefixes: Partial<Record<ProfileLinkPlatform, string>> = {
+    spotify: "open.spotify.com/search/",
+    "apple-music": "music.apple.com/search?term=",
+    soundcloud: "soundcloud.com/",
+    youtube: "youtube.com/",
+    instagram: "instagram.com/",
+    tiktok: "tiktok.com/@",
+    x: "x.com/",
+  };
+  const prefix = prefixes[platform];
+  if (prefix && s.startsWith(prefix)) {
+    s = s.slice(prefix.length);
+  } else if (platform === "x" && s.startsWith("twitter.com/")) {
+    s = s.slice("twitter.com/".length);
+  }
+  return decodeURIComponent(s.replace(/^@/, "").split("/")[0].split("?")[0]);
+}
+
+function buildLinkUrl(platform: ProfileLinkPlatform, input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) return "";
+  if (HANDLE_PLATFORMS.has(platform)) {
+    const handle = trimmed.replace(/^@/, "");
+    if (!handle) return "";
+    return PLATFORM_BASE_URLS[platform] + handle;
+  }
+  // URL-based platforms — ensure https://
+  if (!/^https?:\/\//i.test(trimmed)) return "https://" + trimmed;
+  return trimmed;
+}
+
+const PLATFORM_DEEP_LINKS: Record<ProfileLinkPlatform, (url: string) => string> = {
+  spotify: (url) => {
+    const artist = extractHandle("spotify", url);
+    return `spotify://search/${encodeURIComponent(artist)}`;
+  },
+  instagram: (url) => {
+    const handle = extractHandle("instagram", url);
+    return `instagram://user?username=${handle}`;
+  },
+  tiktok: (url) => {
+    const handle = extractHandle("tiktok", url);
+    return `snssdk1233://user/profile/${handle}`;
+  },
+  youtube: (url) => url.replace("https://youtube.com", "youtube://").replace("https://www.youtube.com", "youtube://"),
+  x: (url) => {
+    const handle = extractHandle("x", url);
+    return `twitter://user?screen_name=${handle}`;
+  },
+  soundcloud: (url) => url,
+  "apple-music": (url) => url.replace("https://music.apple.com/search?term=", "music://music.apple.com/search?term="),
+  website: (url) => url,
 };
 
 type DraftProfileLink = {
@@ -125,15 +213,13 @@ export default function ProfileScreen() {
   const isDarkMode = colorScheme === "dark";
 
   // Dynamic colors based on color scheme
-  const profileBackgroundColor = isDarkMode ? "#03050A" : colors.light.background;
-  const profileBannerFallbackColor = isDarkMode ? "#0F172D" : colors.light.surface;
-  const profileTextColor = isDarkMode ? "#F8FAFF" : colors.light.text;
-  const profileTextSecondaryColor = isDarkMode ? "#D6DEEF" : colors.light.textSecondary;
-  const profileBorderColor = isDarkMode
-    ? "rgba(184, 200, 236, 0.15)"
-    : colors.light.border;
-  const profileAvatarFrameColor = isDarkMode ? "rgba(222, 233, 255, 0.8)" : colors.light.surface;
-  const profileAvatarBgColor = isDarkMode ? "#16203A" : colors.light.background;
+  const profileBackgroundColor = isDarkMode ? colors.dark.background : colors.light.background;
+  const profileBannerFallbackColor = isDarkMode ? colors.dark.surface : colors.light.surface;
+  const profileTextColor = isDarkMode ? colors.dark.text : colors.light.text;
+  const profileTextSecondaryColor = isDarkMode ? colors.dark.textSecondary : colors.light.textSecondary;
+  const profileBorderColor = isDarkMode ? colors.dark.border : colors.light.border;
+  const profileAvatarFrameColor = isDarkMode ? colors.dark.surfaceMuted : colors.light.surface;
+  const profileAvatarBgColor = isDarkMode ? colors.dark.surfaceMuted : colors.light.background;
   const profileEditButtonBgColor = isDarkMode ? "#EFF3FF" : "#000000";
   const profileEditButtonTextColor = isDarkMode ? "#11152A" : "#FFFFFF";
 
@@ -148,6 +234,7 @@ export default function ProfileScreen() {
   const { isLocalGuest, clearLocalSession } = useLocalSession();
   const posthog = usePostHog();
   const convexUser = useQuery(api.users.current);
+  const projects = useQuery(api.projects.listByUser);
   const getOrCreateUser = useMutation(api.users.getOrCreate);
   const updateProfile = useMutation(api.users.updateProfile);
   const softDeleteCurrent = useMutation(api.users.softDeleteCurrent);
@@ -160,6 +247,12 @@ export default function ProfileScreen() {
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
+  const [isShareCardVisible, setIsShareCardVisible] = useState(false);
+  const [isSharingProfile, setIsSharingProfile] = useState(false);
+  const shareCardRef = useRef<ViewShot>(null);
+  const shareCardBannerReadyRef = useRef<(() => void) | null>(null);
+  const bioInputRef = useRef<TextInput>(null);
+  const [isBioFocused, setIsBioFocused] = useState(false);
 
   const [localArtistProfile, setLocalArtistProfileState] = useState(
     DEFAULT_LOCAL_ARTIST_PROFILE,
@@ -168,6 +261,7 @@ export default function ProfileScreen() {
     useState(false);
 
   const [artistNameDraft, setArtistNameDraft] = useState("");
+  const [bioDraft, setBioDraft] = useState("");
   const [heroImageUrlDraft, setHeroImageUrlDraft] = useState<string | null>(null);
   const [avatarImageUrlDraft, setAvatarImageUrlDraft] = useState<string | null>(
     null,
@@ -221,6 +315,10 @@ export default function ProfileScreen() {
     ? localArtistProfile.heroImageUrl
     : convexUser?.heroImageUrl ?? localArtistProfile.heroImageUrl ?? null;
 
+  const sourceBio = usesLocalProfile
+    ? localArtistProfile.bio
+    : convexUser?.bio ?? localArtistProfile.bio ?? "";
+
   const sourceLinks = useMemo(
     () =>
       normalizeDraftLinks(
@@ -234,10 +332,11 @@ export default function ProfileScreen() {
   useEffect(() => {
     if (isProfileLoading) return;
     setArtistNameDraft(sourceArtistName);
+    setBioDraft(sourceBio);
     setHeroImageUrlDraft(sourceHeroImageUrl);
     setAvatarImageUrlDraft(sourceAvatarImageUrl);
     setLinksDraft(sourceLinks);
-  }, [isProfileLoading, sourceArtistName, sourceHeroImageUrl, sourceAvatarImageUrl, sourceLinks]);
+  }, [isProfileLoading, sourceArtistName, sourceBio, sourceHeroImageUrl, sourceAvatarImageUrl, sourceLinks]);
 
   const track = useCallback(
     (event: EventName, props?: Record<string, string>) => {
@@ -387,8 +486,10 @@ export default function ProfileScreen() {
           }
         }
 
+        const bio = bioDraft.trim();
         const cached = await setLocalArtistProfile({
           artistName,
+          bio,
           heroImageUrl,
           avatarImageUrl,
           ...(includeLinks ? { links: normalizedLinks } : {}),
@@ -401,6 +502,7 @@ export default function ProfileScreen() {
           await ensureUserRecord(convexUser);
           await updateProfile({
             artistName: artistName || null,
+            bio: bio || null,
             heroImageUrl,
             avatarImageUrl,
             ...(includeLinks ? { links: normalizedLinks } : {}),
@@ -428,6 +530,7 @@ export default function ProfileScreen() {
     },
     [
       artistNameDraft,
+      bioDraft,
       heroImageUrlDraft,
       avatarImageUrlDraft,
       convexUser,
@@ -466,6 +569,10 @@ export default function ProfileScreen() {
       Alert.alert(
         "Permission needed",
         "Allow photo access to use an artist profile image.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Open Settings", onPress: () => void Linking.openSettings() },
+        ],
       );
       return;
     }
@@ -492,6 +599,10 @@ export default function ProfileScreen() {
       Alert.alert(
         "Permission needed",
         "Allow photo access to use a banner image.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Open Settings", onPress: () => void Linking.openSettings() },
+        ],
       );
       return;
     }
@@ -618,12 +729,8 @@ export default function ProfileScreen() {
     const used = new Set(linksDraft.map((link) => link.platform));
     return PROFILE_LINK_PLATFORMS.filter((platform) => !used.has(platform));
   }, [linksDraft]);
-  const heroHeight = Math.max(380, Math.min(Math.round(windowHeight * 0.5), 560));
-  const heroBannerHeight = Math.max(
-    240,
-    Math.min(Math.round(windowWidth * 0.72), Math.round(heroHeight * 0.76)),
-  );
-  const heroArtistName = artistNameDraft.trim() || "Tap to add artist name";
+  const heroBannerHeight = Math.round(windowWidth * (9 / 16));
+  const heroArtistName = artistNameDraft.trim() || "";
   const actionsDisabled = isSigningOut || isDeleting;
   const profileInputsDisabled =
     isProfileLoading ||
@@ -678,6 +785,56 @@ export default function ProfileScreen() {
   const handleCloseProfileSettings = useCallback(() => {
     closeProfileSettings();
   }, [closeProfileSettings]);
+
+  const handleShareProfile = useCallback(async () => {
+    const isAvailable = await Sharing.isAvailableAsync();
+    if (!isAvailable) {
+      Alert.alert(
+        "Sharing not available",
+        "Sharing is not supported on this device.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Open Settings", onPress: () => void Linking.openSettings() },
+        ],
+      );
+      return;
+    }
+
+    setIsSharingProfile(true);
+    try {
+      // Prefetch remote images so they're in cache before the card renders
+      const prefetches: Promise<unknown>[] = [];
+      if (sourceAvatarImageUrl) prefetches.push(Image.prefetch(sourceAvatarImageUrl));
+      if (sourceHeroImageUrl) prefetches.push(Image.prefetch(sourceHeroImageUrl));
+      await Promise.all(prefetches);
+
+      setIsShareCardVisible(true);
+
+      // Wait for the banner image to load AND a minimum delay for project thumbnails.
+      // Local file URIs load nearly instantly, so the minimum delay ensures thumbnail
+      // images inside ProjectThumbnail have time to render before capture.
+      await Promise.all([
+        new Promise<void>((resolve) => {
+          shareCardBannerReadyRef.current = resolve;
+          setTimeout(resolve, 2000); // fallback in case onLoad never fires
+        }),
+        sleep(800),
+      ]);
+      shareCardBannerReadyRef.current = null;
+
+      const uri = await shareCardRef.current?.capture?.();
+      if (!uri) {
+        setIsShareCardVisible(false);
+        return;
+      }
+      setIsShareCardVisible(false);
+      await Sharing.shareAsync(uri, { mimeType: "image/png", dialogTitle: "Share your profile" });
+    } catch {
+      setIsShareCardVisible(false);
+    } finally {
+      setIsSharingProfile(false);
+    }
+  }, [sourceAvatarImageUrl, sourceHeroImageUrl]);
 
   const profileSettingsPanResponder = useMemo(
     () =>
@@ -822,7 +979,7 @@ export default function ProfileScreen() {
                               style={styles.profileSettingsMediaImage}
                             />
                           ) : (
-                            <Ionicons name="person" size={44} color="#8792AA" />
+                            <Image source={require("../../assets/defaults/MusicPromo-DefaultAvatar.jpg")} style={styles.profileSettingsMediaImage} />
                           )}
                         </Pressable>
                         <Text style={styles.profileSettingsMediaLabel}>Avatar</Text>
@@ -839,7 +996,7 @@ export default function ProfileScreen() {
                           accessibilityRole="button"
                         >
                           {isPickingAvatar ? (
-                            <ActivityIndicator size="small" color="#4A5BEA" />
+                            <ActivityIndicator size="small" color={isDarkMode ? colors.dark.text : colors.light.text} />
                           ) : (
                             <Text style={styles.profileSettingsMediaCtaText}>Edit avatar</Text>
                           )}
@@ -866,7 +1023,7 @@ export default function ProfileScreen() {
                               style={styles.profileSettingsMediaImage}
                             />
                           ) : (
-                            <Ionicons name="image-outline" size={40} color="#8792AA" />
+                            <Image source={require("../../assets/branding/MusicPromo-Banner.png")} style={styles.profileSettingsMediaImage} />
                           )}
                         </Pressable>
                         <Text style={styles.profileSettingsMediaLabel}>Banner</Text>
@@ -883,7 +1040,7 @@ export default function ProfileScreen() {
                           accessibilityRole="button"
                         >
                           {isPickingHero ? (
-                            <ActivityIndicator size="small" color="#4A5BEA" />
+                            <ActivityIndicator size="small" color={isDarkMode ? colors.dark.text : colors.light.text} />
                           ) : (
                             <Text style={styles.profileSettingsMediaCtaText}>Edit banner</Text>
                           )}
@@ -913,16 +1070,93 @@ export default function ProfileScreen() {
                         returnKeyType="done"
                       />
                     </View>
+                    <View style={[styles.profileSettingsRow, styles.profileSettingsBioRow]}>
+                      <Text style={styles.profileSettingsRowLabel}>Bio</Text>
+                      <TextInput
+                        ref={bioInputRef}
+                        value={bioDraft}
+                        onChangeText={(text) => {
+                          const lines = text.split("\n");
+                          setBioDraft(lines.slice(0, 3).join("\n"));
+                        }}
+                        placeholder="Tell people about yourself"
+                        placeholderTextColor={isDarkMode ? "#6B778F" : "#A7AFC0"}
+                        editable={!profileSettingsDisabled}
+                        onBlur={() => {
+                          void saveProfile({ includeLinks: false });
+                        }}
+                        style={[styles.profileSettingsNameInput, styles.profileSettingsBioInput]}
+                        autoCapitalize="sentences"
+                        autoCorrect
+                        multiline
+                        maxLength={200}
+                        inputAccessoryViewID="bioInputAccessory"
+                      />
+                    </View>
                   </View>
 
-                  <View style={[styles.accountSection, { backgroundColor: isDarkMode ? "#11192C" : colors.light.surface, borderColor: isDarkMode ? "rgba(187, 203, 236, 0.15)" : colors.light.border }]}>
-                    <Text style={[styles.sectionEyebrow, { color: profileTextSecondaryColor }]}>Account Actions</Text>
-                    <Text style={[styles.sectionTitle, { color: profileTextColor }]}>Security & Session</Text>
+                  <View style={styles.profileSettingsCard}>
+                    <View style={styles.profileSettingsSectionHeader}>
+                      <Text style={[styles.profileSettingsSectionLabelText, { color: profileTextSecondaryColor }]}>Social Platforms</Text>
+                    </View>
+
+                    {linksDraft.map((link) => (
+                      <View key={link.platform} style={styles.profileSettingsRow}>
+                        <Text style={styles.profileSettingsRowLabel}>{PLATFORM_LABELS[link.platform]}</Text>
+                        <TextInput
+                          value={extractHandle(link.platform, link.url)}
+                          onChangeText={(text) => handleUpdateLinkUrl(link.platform, buildLinkUrl(link.platform, text))}
+                          placeholder={LINK_PLACEHOLDERS[link.platform]}
+                          placeholderTextColor={isDarkMode ? "#3D4A63" : "#A7AFC0"}
+                          autoCapitalize="none"
+                          autoCorrect={false}
+                          keyboardType="url"
+                          returnKeyType="done"
+                          onSubmitEditing={() => { void saveProfile({ includeLinks: true }); }}
+                          onBlur={() => { void saveProfile({ includeLinks: true }); }}
+                          style={[styles.profileSettingsNameInput, { color: profileTextColor }]}
+                        />
+                        <Pressable
+                          onPress={() => handleRemoveLink(link.platform)}
+                          style={styles.linkInputRemove}
+                          accessibilityLabel={`Remove ${PLATFORM_LABELS[link.platform]}`}
+                          accessibilityRole="button"
+                        >
+                          <Ionicons name="close-circle" size={18} color={isDarkMode ? colors.dark.textSecondary : colors.light.textSecondary} />
+                        </Pressable>
+                      </View>
+                    ))}
+
+                    {availablePlatforms.length > 0 ? (
+                      <View style={styles.linkAddRow}>
+                        {availablePlatforms.map((platform) => (
+                          <Pressable
+                            key={platform}
+                            onPress={() => handleAddLink(platform)}
+                            style={({ pressed }) => [
+                              styles.linkAddChip,
+                              { borderColor: profileBorderColor, backgroundColor: isDarkMode ? colors.dark.surface : "#F0F2F7" },
+                              pressed && styles.optionChipPressed,
+                            ]}
+                            accessibilityLabel={`Add ${PLATFORM_LABELS[platform]}`}
+                            accessibilityRole="button"
+                          >
+                            <Ionicons name="add" size={13} color={profileTextSecondaryColor} />
+                            <Text style={[styles.linkAddChipText, { color: profileTextSecondaryColor }]}>{PLATFORM_LABELS[platform]}</Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                    ) : null}
+                  </View>
+
+                  <View style={styles.profileSettingsCard}>
+                    <View style={styles.profileSettingsSectionHeader}>
+                      <Text style={[styles.profileSettingsSectionLabelText, { color: profileTextSecondaryColor }]}>Account</Text>
+                    </View>
 
                     <Pressable
                       style={({ pressed }) => [
-                        styles.actionRow,
-                        { backgroundColor: isDarkMode ? "#0F1724" : colors.light.surface, borderColor: profileBorderColor },
+                        styles.profileSettingsRow,
                         pressed && !actionsDisabled && styles.actionRowPressed,
                       ]}
                       onPress={handleSignOut}
@@ -936,17 +1170,14 @@ export default function ProfileScreen() {
                           {isLocalGuest ? "Exit Guest Mode" : "Sign Out"}
                         </Text>
                       </View>
-                      {isSigningOut ? (
+                      {isSigningOut && (
                         <ActivityIndicator size="small" color={profileTextSecondaryColor} />
-                      ) : (
-                        <Ionicons name="chevron-forward" size={16} color={profileTextSecondaryColor} />
                       )}
                     </Pressable>
 
                     <Pressable
                       style={({ pressed }) => [
-                        styles.actionRow,
-                        { backgroundColor: isDarkMode ? "#0F1724" : colors.light.surface, borderColor: profileBorderColor },
+                        styles.profileSettingsRow,
                         pressed && !actionsDisabled && styles.deleteRowPressed,
                       ]}
                       onPress={handleDeleteAccount}
@@ -958,16 +1189,11 @@ export default function ProfileScreen() {
                         <Ionicons name="trash-outline" size={20} color={isDarkMode ? colors.accent.error : "#C41C1C"} />
                         <Text style={[styles.deleteText, { color: isDarkMode ? colors.accent.error : "#C41C1C" }]}>Delete Account</Text>
                       </View>
-                      {isDeleting ? (
+                      {isDeleting && (
                         <ActivityIndicator size="small" color={colors.accent.error} />
-                      ) : (
-                        <Ionicons name="chevron-forward" size={16} color={profileTextSecondaryColor} />
                       )}
                     </Pressable>
 
-                    <Text style={[styles.warningText, { color: profileTextSecondaryColor }]}>
-                      Deleting deactivates your account for v1 while keeping records recoverable.
-                    </Text>
                   </View>
                 </ScrollView>
               </SafeAreaView>
@@ -980,17 +1206,14 @@ export default function ProfileScreen() {
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
         >
-        <View style={[styles.heroShell, { minHeight: heroHeight, backgroundColor: profileBackgroundColor }]}>
+        <View style={[styles.heroShell, { backgroundColor: profileBackgroundColor }]}>
           <View style={[styles.heroBanner, { height: heroBannerHeight }]}>
-            {heroImageUrlDraft ? (
-              <Image
-                source={{ uri: heroImageUrlDraft }}
-                style={styles.heroBannerImage}
-                resizeMode="cover"
-              />
-            ) : (
-              <View style={[styles.heroBannerFallback, { backgroundColor: profileBannerFallbackColor }]} />
-            )}
+            <Image
+              source={heroImageUrlDraft ? { uri: heroImageUrlDraft } : require("../../assets/branding/MusicPromo-Banner.png")}
+              style={[styles.heroBannerImage, { width: windowWidth + 20 }]}
+              resizeMode="cover"
+              onError={() => setHeroImageUrlDraft(null)}
+            />
           </View>
 
           <View style={[styles.heroIdentityBlock, { backgroundColor: profileBackgroundColor, borderTopColor: profileBorderColor }]}>
@@ -1009,11 +1232,11 @@ export default function ProfileScreen() {
             >
               <View style={[styles.heroAvatarFrame, { backgroundColor: profileAvatarFrameColor }]}>
                 <View style={[styles.heroAvatar, { backgroundColor: profileAvatarBgColor }]}>
-                  {avatarImageUrlDraft ? (
-                    <Image source={{ uri: avatarImageUrlDraft }} style={styles.heroAvatarImage} />
-                  ) : (
-                    <Ionicons name="person" size={52} color="#9EABC8" />
-                  )}
+                  <Image
+                    source={avatarImageUrlDraft ? { uri: avatarImageUrlDraft } : require("../../assets/defaults/MusicPromo-DefaultAvatar.jpg")}
+                    style={styles.heroAvatarImage}
+                    onError={() => setAvatarImageUrlDraft(null)}
+                  />
                 </View>
                 <View style={styles.heroAvatarPlaceholder}>
                   <Ionicons name="camera-outline" size={14} color="#F4F7FF" />
@@ -1047,6 +1270,30 @@ export default function ProfileScreen() {
                   </>
                 )}
               </Pressable>
+              {!isGuest ? (
+                <Pressable
+                  onPress={() => { void handleShareProfile(); }}
+                  disabled={isSharingProfile}
+                  style={({ pressed }) => [
+                    styles.heroEditProfileButton,
+                    { backgroundColor: profileEditButtonBgColor },
+                    pressed && styles.optionChipPressed,
+                  ]}
+                  accessibilityLabel="Share profile"
+                  accessibilityRole="button"
+                >
+                  {isSharingProfile ? (
+                    <ActivityIndicator size="small" color={profileEditButtonTextColor} />
+                  ) : (
+                    <>
+                      <Ionicons name="share-outline" size={15} color={profileEditButtonTextColor} />
+                      <Text style={[styles.heroEditProfileButtonText, { color: profileEditButtonTextColor }]} numberOfLines={1}>
+                        Share
+                      </Text>
+                    </>
+                  )}
+                </Pressable>
+              ) : null}
             </View>
 
             <View style={styles.heroIdentityTextWrap}>
@@ -1059,6 +1306,11 @@ export default function ProfileScreen() {
               >
                 {heroArtistName}
               </Text>
+              {bioDraft.trim() ? (
+                <Text style={[styles.heroBioText, { color: profileTextSecondaryColor }]}>
+                  {bioDraft.trim()}
+                </Text>
+              ) : null}
             </View>
           </View>
         </View>
@@ -1072,13 +1324,240 @@ export default function ProfileScreen() {
           ) : null}
 
           {isProfileLoading ? (
-            <View style={[styles.loadingCard, { backgroundColor: isDarkMode ? "#121A2E" : colors.light.surface, borderColor: profileBorderColor }]}>
+            <View style={[styles.loadingCard, { backgroundColor: isDarkMode ? colors.dark.surface : colors.light.surface, borderColor: profileBorderColor }]}>
               <ActivityIndicator color={profileTextColor} />
               <Text style={[styles.loadingText, { color: profileTextSecondaryColor }]}>Loading profile...</Text>
             </View>
           ) : null}
+
+          {!isProfileLoading && !isGuest ? (() => {
+            const activeLinks = sourceLinks.filter(l => l.url.trim().length > 0);
+            const recentPromos = (projects ?? []).slice(0, 5);
+
+            const handleLinkPress = async (platform: string, url: string) => {
+              const webUrl = buildLinkUrl(platform as ProfileLinkPlatform, extractHandle(platform as ProfileLinkPlatform, url) || url);
+              const deepLink = PLATFORM_DEEP_LINKS[platform as ProfileLinkPlatform]?.(webUrl) ?? webUrl;
+              try {
+                const canOpen = await Linking.canOpenURL(deepLink);
+                if (canOpen) {
+                  await Linking.openURL(deepLink);
+                  return;
+                }
+              } catch (_) {}
+              await Linking.openURL(webUrl);
+            };
+
+            const PLATFORM_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
+              spotify: "musical-notes",
+              soundcloud: "cloud",
+              "apple-music": "musical-note",
+              youtube: "logo-youtube",
+              instagram: "logo-instagram",
+              tiktok: "logo-tiktok",
+              x: "logo-twitter",
+              website: "globe-outline",
+            };
+
+            return (
+              <>
+                {activeLinks.length > 0 ? (
+                  <View style={[styles.linksCard, { backgroundColor: isDarkMode ? colors.dark.surface : colors.light.surface, borderColor: profileBorderColor }]}>
+                    <Text style={[styles.sectionEyebrow, { color: profileTextSecondaryColor }]}>Social Platforms</Text>
+                    <View style={styles.linksRow}>
+                      {activeLinks.map(link => (
+                        <Pressable
+                          key={link.platform}
+                          onPress={() => { void handleLinkPress(link.platform, link.url); }}
+                          style={({ pressed }) => [styles.linkChip, { borderColor: profileBorderColor }, pressed && styles.optionChipPressed]}
+                          accessibilityLabel={PLATFORM_LABELS[link.platform]}
+                          accessibilityRole="link"
+                        >
+                          <Ionicons name={PLATFORM_ICONS[link.platform] ?? "link-outline"} size={18} color={profileTextColor} />
+                          <Text style={[styles.linkChipLabel, { color: profileTextColor }]}>{PLATFORM_LABELS[link.platform]}</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  </View>
+                ) : null}
+
+                {recentPromos.length > 0 ? (
+                  <View style={styles.recentSection}>
+                    <Text style={[styles.sectionTitle, { color: profileTextColor }]}>Music Promos</Text>
+                    <View style={styles.thumbnailGrid}>
+                      {recentPromos.map(project => {
+                        const title = project.title ?? "Untitled";
+                        return (
+                          <View key={String(project._id)} style={styles.thumbnailCell}>
+                            <ProjectThumbnail
+                              project={project}
+                              title={title}
+                              surfaceColor="transparent"
+                              fallbackIconColor={isDarkMode ? colors.dark.textSecondary : colors.light.textSecondary}
+                            />
+                          </View>
+                        );
+                      })}
+                    </View>
+                  </View>
+                ) : null}
+              </>
+            );
+          })() : null}
+
+          {!isProfileLoading && isGuest ? (
+            <View style={[styles.guestCard, { backgroundColor: isDarkMode ? colors.dark.surface : colors.light.surface, borderColor: profileBorderColor }]}>
+              <View style={styles.guestIconWrap}>
+                <Ionicons name="person-circle-outline" size={48} color={profileTextColor} />
+              </View>
+              <Text style={[styles.guestTitle, { color: profileTextColor }]}>Create a free account</Text>
+              <Text style={[styles.guestSubtitle, { color: profileTextSecondaryColor }]}>Sign in to unlock your full profile</Text>
+              <View style={styles.guestPerks}>
+                {([
+                  { icon: "musical-notes-outline", label: "Save your promos" },
+                  { icon: "link-outline", label: "Add your social links" },
+                  { icon: "person-outline", label: "Access your profile anytime" },
+                ] as const).map(({ icon, label }) => (
+                  <View key={label} style={styles.guestPerkRow}>
+                    <Ionicons name={icon} size={16} color={profileTextSecondaryColor} />
+                    <Text style={[styles.guestPerkText, { color: profileTextSecondaryColor }]}>{label}</Text>
+                  </View>
+                ))}
+              </View>
+              <Pressable
+                onPress={() => { void clearLocalSession(); }}
+                style={({ pressed }) => [
+                  styles.guestSignInButton,
+                  { backgroundColor: profileEditButtonBgColor },
+                  pressed && styles.optionChipPressed,
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="Sign in"
+              >
+                <Text style={[styles.guestSignInButtonText, { color: profileEditButtonTextColor }]}>Sign In</Text>
+              </Pressable>
+            </View>
+          ) : null}
         </View>
       </ScrollView>
+
+      {isShareCardVisible ? (
+        <View style={styles.shareCardOffscreen} pointerEvents="none">
+          <ViewShot ref={shareCardRef} options={{ format: "png", quality: 1, pixelRatio: PixelRatio.get() }}>
+            <View style={styles.shareCard}>
+              {/* Banner */}
+              <View style={styles.shareCardBanner}>
+                <Image
+                  source={sourceHeroImageUrl ? { uri: sourceHeroImageUrl } : require("../../assets/branding/MusicPromo-Banner.png")}
+                  style={styles.shareCardBannerImage}
+                  resizeMode="cover"
+                  onLoad={() => shareCardBannerReadyRef.current?.()}
+                />
+                <View style={styles.shareCardBannerGradient} />
+              </View>
+
+              {/* Avatar + artist name row */}
+              <View style={styles.shareCardNameRow}>
+                <View style={styles.shareCardAvatarWrap}>
+                  <Image
+                    source={sourceAvatarImageUrl ? { uri: sourceAvatarImageUrl } : require("../../assets/defaults/MusicPromo-DefaultAvatar.jpg")}
+                    style={styles.shareCardAvatarImage}
+                  />
+                </View>
+                <Text style={styles.shareCardName} numberOfLines={1}>{sourceArtistName || displayName}</Text>
+              </View>
+
+              {/* Bio */}
+              {sourceBio ? (
+                <Text style={styles.shareCardBio} numberOfLines={4}>{sourceBio}</Text>
+              ) : null}
+
+              {/* Two-column body: left = socials, right = featured promos */}
+              <View style={styles.shareCardBody}>
+                {/* Left column: socials */}
+                <View style={styles.shareCardLeft}>
+                  {sourceLinks.length > 0 && (
+                    <View style={styles.shareCardLinks}>
+                      <Text style={styles.shareCardFeaturedLabel}>Socials</Text>
+                      {sourceLinks.slice(0, 4).map((link) => {
+                        const SHARE_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
+                          spotify: "musical-notes",
+                          soundcloud: "cloud",
+                          "apple-music": "musical-note",
+                          youtube: "logo-youtube",
+                          instagram: "logo-instagram",
+                          tiktok: "logo-tiktok",
+                          x: "logo-twitter",
+                          website: "globe-outline",
+                        };
+                        const handle = extractHandle(link.platform as ProfileLinkPlatform, link.url);
+                        return (
+                          <View key={link.platform} style={styles.shareCardLinkRow}>
+                            <Ionicons name={SHARE_ICONS[link.platform] ?? "link-outline"} size={14} color="rgba(255,255,255,0.7)" />
+                            <Text style={styles.shareCardLinkText} numberOfLines={1}>{handle || PLATFORM_LABELS[link.platform as ProfileLinkPlatform]}</Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
+                </View>
+
+                {/* Right column: featured promos */}
+                <View style={styles.shareCardRight}>
+                  {(projects ?? []).filter(p => p.audioName ?? p.title).length > 0 && (
+                    <>
+                      <Text style={styles.shareCardFeaturedLabel}>Songs</Text>
+                      {(projects ?? []).filter(p => p.audioName ?? p.title).slice(0, 3).map((project) => (
+                        <View key={String(project._id)} style={styles.shareCardSongRow}>
+                          <Ionicons name="musical-note" size={11} color="rgba(255,255,255,0.4)" />
+                          <Text style={styles.shareCardSongTitle} numberOfLines={1}>{project.audioName ?? project.title}</Text>
+                        </View>
+                      ))}
+                    </>
+                  )}
+                </View>
+              </View>
+
+              {/* 3 promo thumbnails */}
+              {(projects ?? []).length > 0 && (
+                <View style={styles.shareCardGridSection}>
+                  <Text style={styles.shareCardFeaturedLabel}>Music Promos</Text>
+                  <View style={styles.shareCardGrid}>
+                    {(projects ?? []).slice(0, 3).map(project => (
+                      <View key={String(project._id)} style={styles.shareCardThumb}>
+                        <ProjectThumbnail
+                          project={project}
+                          title={project.title ?? ""}
+                          surfaceColor="transparent"
+                          fallbackIconColor={isDarkMode ? colors.dark.textSecondary : colors.light.textSecondary}
+                        />
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              {/* Footer */}
+              <View style={styles.shareCardFooter}>
+                <Image
+                  source={require("../../assets/branding/MusicPromo-Logo.png")}
+                  style={styles.shareCardFooterLogo}
+                />
+              </View>
+            </View>
+          </ViewShot>
+        </View>
+      ) : null}
+      <InputAccessoryView nativeID="bioInputAccessory">
+        <View style={styles.bioAccessory}>
+          <Pressable
+            onPress={() => bioInputRef.current?.blur()}
+            accessibilityLabel="Dismiss keyboard"
+            accessibilityRole="button"
+          >
+            <Text style={styles.bioAccessoryDone}>Done</Text>
+          </Pressable>
+        </View>
+      </InputAccessoryView>
     </SafeAreaView>
   );
 }
@@ -1086,7 +1565,7 @@ export default function ProfileScreen() {
 const createStyles = (isDarkMode: boolean) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: isDarkMode ? "#03050A" : colors.light.background,
+    backgroundColor: isDarkMode ? colors.dark.background : colors.light.background,
   },
   content: {
     paddingTop: 0,
@@ -1098,16 +1577,16 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
   },
   profileSettingsScreen: {
     flex: 1,
-    backgroundColor: isDarkMode ? "#0A0F1C" : "#F4F5F7",
+    backgroundColor: isDarkMode ? colors.dark.background : colors.light.background,
   },
   profileSettingsAnimatedLayer: {
     flex: 1,
-    backgroundColor: isDarkMode ? "#0A0F1C" : "#F4F5F7",
+    backgroundColor: isDarkMode ? colors.dark.background : colors.light.background,
   },
   profileSettingsHeader: {
     minHeight: 58,
     borderBottomWidth: 1,
-    borderBottomColor: isDarkMode ? "rgba(187, 203, 236, 0.15)" : "#E6E8EE",
+    borderBottomColor: isDarkMode ? colors.dark.border : colors.light.border,
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: spacing.sm,
@@ -1121,11 +1600,11 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
     justifyContent: "center",
   },
   profileSettingsBackButtonPressed: {
-    backgroundColor: "#E8EBF2",
+    backgroundColor: isDarkMode ? colors.dark.surfaceMuted : colors.light.surfaceMuted,
   },
   profileSettingsHeaderTitle: {
     ...typography.h2,
-    color: isDarkMode ? "#F4F7FF" : "#232938",
+    color: isDarkMode ? colors.dark.text : colors.light.text,
     textAlign: "center",
     position: "absolute",
     left: 56,
@@ -1136,21 +1615,19 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
   },
   profileSettingsAvatarSection: {
     borderBottomWidth: 1,
-    borderBottomColor: isDarkMode ? "rgba(187, 203, 236, 0.15)" : "#E6E8EE",
+    borderBottomColor: isDarkMode ? colors.dark.border : colors.light.border,
     paddingTop: spacing.lg,
     paddingBottom: spacing.md,
     paddingHorizontal: spacing.lg,
     alignItems: "center",
   },
   profileSettingsMediaRow: {
-    width: "100%",
     flexDirection: "row",
-    justifyContent: "space-between",
+    justifyContent: "center",
     alignItems: "flex-start",
-    gap: spacing.md,
+    gap: spacing.xl,
   },
   profileSettingsMediaColumn: {
-    flex: 1,
     alignItems: "center",
     gap: spacing.xs,
   },
@@ -1158,9 +1635,9 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
     width: 96,
     height: 96,
     borderRadius: radius.full,
-    backgroundColor: "#DDE2EC",
+    backgroundColor: isDarkMode ? colors.dark.surfaceMuted : colors.light.surfaceMuted,
     borderWidth: 1,
-    borderColor: "#D4DAE8",
+    borderColor: isDarkMode ? colors.dark.border : colors.light.border,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
@@ -1171,7 +1648,7 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
   },
   profileSettingsMediaLabel: {
     ...typography.caption,
-    color: "#4A5266",
+    color: isDarkMode ? colors.dark.textSecondary : colors.light.textSecondary,
     fontWeight: "700",
     letterSpacing: 0.5,
     textTransform: "uppercase",
@@ -1186,31 +1663,114 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
   },
   profileSettingsMediaCtaText: {
     ...typography.body,
-    color: "#4A5BEA",
+    color: isDarkMode ? colors.dark.text : colors.light.text,
     fontWeight: "600",
     textAlign: "center",
   },
   profileSettingsCard: {
-    backgroundColor: isDarkMode ? "#0A0F1C" : "#F4F5F7",
+    backgroundColor: isDarkMode ? colors.dark.background : colors.light.background,
   },
   profileSettingsRow: {
     minHeight: 56,
     borderBottomWidth: 1,
-    borderBottomColor: isDarkMode ? "rgba(187, 203, 236, 0.15)" : "#E6E8EE",
+    borderBottomColor: isDarkMode ? colors.dark.border : colors.light.border,
     paddingHorizontal: spacing.lg,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: spacing.md,
   },
+  profileSettingsBioRow: {
+    minHeight: 80,
+    alignItems: "flex-start",
+    paddingVertical: spacing.sm,
+  },
+  profileSettingsBioInputCol: {
+    flex: 1,
+    gap: 4,
+  },
+  profileSettingsDoneBtnWrap: {
+    flexShrink: 0,
+    alignSelf: "flex-start",
+    paddingTop: 2,
+  },
+  profileSettingsDoneBtn: {
+    ...typography.caption,
+    fontWeight: "600",
+  },
+  profileSettingsBioInput: {
+    textAlign: "right",
+    textAlignVertical: "top",
+    minHeight: 60,
+  },
   profileSettingsRowLabel: {
     ...typography.body,
-    color: isDarkMode ? "#CBD3E8" : "#303645",
+    color: isDarkMode ? colors.dark.text : colors.light.text,
+    width: 100,
     flexShrink: 0,
+  },
+  profileSettingsSectionHeader: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    marginTop: -1,
+    backgroundColor: isDarkMode ? colors.dark.surfaceMuted : colors.light.surfaceMuted,
+    borderTopWidth: 1,
+    borderTopColor: isDarkMode ? colors.dark.border : colors.light.border,
+    borderBottomWidth: 1,
+    borderBottomColor: isDarkMode ? colors.dark.border : colors.light.border,
+  },
+  profileSettingsSectionLabelText: {
+    ...typography.caption,
+    fontSize: 12,
+    fontWeight: "600",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+  },
+  linkInputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: radius.md,
+    borderWidth: 1,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    gap: spacing.xs,
+  },
+  linkInputLabel: {
+    ...typography.caption,
+    fontWeight: "600",
+    width: 96,
+  },
+  linkInputField: {
+    ...typography.caption,
+    flex: 1,
+    paddingVertical: 4,
+  },
+  linkInputRemove: {
+    padding: 2,
+  },
+  linkAddRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  linkAddChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    borderWidth: 1,
+    borderRadius: radius.full,
+    paddingVertical: 5,
+    paddingHorizontal: spacing.sm,
+  },
+  linkAddChipText: {
+    ...typography.caption,
+    fontWeight: "600",
   },
   profileSettingsNameInput: {
     ...typography.body,
-    color: isDarkMode ? "#F4F7FF" : "#1F2431",
+    color: isDarkMode ? colors.dark.text : colors.light.text,
     textAlign: "right",
     flex: 1,
     minHeight: 36,
@@ -1228,17 +1788,20 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     width: "100%",
     height: "100%",
+    transform: [{ translateX: -20 }],
   },
   heroBannerFallback: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "#0F172D",
+    backgroundColor: colors.dark.surface,
   },
   heroEditProfileActionRow: {
     marginLeft: 156,
     marginRight: spacing.xs,
     marginTop: -56,
     marginBottom: spacing.sm,
-    alignItems: "stretch",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
     transform: [{ translateY: -8 }],
   },
   heroEditProfileButton: {
@@ -1264,9 +1827,9 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
     backgroundColor: "#03050A",
     paddingHorizontal: spacing.lg,
     paddingTop: 90,
-    paddingBottom: spacing.lg,
+    paddingBottom: spacing.xs,
     borderTopWidth: 1,
-    borderTopColor: "rgba(184, 200, 236, 0.15)",
+    borderTopColor: colors.dark.border,
   },
   heroAvatarPressable: {
     position: "absolute",
@@ -1280,7 +1843,7 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
     height: 140,
     borderRadius: 72,
     padding: 4,
-    backgroundColor: "rgba(222, 233, 255, 0.8)",
+    backgroundColor: colors.dark.surfaceMuted,
     shadowColor: "#000000",
     shadowOpacity: 0.42,
     shadowRadius: 24,
@@ -1292,7 +1855,7 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
     width: "100%",
     height: "100%",
     borderRadius: 68,
-    backgroundColor: "#16203A",
+    backgroundColor: colors.dark.surfaceMuted,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
@@ -1315,8 +1878,8 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
     backgroundColor: "rgba(18, 26, 44, 0.82)",
   },
   heroIdentityTextWrap: {
-    gap: spacing.xs,
-    paddingBottom: spacing.sm,
+    gap: spacing.sm,
+    paddingBottom: spacing.md,
   },
   heroArtistName: {
     ...typography.h1,
@@ -1329,9 +1892,16 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
   heroArtistNamePlaceholder: {
     color: "#D6DEEF",
   },
+  heroBioText: {
+    ...typography.body,
+    fontSize: 15,
+    lineHeight: 22,
+    maxWidth: "92%",
+    opacity: 0.82,
+  },
   mainContent: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
+    paddingTop: 0,
   },
   errorPanel: {
     flexDirection: "row",
@@ -1350,12 +1920,257 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
     color: isDarkMode ? "#FFB8BE" : colors.accent.error,
     flex: 1,
   },
+  bioCard: {
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    marginBottom: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  bioText: {
+    ...typography.body,
+    lineHeight: 22,
+  },
+  linksCard: {
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    gap: spacing.sm,
+  },
+  linksRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  linkChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    borderWidth: 1,
+    borderRadius: radius.full,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+  },
+  linkChipLabel: {
+    ...typography.caption,
+    fontWeight: "600",
+  },
+  recentSection: {
+    marginBottom: spacing.md,
+    gap: spacing.sm,
+  },
+  thumbnailGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginHorizontal: -spacing.xs,
+  },
+  thumbnailCell: {
+    width: "33.33%",
+    paddingHorizontal: spacing.xs,
+    paddingBottom: spacing.sm,
+  },
+  thumbnailCardBody: {
+    paddingHorizontal: spacing.xs,
+    paddingVertical: spacing.xs,
+    gap: 2,
+  },
+  thumbnailCardTitle: {
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  thumbnailCardDate: {
+    fontSize: 10,
+  },
+  shareCardOffscreen: {
+    position: "absolute",
+    top: 10000,
+    left: 0,
+  },
+  shareCard: {
+    width: 360,
+    height: 680,
+    backgroundColor: "#000000",
+    overflow: "hidden",
+  },
+  shareCardBanner: {
+    width: 360,
+    height: 220,
+    position: "relative",
+  },
+  shareCardBannerImage: {
+    width: 360,
+    height: 220,
+    transform: [{ translateX: -20 }],
+  },
+  shareCardBannerGradient: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 220,
+  },
+  shareCardBody: {
+    flexDirection: "row",
+    paddingBottom: 8,
+  },
+  shareCardLeft: {
+    flex: 1,
+    paddingTop: 16,
+  },
+  shareCardRight: {
+    width: 175,
+    paddingTop: 16,
+    marginRight: 30,
+    gap: 10,
+  },
+  shareCardAvatarWrap: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    overflow: "hidden",
+    borderWidth: 3,
+    borderColor: colors.dark.background,
+    backgroundColor: colors.dark.surfaceMuted,
+    marginTop: -45,
+    marginLeft: 16,
+  },
+  shareCardAvatarImage: {
+    width: "100%",
+    height: "100%",
+  },
+  shareCardNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingRight: 16,
+    paddingTop: 10,
+  },
+  shareCardName: {
+    flex: 1,
+    fontSize: 34,
+    fontWeight: "700",
+    color: "#F8FAFF",
+    letterSpacing: 0.3,
+    paddingLeft: 24,
+    paddingBottom: 4,
+  },
+  shareCardBio: {
+    fontSize: 12,
+    color: "rgba(255,255,255,0.55)",
+    lineHeight: 17,
+    paddingHorizontal: 16,
+    paddingTop: 6,
+  },
+  shareCardLinks: {
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  shareCardLinkRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  shareCardLinkText: {
+    fontSize: 12,
+    color: "rgba(255,255,255,0.65)",
+    fontWeight: "500",
+  },
+  shareCardFeaturedLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "rgba(255,255,255,0.35)",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    marginBottom: 2,
+  },
+  shareCardSongRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  shareCardSongTitle: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "rgba(255,255,255,0.75)",
+    flex: 1,
+  },
+  shareCardGridSection: {
+    paddingHorizontal: 16,
+    paddingTop: 20,
+    gap: 8,
+  },
+  shareCardGrid: {
+    flexDirection: "row",
+    gap: 4,
+  },
+  shareCardThumb: {
+    flex: 1,
+    height: 110,
+    borderRadius: 10,
+    overflow: "hidden",
+  },
+  shareCardFooter: {
+    position: "absolute",
+    bottom: 20,
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  shareCardFooterLogo: {
+    width: 48,
+    height: 48,
+    resizeMode: "contain",
+  },
+  guestCard: {
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    padding: spacing.lg,
+    alignItems: "center",
+    marginBottom: spacing.lg,
+    gap: spacing.sm,
+  },
+  guestIconWrap: {
+    marginBottom: spacing.xs,
+  },
+  guestTitle: {
+    ...typography.h2,
+    textAlign: "center",
+  },
+  guestSubtitle: {
+    ...typography.body,
+    textAlign: "center",
+    marginBottom: spacing.sm,
+  },
+  guestPerks: {
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+    alignItems: "center",
+  },
+  guestPerkRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  guestPerkText: {
+    ...typography.body,
+  },
+  guestSignInButton: {
+    borderRadius: radius.full,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xl,
+    alignItems: "center",
+  },
+  guestSignInButtonText: {
+    ...typography.body,
+    fontWeight: "700",
+  },
   loadingCard: {
     minHeight: 120,
     borderRadius: radius.lg,
-    backgroundColor: isDarkMode ? "#121A2E" : colors.light.surface,
+    backgroundColor: isDarkMode ? colors.dark.surface : colors.light.surface,
     borderWidth: 1,
-    borderColor: isDarkMode ? "rgba(187, 203, 236, 0.15)" : colors.light.border,
+    borderColor: isDarkMode ? colors.dark.border : colors.light.border,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
@@ -1368,9 +2183,9 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
   },
   sectionCard: {
     borderRadius: radius.lg,
-    backgroundColor: isDarkMode ? "#11192C" : colors.light.surface,
+    backgroundColor: isDarkMode ? colors.dark.surface : colors.light.surface,
     borderWidth: 1,
-    borderColor: isDarkMode ? "rgba(187, 203, 236, 0.15)" : colors.light.border,
+    borderColor: isDarkMode ? colors.dark.border : colors.light.border,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
     marginBottom: spacing.md,
@@ -1422,7 +2237,7 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: isDarkMode ? "rgba(205, 218, 249, 0.2)" : colors.light.border,
-    backgroundColor: isDarkMode ? "#0F172A" : colors.light.surface,
+    backgroundColor: isDarkMode ? colors.dark.surface : colors.light.surface,
     padding: spacing.sm,
     marginTop: spacing.xs,
     gap: spacing.xs,
@@ -1480,9 +2295,9 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
   },
   accountSection: {
     borderRadius: radius.lg,
-    backgroundColor: isDarkMode ? "#11192C" : colors.light.surface,
+    backgroundColor: isDarkMode ? colors.dark.surface : colors.light.surface,
     borderWidth: 1,
-    borderColor: isDarkMode ? "rgba(187, 203, 236, 0.15)" : colors.light.border,
+    borderColor: isDarkMode ? colors.dark.border : colors.light.border,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
     marginHorizontal: spacing.lg,
@@ -1495,7 +2310,7 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
-    backgroundColor: isDarkMode ? "#0D162A" : colors.light.surface,
+    backgroundColor: isDarkMode ? colors.dark.surface : colors.light.surface,
     borderWidth: 1,
     borderColor: isDarkMode ? "rgba(205, 218, 249, 0.2)" : colors.light.border,
     marginBottom: spacing.sm,
@@ -1526,5 +2341,19 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
     color: isDarkMode ? "#8F9DBE" : colors.light.textSecondary,
     lineHeight: 18,
     marginTop: spacing.xs,
+  },
+  bioAccessory: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    backgroundColor: isDarkMode ? colors.dark.surfaceMuted : "#D1D5DB",
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: isDarkMode ? colors.dark.border : colors.light.border,
+  },
+  bioAccessoryDone: {
+    ...typography.body,
+    fontWeight: "600",
+    color: colors.accent.primary,
   },
 });

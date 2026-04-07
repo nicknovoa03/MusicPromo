@@ -43,15 +43,10 @@ import {
   parseTemplateTweaksParam,
   resolveTemplateId,
 } from "@/lib/templates";
+import { ProjectThumbnail } from "@/components/ProjectThumbnail";
 
 type Project = Doc<"projects"> | LocalProject;
-type ProjectAction = "rename" | "duplicate" | "delete";
-type ProjectThumbnailProps = {
-  project: Project;
-  title: string;
-  surfaceColor: string;
-  fallbackIconColor: string;
-};
+type ProjectAction = "duplicate" | "delete";
 
 function isLocalProject(project: Project): project is LocalProject {
   return "id" in project;
@@ -73,65 +68,6 @@ function normalizeAvatarUri(value: string | null | undefined): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
-}
-
-function ProjectThumbnail({
-  project,
-  title,
-  surfaceColor,
-  fallbackIconColor,
-}: ProjectThumbnailProps) {
-  const [thumbnailSize, setThumbnailSize] = useState(0);
-  const photoUri = normalizeMediaUri(project.photoUri);
-  const fallbackPreviewUri = normalizeMediaUri(project.exportedVideoUri);
-  const templateId = resolveTemplateId(project.templateId);
-  const templateTweaks = useMemo(
-    () => parseTemplateTweaksParam(project.templateTweaks),
-    [project.templateTweaks],
-  );
-  const templateDefinition = useMemo(
-    () => getTemplateDefinition(templateId),
-    [templateId],
-  );
-  const TemplateStageComponent = templateDefinition.StageComponent;
-  const canRenderTemplateThumbnail = thumbnailSize > 0;
-
-  return (
-    <View
-      style={[styles.thumbnail, { backgroundColor: surfaceColor }]}
-      onLayout={(event) => {
-        const nextSize = Math.round(event.nativeEvent.layout.width);
-        setThumbnailSize((current) => (current === nextSize ? current : nextSize));
-      }}
-    >
-      {canRenderTemplateThumbnail ? (
-        <TemplateStageComponent
-          width={thumbnailSize}
-          height={thumbnailSize}
-          aspectRatio={project.aspectRatio}
-          photoUri={photoUri}
-          isPlaying={false}
-          playbackLabel="Project thumbnail"
-          trackTitle={title}
-          subtitle={templateDefinition.name}
-          templateTweaks={templateTweaks ?? undefined}
-          showWatermark={false}
-        />
-      ) : fallbackPreviewUri ? (
-        <Image
-          source={{ uri: fallbackPreviewUri }}
-          style={styles.thumbnailImage}
-          resizeMode="cover"
-        />
-      ) : (
-        <Ionicons
-          name="image-outline"
-          size={30}
-          color={fallbackIconColor}
-        />
-      )}
-    </View>
-  );
 }
 
 let hasWarnedHapticsUnavailable = false;
@@ -224,7 +160,7 @@ export default function HomeScreen() {
   const convexUser = useQuery(api.users.current);
   const projectsQuery = useQuery(api.projects.listByUser);
   const deleteProject = useMutation(api.projects.remove);
-  const [localProjects, setLocalProjects] = useState<LocalProject[] | null>(null);
+const [localProjects, setLocalProjects] = useState<LocalProject[] | null>(null);
   const [localAvatarUrl, setLocalAvatarUrl] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [actionProject, setActionProject] = useState<Project | null>(null);
@@ -232,7 +168,7 @@ export default function HomeScreen() {
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
-  const longPressProjectIdRef = useRef<string | null>(null);
+const longPressProjectIdRef = useRef<string | null>(null);
   const isDarkMode = colorScheme === "dark";
   const homeBackgroundColor = isDarkMode ? colors.dark.background : colors.light.background;
   const homeSurfaceColor = isDarkMode ? colors.dark.surface : colors.light.surface;
@@ -534,7 +470,7 @@ export default function HomeScreen() {
 
       closeProjectActions();
       Alert.alert(
-        action === "rename" ? "Rename coming soon" : "Duplicate coming soon",
+        "Duplicate coming soon",
         "This action is part of the next project-management pass.",
       );
     },
@@ -570,25 +506,23 @@ export default function HomeScreen() {
     async (projects: Project[]) => {
       if (!projects.length) return;
       setIsBulkDeleting(true);
-      let failedCount = 0;
       try {
-        for (const project of projects) {
-          try {
+        const results = await Promise.allSettled(
+          projects.map(async (project) => {
             if (isLocalProject(project)) {
               await removeLocalProject(project.id);
             } else {
               await deleteProject({ projectId: project._id });
             }
             track("project_deleted", { projectId: getProjectId(project) });
-          } catch {
-            failedCount += 1;
-          }
-        }
+          })
+        );
 
         if (isLocalGuest) {
           await refreshLocalProjects();
         }
 
+        const failedCount = results.filter(r => r.status === "rejected").length;
         if (failedCount > 0) {
           Alert.alert(
             "Some projects could not be deleted",
@@ -794,15 +728,11 @@ export default function HomeScreen() {
             accessibilityLabel="Open profile"
             accessibilityRole="button"
           >
-            {profileAvatarUri ? (
-              <Image source={{ uri: profileAvatarUri }} style={styles.avatarImage} />
-            ) : (
-              <Ionicons
-                name="person-circle-outline"
-                size={32}
-                color={homeTextColor}
-              />
-            )}
+            <Image
+              source={profileAvatarUri ? { uri: profileAvatarUri } : require("../../assets/defaults/MusicPromo-DefaultAvatar.jpg")}
+              style={styles.avatarImage}
+              onError={() => setLocalAvatarUrl(null)}
+            />
           </Pressable>
         </View>
       </View>
@@ -882,25 +812,6 @@ export default function HomeScreen() {
           {actionProject ? (
             <>
               <View style={[styles.actionsCard, { backgroundColor: homeBackgroundColor }]}>
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.actionsRow,
-                    { borderBottomColor: homeBorderColor },
-                    pressed && styles.actionsRowPressed,
-                    pressed && { backgroundColor: homeSurfaceColor },
-                  ]}
-                  onPress={() => handleModalProjectAction("rename")}
-                  accessibilityLabel="Rename project"
-                  accessibilityRole="button"
-                >
-                  <Ionicons
-                    name="create-outline"
-                    size={18}
-                    color={homeTextColor}
-                  />
-                  <Text style={[styles.actionsText, { color: homeTextColor }]}>Rename</Text>
-                </Pressable>
-
                 <Pressable
                   style={({ pressed }) => [
                     styles.actionsRow,
@@ -1147,17 +1058,6 @@ const styles = StyleSheet.create({
   },
   cardSelectBadgeSelected: {
     backgroundColor: colors.accent.primary,
-  },
-  thumbnail: {
-    width: "100%",
-    aspectRatio: 1,
-    backgroundColor: colors.light.surface,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  thumbnailImage: {
-    width: "100%",
-    height: "100%",
   },
   cardBody: {
     paddingHorizontal: spacing.sm,

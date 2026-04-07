@@ -11,12 +11,12 @@
       "fallbackToCacheTimeout": 0
     },
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/branding/MusicPromo-App-Icon.png",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "scheme": "musicpromo",
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/branding/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#000000"
     },
@@ -24,12 +24,20 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.musicpromo.app",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "LSApplicationQueriesSchemes": [
+          "instagram",
+          "snssdk1233",
+          "spotify",
+          "youtube",
+          "twitter",
+          "music"
+        ]
       }
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/branding/MusicPromo-App-Icon.png",
         "backgroundColor": "#000000"
       },
       "edgeToEdgeEnabled": true,

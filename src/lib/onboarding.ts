@@ -1,5 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+// Bump this whenever new onboarding slides are added. Existing users whose
+// stored version is below this number will be shown onboarding again.
+export const CURRENT_ONBOARDING_VERSION = 2;
+
 const LOCAL_ONBOARDING_KEY_PREFIX = "musicpromo:onboarding-complete";
 const LOCAL_GUEST_ONBOARDING_KEY = `${LOCAL_ONBOARDING_KEY_PREFIX}:local-guest`;
 
@@ -20,20 +24,31 @@ function resolveLocalOnboardingKey(
   return null;
 }
 
+export async function getLocalOnboardingVersion(
+  clerkUserId?: string | null,
+  options?: OnboardingLocalOptions
+): Promise<number> {
+  const key = resolveLocalOnboardingKey(clerkUserId, options);
+  if (!key) return 0;
+
+  try {
+    const value = await AsyncStorage.getItem(key);
+    if (!value) return 0;
+    // Legacy: old flag stored "1" as a boolean string → treat as version 1
+    const parsed = parseInt(value, 10);
+    return isNaN(parsed) ? 1 : parsed;
+  } catch (error) {
+    console.warn("Failed to read local onboarding version:", error);
+    return 0;
+  }
+}
+
 export async function getLocalOnboardingCompleted(
   clerkUserId?: string | null,
   options?: OnboardingLocalOptions
 ): Promise<boolean> {
-  const key = resolveLocalOnboardingKey(clerkUserId, options);
-  if (!key) return false;
-
-  try {
-    const value = await AsyncStorage.getItem(key);
-    return value === "1";
-  } catch (error) {
-    console.warn("Failed to read local onboarding completion state:", error);
-    return false;
-  }
+  const version = await getLocalOnboardingVersion(clerkUserId, options);
+  return version >= CURRENT_ONBOARDING_VERSION;
 }
 
 export async function setLocalOnboardingCompleted(
@@ -44,7 +59,7 @@ export async function setLocalOnboardingCompleted(
   if (!key) return false;
 
   try {
-    await AsyncStorage.setItem(key, "1");
+    await AsyncStorage.setItem(key, String(CURRENT_ONBOARDING_VERSION));
     return true;
   } catch (error) {
     console.warn("Failed to persist local onboarding completion state:", error);

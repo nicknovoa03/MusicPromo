@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Alert,
   Easing,
+  Linking,
   Image as RNImage,
   Modal,
   PanResponder,
@@ -1213,6 +1214,10 @@ export function TemplateCustomizeModal({
       Alert.alert(
         "Permission needed",
         "Allow photo access to use an image as template background.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Open Settings", onPress: () => void Linking.openSettings() },
+        ],
       );
       return;
     }

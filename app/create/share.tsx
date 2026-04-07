@@ -1,10 +1,12 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   View,
   Text,
   StyleSheet,
   Pressable,
   Alert,
+  AppState,
+  Linking,
   useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -70,6 +72,8 @@ export default function ShareScreen() {
   const [saveError, setSaveError] = useState<"permission" | "failed" | null>(
     null,
   );
+  const saveErrorRef = useRef(saveError);
+  saveErrorRef.current = saveError;
 
   const track = useCallback(
     (event: EventName, props?: Record<string, string>) => {
@@ -78,25 +82,36 @@ export default function ShareScreen() {
     [posthog],
   );
 
-  useEffect(() => {
-    async function saveVideo() {
-      if (!videoUri) return;
-      try {
-        const { status } = await MediaLibrary.requestPermissionsAsync();
-        if (status !== "granted") {
-          setSaveError("permission");
-          return;
-        }
-        await MediaLibrary.saveToLibraryAsync(videoUri);
-        setSavedToRoll(true);
-        setSaveError(null);
-        track("video_saved_to_camera_roll");
-      } catch {
-        setSaveError("failed");
+  const saveVideo = useCallback(async () => {
+    if (!videoUri) return;
+    try {
+      const { status } = await MediaLibrary.requestPermissionsAsync();
+      if (status !== "granted") {
+        setSaveError("permission");
+        return;
       }
+      await MediaLibrary.saveToLibraryAsync(videoUri);
+      setSavedToRoll(true);
+      setSaveError(null);
+      track("video_saved_to_camera_roll");
+    } catch {
+      setSaveError("failed");
     }
-    saveVideo();
   }, [videoUri, track]);
+
+  useEffect(() => {
+    saveVideo();
+  }, [saveVideo]);
+
+  // Retry saving when the user returns from the Settings app after granting permission
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active" && saveErrorRef.current === "permission") {
+        void saveVideo();
+      }
+    });
+    return () => sub.remove();
+  }, [saveVideo]);
 
   const handleShare = useCallback(async (platform: "instagram" | "tiktok") => {
     track(
@@ -161,16 +176,21 @@ export default function ShareScreen() {
             </View>
           )}
           {saveError === "permission" && (
-            <View style={styles.savedBadge}>
+            <Pressable
+              style={styles.savedBadge}
+              onPress={() => void Linking.openSettings()}
+              accessibilityRole="button"
+              accessibilityLabel="Open Settings to grant Photos access"
+            >
               <Ionicons
                 name="alert-circle"
                 size={16}
                 color={colors.accent.warning}
               />
               <Text style={styles.savedText}>
-                Permission denied. Grant Photos access in Settings.
+                Permission denied. Tap to open Settings.
               </Text>
-            </View>
+            </Pressable>
           )}
           {saveError === "failed" && (
             <View style={styles.savedBadge}>

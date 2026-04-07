@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo } from "react";
+import { Image, StyleSheet } from "react-native";
 import { Redirect, Slot, useSegments } from "expo-router";
 import { ClerkProvider, ClerkLoaded, useAuth } from "@clerk/clerk-expo";
 import { ConvexProviderWithAuth } from "convex/react";
@@ -102,6 +103,12 @@ function AppWithProviders() {
     <ConvexProviderWithAuth client={convex} useAuth={useConvexAuthFromClerk}>
       <AuthGate />
       <AppStatusBar />
+      {/* Pre-render watermark logo off-screen so it's decoded before first use */}
+      <Image
+        source={require("../assets/branding/MusicPromo-Logo.png")}
+        style={styles.preloadHidden}
+        fadeDuration={0}
+      />
     </ConvexProviderWithAuth>
   );
 }
@@ -134,3 +141,13 @@ export default function RootLayout() {
 
   return inner;
 }
+
+const styles = StyleSheet.create({
+  preloadHidden: {
+    position: "absolute",
+    top: -200,
+    left: -200,
+    width: 48,
+    height: 48,
+  },
+});

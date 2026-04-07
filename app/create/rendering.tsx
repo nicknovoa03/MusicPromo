@@ -136,7 +136,7 @@ export default function RenderingScreen() {
   const stageBackgroundColorParam = firstParam(params.stageBackgroundColor);
   const photoUriParam = firstParam(params.photoUri);
 
-  const projectTitle = titleParam?.trim() || "New Project";
+  const projectTitle = titleParam?.trim() || audioNameParam?.trim() || "New Project";
   const audioName = audioNameParam || "";
   const aspectRatio = aspectRatioParam === "1:1" ? "1:1" : "9:16";
   const showTemplateInfo = showTemplateInfoParam === "1";
