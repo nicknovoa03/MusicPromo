@@ -19,6 +19,7 @@ import {
   Easing,
   PanResponder,
   PixelRatio,
+  KeyboardAvoidingView,
 } from "react-native";
 import {
   SafeAreaProvider,
@@ -953,6 +954,10 @@ export default function ProfileScreen() {
                   </Pressable>
                   <Text style={styles.profileSettingsHeaderTitle}>Edit profile</Text>
                 </View>
+                <KeyboardAvoidingView
+                  behavior={Platform.OS === "ios" ? "height" : undefined}
+                  style={{ flex: 1 }}
+                >
                 <ScrollView
                   contentContainerStyle={styles.profileSettingsContent}
                   keyboardShouldPersistTaps="handled"
@@ -1055,6 +1060,7 @@ export default function ProfileScreen() {
                       <TextInput
                         value={artistNameDraft}
                         onChangeText={setArtistNameDraft}
+                        maxLength={50}
                         placeholder="Add name"
                         placeholderTextColor={isDarkMode ? "#6B778F" : "#A7AFC0"}
                         editable={!profileSettingsDisabled}
@@ -1196,6 +1202,7 @@ export default function ProfileScreen() {
 
                   </View>
                 </ScrollView>
+                </KeyboardAvoidingView>
               </SafeAreaView>
             </Animated.View>
             </View>
@@ -1448,7 +1455,7 @@ export default function ProfileScreen() {
               <View style={styles.shareCardBanner}>
                 <Image
                   source={sourceHeroImageUrl ? { uri: sourceHeroImageUrl } : require("../../assets/branding/MusicPromo-Banner.png")}
-                  style={styles.shareCardBannerImage}
+                  style={[styles.shareCardBannerImage, !sourceHeroImageUrl && styles.shareCardBannerImageDefault]}
                   resizeMode="cover"
                   onLoad={() => shareCardBannerReadyRef.current?.()}
                 />
@@ -1463,7 +1470,7 @@ export default function ProfileScreen() {
                     style={styles.shareCardAvatarImage}
                   />
                 </View>
-                <Text style={styles.shareCardName} numberOfLines={1}>{sourceArtistName || displayName}</Text>
+                <Text style={styles.shareCardName} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{sourceArtistName || displayName}</Text>
               </View>
 
               {/* Bio */}
@@ -1611,7 +1618,7 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
     right: 56,
   },
   profileSettingsContent: {
-    paddingBottom: 36,
+    paddingBottom: spacing.md,
   },
   profileSettingsAvatarSection: {
     borderBottomWidth: 1,
@@ -2001,6 +2008,8 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
   shareCardBannerImage: {
     width: 360,
     height: 220,
+  },
+  shareCardBannerImageDefault: {
     transform: [{ translateX: -20 }],
   },
   shareCardBannerGradient: {
@@ -2042,16 +2051,16 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
   shareCardNameRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingRight: 16,
-    paddingTop: 10,
+    paddingRight: 8,
+    paddingTop: 18,
   },
   shareCardName: {
     flex: 1,
-    fontSize: 34,
+    fontSize: 40,
     fontWeight: "700",
     color: "#F8FAFF",
     letterSpacing: 0.3,
-    paddingLeft: 24,
+    paddingLeft: 16,
     paddingBottom: 4,
   },
   shareCardBio: {

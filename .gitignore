@@ -48,6 +48,10 @@ yarn-error.*
 
 .claude
 
+# Claude / agent artifacts
+.agents/
+skills-lock.json
+
 # Design exports — ephemeral artifacts, not tracked in git
 stitch_exports/
 

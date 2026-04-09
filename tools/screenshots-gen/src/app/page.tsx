@@ -533,6 +533,208 @@ function Slide6() {
   );
 }
 
+// ─── Slide 7: Beta CTA – early access email signup ───────────────────────────
+function Slide7() {
+  return (
+    <div
+      style={{
+        width: W,
+        height: H,
+        background: "linear-gradient(160deg, #0d0800 0%, #050300 50%, #000000 100%)",
+        position: "relative",
+        overflow: "hidden",
+        fontFamily: "Inter, sans-serif",
+      }}
+    >
+      {/* Warm amber glows */}
+      <Glow color="#d97706" size={900} top="-8%" left="10%" opacity={0.18} />
+      <Glow color="#b45309" size={700} top="35%" left="55%" opacity={0.12} />
+      <Glow color="#92400e" size={1000} top="65%" left="-15%" opacity={0.14} />
+
+      {/* Subtle dot grid */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          backgroundImage:
+            "radial-gradient(circle, rgba(255,255,255,0.06) 1px, transparent 1px)",
+          backgroundSize: `${W * 0.07}px ${W * 0.07}px`,
+        }}
+      />
+
+      {/* Beta badge */}
+      <div
+        style={{
+          position: "absolute",
+          top: H * 0.09,
+          left: "50%",
+          transform: "translateX(-50%)",
+          display: "flex",
+          alignItems: "center",
+          gap: W * 0.018,
+          backgroundColor: "rgba(217,119,6,0.14)",
+          border: "1.5px solid rgba(217,119,6,0.38)",
+          borderRadius: W * 0.05,
+          padding: `${H * 0.013}px ${W * 0.055}px`,
+          whiteSpace: "nowrap",
+        }}
+      >
+        {/* Pulsing dot */}
+        <div
+          style={{
+            width: W * 0.022,
+            height: W * 0.022,
+            borderRadius: "50%",
+            backgroundColor: "#d97706",
+            boxShadow: `0 0 ${W * 0.018}px ${W * 0.01}px rgba(217,119,6,0.65)`,
+          }}
+        />
+        <span
+          style={{
+            fontSize: W * 0.03,
+            fontWeight: 700,
+            color: "#d97706",
+            letterSpacing: "0.13em",
+            textTransform: "uppercase" as const,
+          }}
+        >
+          Early Access
+        </span>
+      </div>
+
+      {/* Main headline */}
+      <div
+        style={{
+          position: "absolute",
+          top: H * 0.2,
+          left: W * 0.08,
+          right: W * 0.08,
+          textAlign: "center",
+        }}
+      >
+        <div
+          style={{
+            fontSize: W * 0.118,
+            fontWeight: 800,
+            lineHeight: 0.88,
+            color: "#FFFFFF",
+            letterSpacing: "-0.025em",
+            whiteSpace: "pre-line" as const,
+          }}
+        >
+          {"Be first\nto shape it"}
+        </div>
+        <div
+          style={{
+            fontSize: W * 0.043,
+            fontWeight: 400,
+            color: "rgba(255,255,255,0.42)",
+            marginTop: H * 0.032,
+            lineHeight: 1.45,
+          }}
+        >
+          {"Join the beta. Help build the app\nmusicians actually want."}
+        </div>
+      </div>
+
+      {/* Mock email form */}
+      <div
+        style={{
+          position: "absolute",
+          top: H * 0.53,
+          left: W * 0.08,
+          right: W * 0.08,
+        }}
+      >
+        {/* Email input */}
+        <div
+          style={{
+            height: H * 0.085,
+            borderRadius: W * 0.038,
+            border: "1.5px solid rgba(217,119,6,0.35)",
+            backgroundColor: "rgba(255,255,255,0.04)",
+            display: "flex",
+            alignItems: "center",
+            paddingLeft: W * 0.058,
+            marginBottom: H * 0.022,
+          }}
+        >
+          <span
+            style={{
+              fontSize: W * 0.042,
+              color: "rgba(255,255,255,0.22)",
+              fontWeight: 400,
+            }}
+          >
+            your@email.com
+          </span>
+        </div>
+
+        {/* CTA button */}
+        <div
+          style={{
+            height: H * 0.085,
+            borderRadius: W * 0.038,
+            background: "linear-gradient(135deg, #d97706 0%, #b45309 100%)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            boxShadow: `0 ${H * 0.018}px ${H * 0.038}px rgba(217,119,6,0.38)`,
+          }}
+        >
+          <span
+            style={{
+              fontSize: W * 0.05,
+              fontWeight: 700,
+              color: "#FFFFFF",
+              letterSpacing: "0.005em",
+            }}
+          >
+            Request Beta Access
+          </span>
+        </div>
+
+        {/* Fine print */}
+        <div style={{ textAlign: "center", marginTop: H * 0.022 }}>
+          <span
+            style={{
+              fontSize: W * 0.03,
+              color: "rgba(255,255,255,0.18)",
+              fontWeight: 400,
+            }}
+          >
+            Limited spots · No spam · Unsubscribe anytime
+          </span>
+        </div>
+      </div>
+
+      {/* Bottom wordmark */}
+      <div
+        style={{
+          position: "absolute",
+          bottom: H * 0.065,
+          left: "50%",
+          transform: "translateX(-50%)",
+          textAlign: "center",
+          whiteSpace: "nowrap",
+        }}
+      >
+        <span
+          style={{
+            fontSize: W * 0.034,
+            fontWeight: 600,
+            color: "rgba(255,255,255,0.14)",
+            letterSpacing: "0.1em",
+            textTransform: "uppercase" as const,
+          }}
+        >
+          MusicPromo
+        </span>
+      </div>
+    </div>
+  );
+}
+
 // ─── Slide registry ───────────────────────────────────────────────────────────
 const SLIDES = [
   { id: "slide-1", label: "01 · Hero", Component: Slide1 },
@@ -541,6 +743,7 @@ const SLIDES = [
   { id: "slide-4", label: "04 · Customize", Component: Slide4 },
   { id: "slide-5", label: "05 · Profile", Component: Slide5 },
   { id: "slide-6", label: "06 · Share", Component: Slide6 },
+  { id: "slide-7", label: "07 · Beta CTA", Component: Slide7 },
 ];
 
 // ─── Preview card ─────────────────────────────────────────────────────────────

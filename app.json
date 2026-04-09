@@ -16,7 +16,7 @@
     "newArchEnabled": true,
     "scheme": "musicpromo",
     "splash": {
-      "image": "./assets/branding/splash-icon.png",
+      "image": "./assets/branding/MusicPromo-Banner-Vertical.png",
       "resizeMode": "contain",
       "backgroundColor": "#000000"
     },
