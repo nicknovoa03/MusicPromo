@@ -6,7 +6,7 @@
     "start": "expo start --go",
     "start:go:lan": "expo start --go --lan",
     "start:go:tunnel": "expo start --go --tunnel",
-    "start:dev-client:tunnel": "expo start --dev-client --tunnel --clear --scheme musicpromo",
+    "start:dev-client:tunnel": "EXPO_FORCE_WEBCONTAINER_ENV=1 expo start --dev-client --tunnel --clear --scheme musicpromo",
     "start:go:fast": "expo start --go --lan --no-dev --minify",
     "atlas:start": "EXPO_ATLAS=true expo start --go --lan",
     "atlas:export:ios": "EXPO_ATLAS=true npx expo export --platform ios",

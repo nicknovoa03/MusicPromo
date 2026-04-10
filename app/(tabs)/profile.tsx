@@ -915,7 +915,7 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={["left", "right"]}>
-      <StatusBar style="light" />
+      <StatusBar style={isDarkMode ? "light" : "dark"} />
       {isProfileSettingsOpen ? (
         <Modal
           visible
@@ -1991,8 +1991,8 @@ const createStyles = (isDarkMode: boolean) => StyleSheet.create({
   },
   shareCardOffscreen: {
     position: "absolute",
-    top: 10000,
-    left: 0,
+    top: 0,
+    left: -10000,
   },
   shareCard: {
     width: 360,
