@@ -7,9 +7,10 @@ export const submit = mutation({
     source: v.optional(v.string()),
   },
   handler: async (ctx, { email, source }) => {
+    const normalizedEmail = email.trim().toLowerCase();
     const existing = await ctx.db
       .query("betaSignups")
-      .withIndex("by_email", (q) => q.eq("email", email))
+      .withIndex("by_email", (q) => q.eq("email", normalizedEmail))
       .first();
 
     if (existing) {
@@ -17,7 +18,7 @@ export const submit = mutation({
     }
 
     await ctx.db.insert("betaSignups", {
-      email,
+      email: normalizedEmail,
       source,
       createdAt: Date.now(),
     });
