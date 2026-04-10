@@ -100,4 +100,10 @@ export default defineSchema({
     type: v.string(),
     config: v.any(),
   }),
+
+  betaSignups: defineTable({
+    email: v.string(),
+    source: v.optional(v.string()),
+    createdAt: v.number(),
+  }).index("by_email", ["email"]),
 });

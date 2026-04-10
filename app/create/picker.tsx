@@ -645,9 +645,7 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
                   style={styles.photoPreview}
                   accessibilityLabel="Selected photo"
                 />
-                <View style={styles.aspectRatioBadge}>
-                  <Text style={styles.aspectRatioBadgeText}>{activeAspectRatio}</Text>
-                </View>
+
               </View>
               <View style={styles.selectionInfoRow}>
                 <View style={styles.selectionTitleWrap}>

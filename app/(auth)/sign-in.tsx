@@ -6,6 +6,7 @@ import {
   Pressable,
   ActivityIndicator,
   Alert,
+  Image,
 } from "react-native";
 import {
   isClerkAPIResponseError,
@@ -183,14 +184,14 @@ export default function SignInScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.hero}>
-        <View style={styles.logoContainer}>
-          <Ionicons name="musical-notes" size={48} color={colors.accent.fill} />
-        </View>
-        <Text style={styles.title}>MusicPromo</Text>
-        <Text style={styles.subtitle}>
-          Turn a photo and audio clip into a promo video in seconds
-        </Text>
+<View style={styles.hero}>
+        <Image
+          source={require("../../assets/branding/MusicPromo-App-Icon.png")}
+          style={styles.logo}
+          resizeMode="cover"
+        />
+        <Text style={styles.title}>MUSIC PROMO</Text>
+        <Text style={styles.subtitle}>Share your sound</Text>
       </View>
 
       <View style={styles.actions}>
@@ -206,13 +207,13 @@ export default function SignInScreen() {
           accessibilityRole="button"
         >
           {loading === "apple" ? (
-            <ActivityIndicator color={colors.accent.onFill} />
+            <ActivityIndicator color={colors.dark.text} />
           ) : (
             <>
               <Ionicons
                 name="logo-apple"
                 size={20}
-                color={colors.accent.onFill}
+                color={colors.dark.background}
                 style={styles.buttonIcon}
               />
               <Text style={styles.appleButtonText}>Sign in with Apple</Text>
@@ -232,13 +233,13 @@ export default function SignInScreen() {
           accessibilityRole="button"
         >
           {loading === "google" ? (
-            <ActivityIndicator color={colors.light.text} />
+            <ActivityIndicator color={colors.dark.text} />
           ) : (
             <>
               <Ionicons
                 name="logo-google"
                 size={20}
-                color={colors.light.text}
+                color={colors.dark.text}
                 style={styles.buttonIcon}
               />
               <Text style={styles.googleButtonText}>Sign in with Google</Text>
@@ -257,7 +258,7 @@ export default function SignInScreen() {
           accessibilityRole="button"
         >
           {loading === "guest" ? (
-            <ActivityIndicator color={colors.light.textSecondary} />
+            <ActivityIndicator color={colors.dark.textSecondary} />
           ) : (
             <Text style={styles.guestButtonText}>Continue as Guest</Text>
           )}
@@ -270,34 +271,34 @@ export default function SignInScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.light.background,
-    justifyContent: "center",
+    backgroundColor: "#0E0C0A",
+    justifyContent: "flex-end",
     paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.xxl,
   },
   hero: {
     alignItems: "center",
-    marginBottom: spacing.xxl,
-  },
-  logoContainer: {
-    width: 88,
-    height: 88,
-    borderRadius: radius.lg,
-    backgroundColor: colors.light.surface,
-    alignItems: "center",
+    flex: 1,
     justifyContent: "center",
+  },
+  logo: {
+    width: 150,
+    height: 150,
+    borderRadius: radius.lg,
     marginBottom: spacing.lg,
   },
   title: {
-    ...typography.h1,
-    color: colors.light.text,
+    fontSize: 26,
+    fontWeight: "700" as const,
+    fontFamily: "System",
+    color: "#C8C8C8",
+    letterSpacing: 4,
     marginBottom: spacing.sm,
   },
   subtitle: {
     ...typography.body,
-    color: colors.light.textSecondary,
+    color: "#808080",
     textAlign: "center",
-    lineHeight: 22,
-    paddingHorizontal: spacing.md,
   },
   actions: {
     gap: spacing.md,
@@ -318,20 +319,20 @@ const styles = StyleSheet.create({
     marginRight: spacing.sm,
   },
   appleButton: {
-    backgroundColor: colors.accent.fill,
+    backgroundColor: colors.dark.text,
   },
   appleButtonText: {
     ...typography.button,
-    color: colors.accent.onFill,
+    color: colors.dark.background,
   },
   googleButton: {
-    backgroundColor: colors.light.surface,
+    backgroundColor: "transparent",
     borderWidth: 1,
-    borderColor: colors.light.border,
+    borderColor: colors.dark.border,
   },
   googleButtonText: {
     ...typography.button,
-    color: colors.light.text,
+    color: colors.dark.text,
   },
   guestButton: {
     alignItems: "center",
@@ -341,6 +342,6 @@ const styles = StyleSheet.create({
   },
   guestButtonText: {
     ...typography.button,
-    color: colors.light.textSecondary,
+    color: colors.dark.textSecondary,
   },
 });

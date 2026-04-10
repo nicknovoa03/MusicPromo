@@ -8,6 +8,8 @@
  * @module
  */
 
+import type * as betaSignups from "../betaSignups.js";
+import type * as http from "../http.js";
 import type * as notifications from "../notifications.js";
 import type * as projects from "../projects.js";
 import type * as pushNotifications from "../pushNotifications.js";
@@ -21,6 +23,8 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  betaSignups: typeof betaSignups;
+  http: typeof http;
   notifications: typeof notifications;
   projects: typeof projects;
   pushNotifications: typeof pushNotifications;

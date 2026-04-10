@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   Platform,
   StyleSheet,
   Text,
   useColorScheme,
   View,
 } from "react-native";
+
+const WATERMARK_LOGO = require("../../assets/branding/MusicPromo-Logo.png");
 import { Redirect, Tabs, usePathname, useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
@@ -242,6 +245,8 @@ export default function TabsLayout() {
     return <Redirect href="/onboarding" />;
   }
   return (
+    <>
+      <Image source={WATERMARK_LOGO} style={{ width: 0, height: 0, position: "absolute" }} />
     <Tabs
       screenOptions={{
         headerShown: false,
@@ -295,6 +300,7 @@ export default function TabsLayout() {
         }}
       />
     </Tabs>
+    </>
   );
 }
 
