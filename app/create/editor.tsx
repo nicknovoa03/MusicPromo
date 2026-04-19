@@ -32,6 +32,7 @@ import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
 import { AudioTrimmer } from "@/components/create/AudioTrimmer";
+import { useWaveformData } from "@/lib/useWaveformData";
 import { type AspectRatio } from "@/components/create/AspectRatioToggle";
 import { TemplateCustomizeModal } from "@/components/create/TemplateCustomizeModal";
 import { TemplateInfoBadge } from "@/components/create/TemplateInfoBadge";
@@ -788,6 +789,8 @@ export default function EditorScreen() {
     };
   }, [audioUri, missingFiles.audio]);
 
+  const waveformData = useWaveformData(audioUri || undefined, 178);
+
   const minTrimDuration = Math.min(5, Math.max(audioDurationSec, 1));
   const maxTrimDuration = Math.max(
     minTrimDuration,
@@ -816,12 +819,10 @@ export default function EditorScreen() {
   const fallbackMaxStageWidth = Math.min(SCREEN_WIDTH - STAGE_HORIZONTAL_PADDING, 520);
   const fallbackMaxStageHeight = SCREEN_HEIGHT *
     (aspectRatio === "9:16"
-      ? isTrimPanelVisible
-        ? 0.62
-        : 0.78
-      : isTrimPanelVisible
-        ? 0.44
-        : 0.66);
+      ? isTrimPanelVisible ? 0.62 : 0.78
+      : aspectRatio === "4:5"
+      ? isTrimPanelVisible ? 0.56 : 0.66
+      : isTrimPanelVisible ? 0.44 : 0.66);
   const measuredMaxStageWidth =
     previewViewport.width > 0
       ? Math.max(previewViewport.width - spacing.sm * 2, 0)
@@ -1800,7 +1801,7 @@ export default function EditorScreen() {
               accessibilityRole="button"
             >
               <Ionicons name="settings-outline" size={15} color={colors.dark.text} />
-              <Text style={styles.previewTrimToggleText}>Template Settings</Text>
+              <Text style={styles.previewTrimToggleText}>Settings</Text>
             </Pressable>
           </View>
           <Pressable
@@ -1932,6 +1933,7 @@ export default function EditorScreen() {
               onTogglePlay={handlePlayPause}
               minDuration={minTrimDuration}
               maxDuration={maxTrimDuration}
+              waveformData={waveformData}
             />
           </View>
         </Animated.View>

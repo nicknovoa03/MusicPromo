@@ -50,6 +50,8 @@ export default defineSchema({
 
   projects: defineTable({
     userId: v.id("users"),
+    createdByName: v.optional(v.string()),
+    createdByEmail: v.optional(v.string()),
     title: v.optional(v.string()),
     templateId: v.optional(v.string()),
     templateTweaks: v.optional(v.string()),

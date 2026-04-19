@@ -51,10 +51,12 @@ export function SimpleSpinTemplateStage({
     Math.max(1 - (templateTweaks?.recordTransparency ?? 0), 0.35),
     1,
   );
-  const normalizedRecordSize = Math.min(
-    Math.max(templateTweaks?.recordSize ?? 1, MIN_RECORD_SIZE),
-    MAX_RECORD_SIZE,
-  );
+  const recordSizeScale = aspectRatio === "1:1" ? 1 / MAX_RECORD_SIZE : 1;
+  const normalizedRecordSize =
+    Math.min(
+      Math.max(templateTweaks?.recordSize ?? 1, MIN_RECORD_SIZE),
+      MAX_RECORD_SIZE,
+    ) * recordSizeScale;
   const normalizedArtworkScale = Math.min(
     Math.max(templateTweaks?.artworkScale ?? 1, 1),
     5,

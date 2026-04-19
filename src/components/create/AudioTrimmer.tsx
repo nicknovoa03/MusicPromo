@@ -25,6 +25,7 @@ interface AudioTrimmerProps {
   onTogglePlay?: () => void;
   minDuration?: number;
   maxDuration?: number;
+  waveformData?: number[] | null;
 }
 
 const TIMELINE_FRAME_COUNT = 74;
@@ -61,6 +62,7 @@ export function AudioTrimmer({
   onTogglePlay,
   minDuration = 5,
   maxDuration = Number.POSITIVE_INFINITY,
+  waveformData,
 }: AudioTrimmerProps) {
   const safeDuration = Number.isFinite(durationSec) ? Math.max(durationSec, 1) : 1;
   const maxSelectableDuration = Math.max(
@@ -97,6 +99,7 @@ export function AudioTrimmer({
     maxStart,
     trackWidth,
     railWidth,
+    selectionWidth: 0,
   });
 
   useEffect(() => {
@@ -111,6 +114,7 @@ export function AudioTrimmer({
       maxStart,
       trackWidth,
       railWidth,
+      selectionWidth: latestValuesRef.current.selectionWidth,
     };
   }, [safeDuration, safeStart, currentDuration, maxStart, trackWidth, railWidth]);
 
@@ -231,6 +235,9 @@ export function AudioTrimmer({
     secToX(safeEnd) - selectionLeft,
     minSelectionVisualWidth,
   );
+  // Keep selectionWidth in the ref so the gesture handler always has the latest value
+  latestValuesRef.current.selectionWidth = selectionWidth;
+
   const centeredSelectionLeft = Math.max((trackWidth - selectionWidth) / 2, 0);
   const centeredSelectionRight = Math.max(
     trackWidth - centeredSelectionLeft - selectionWidth,
@@ -238,15 +245,20 @@ export function AudioTrimmer({
   );
   const waveformLeadingInset = centeredSelectionLeft;
   const waveformTrailingInset = centeredSelectionRight;
+
+  // Scale so that selectionWidth pixels = currentDuration seconds.
+  // This guarantees bar[safeStart] lands on the left edge of the selection window
+  // and bar[safeEnd] lands on the right edge — perfect 1:1 audio/visual alignment.
+  const secToPixel = currentDuration > 0 && selectionWidth > 0
+    ? selectionWidth / currentDuration
+    : trackWidth > 0 ? trackWidth / Math.max(safeDuration, 1) : 1;
+  const barSpanWidth = safeDuration * secToPixel;
   const waveformContentWidth = Math.max(
-    trackWidth * WAVEFORM_ZOOM_FACTOR +
-      waveformLeadingInset +
-      waveformTrailingInset,
+    barSpanWidth + waveformLeadingInset + waveformTrailingInset,
     trackWidth,
   );
-  const waveformScrollableWidth = Math.max(waveformContentWidth - trackWidth, 0);
   const railProgress = maxStart > 0 ? safeStart / maxStart : 0;
-  const waveformTranslateX = -(railProgress * waveformScrollableWidth);
+  const waveformTranslateX = -(safeStart * secToPixel);
   const railThumbLeft = railWidth > 0 ? railProgress * railWidth : 0;
   const effectiveTrimProgressSec =
     Number.isFinite(playbackProgressSec)
@@ -274,29 +286,18 @@ export function AudioTrimmer({
           gestureState: PanResponderGestureState,
         ) => {
           const {
-            safeDuration: latestSafeDuration,
             currentDuration: latestCurrentDuration,
             maxStart: latestMaxStart,
-            trackWidth: latestTrackWidth,
+            selectionWidth: latestSelectionWidth,
           } = latestValuesRef.current;
-          const latestSelectionWidth = Math.max(
-            latestTrackWidth > 0
-              ? (latestCurrentDuration / latestSafeDuration) * latestTrackWidth
-              : 0,
-            clamp(latestTrackWidth * 0.36, 96, 170),
-          );
-          const latestWaveformScrollableWidth = Math.max(
-            latestTrackWidth * WAVEFORM_ZOOM_FACTOR - latestSelectionWidth,
-            0,
-          );
 
-          if (latestWaveformScrollableWidth <= 0 || latestMaxStart <= 0) return;
+          if (latestSelectionWidth <= 0 || latestMaxStart <= 0) return;
           if (Math.abs(gestureState.dx) < START_DRAG_DEADZONE_PX) return;
 
+          // 1px of drag = currentDuration/selectionWidth seconds (matches waveformTranslateX scale)
           const deltaStart =
-            (-(gestureState.dx / latestWaveformScrollableWidth) *
-              latestMaxStart *
-              START_DRAG_SENSITIVITY);
+            (-gestureState.dx * latestCurrentDuration / latestSelectionWidth) *
+            START_DRAG_SENSITIVITY;
           const nextStart = clamp(
             selectionGestureStartRef.current + deltaStart,
             0,
@@ -308,18 +309,30 @@ export function AudioTrimmer({
     [applyStart],
   );
 
-  const waveformBars = useMemo(
-    () =>
-      Array.from({ length: WAVEFORM_BAR_COUNT }, (_, i) => {
-        const envelope = (Math.sin(i * 0.34 + safeDuration * 0.13) + 1) / 2;
-        const texture = (Math.sin(i * 1.18 + 0.9) + 1) / 2;
+  const waveformBars = useMemo(() => {
+    if (waveformData && waveformData.length > 0) {
+      return Array.from({ length: WAVEFORM_BAR_COUNT }, (_, i) => {
+        const t = i / Math.max(WAVEFORM_BAR_COUNT - 1, 1);
+        const srcIdx = t * (waveformData.length - 1);
+        const lo = Math.floor(srcIdx);
+        const hi = Math.min(lo + 1, waveformData.length - 1);
+        const frac = srcIdx - lo;
+        const amp = waveformData[lo] * (1 - frac) + waveformData[hi] * frac;
         return {
-          height: 8 + envelope * 24 + texture * 9,
-          opacity: 0.38 + envelope * 0.52,
+          height: 4 + amp * 38,
+          opacity: 0.3 + amp * 0.65,
         };
-      }),
-    [safeDuration],
-  );
+      });
+    }
+    return Array.from({ length: WAVEFORM_BAR_COUNT }, (_, i) => {
+      const envelope = (Math.sin(i * 0.34 + safeDuration * 0.13) + 1) / 2;
+      const texture = (Math.sin(i * 1.18 + 0.9) + 1) / 2;
+      return {
+        height: 8 + envelope * 24 + texture * 9,
+        opacity: 0.38 + envelope * 0.52,
+      };
+    });
+  }, [waveformData, safeDuration]);
 
   useEffect(() => {
     setTrimProgressSec(0);

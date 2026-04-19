@@ -15,18 +15,15 @@ export function BetaWatermark({
   visible = true,
   aspectRatio,
 }: BetaWatermarkProps) {
-  const resolvedInset = inset ?? Math.max(8, Math.round(containerWidth * 0.03));
+  const resolvedInset = inset ?? Math.max(4, Math.round(containerWidth * 0.015));
   const size = Math.max(28, Math.min(48, Math.round(containerWidth * 0.13)));
-  const topInset = aspectRatio === "1:1"
-    ? Math.max(2, resolvedInset - Math.round(containerWidth * 0.04))
-    : resolvedInset;
 
   return (
     <View
       pointerEvents="none"
       accessible={false}
       importantForAccessibility="no-hide-descendants"
-      style={[styles.wrap, { top: topInset, alignSelf: "center", left: 0, right: 0, alignItems: "center", opacity: visible ? 1 : 0 }]}
+      style={[styles.wrap, { bottom: resolvedInset, left: 0, right: 0, alignItems: "center", opacity: visible ? 1 : 0 }]}
     >
       <Image
         source={LOGO}
