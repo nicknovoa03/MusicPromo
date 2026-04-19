@@ -82,7 +82,7 @@ const TEMPLATE_CONTROL_TABS: Array<{ id: TemplateControlTab; label: string }> = 
   { id: "advancedMotion", label: "Motion" },
   { id: "media", label: "Media" },
 ];
-const ASPECT_OPTIONS: AspectRatio[] = ["9:16", "1:1"];
+const ASPECT_OPTIONS: AspectRatio[] = ["1:1", "4:5", "9:16"];
 
 function isPresetBackgroundColor(
   color: string | null | undefined,

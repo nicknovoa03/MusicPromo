@@ -111,7 +111,7 @@ export const updateProfile = mutation({
     preferences: v.optional(
       v.object({
         defaultAspectRatio: v.optional(
-          v.union(v.literal("9:16"), v.literal("1:1"))
+          v.union(v.literal("9:16"), v.literal("4:5"), v.literal("1:1"))
         ),
         defaultVideoLength: v.optional(
           v.union(v.literal(15), v.literal(30), v.literal(60))

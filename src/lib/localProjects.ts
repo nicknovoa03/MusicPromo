@@ -4,7 +4,7 @@ import { normalizeOptionalMediaUri } from "@/lib/mediaUri";
 const LOCAL_PROJECTS_KEY = "musicpromo:local-projects";
 
 type LocalProjectStatus = "draft" | "exported";
-type LocalProjectAspectRatio = "9:16" | "1:1";
+type LocalProjectAspectRatio = "9:16" | "4:5" | "1:1";
 
 export type LocalProject = {
   id: string;
@@ -41,7 +41,9 @@ type UpsertLocalProjectInput = {
 };
 
 function normalizeAspectRatio(value: unknown): LocalProjectAspectRatio {
-  return value === "1:1" ? "1:1" : "9:16";
+  if (value === "1:1") return "1:1";
+  if (value === "4:5") return "4:5";
+  return "9:16";
 }
 
 function normalizeStatus(value: unknown): LocalProjectStatus {

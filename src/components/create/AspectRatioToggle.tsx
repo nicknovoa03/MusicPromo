@@ -1,14 +1,14 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
 
-export type AspectRatio = "9:16" | "1:1";
+export type AspectRatio = "9:16" | "4:5" | "1:1";
 
 interface AspectRatioToggleProps {
   value: AspectRatio;
   onChange: (value: AspectRatio) => void;
 }
 
-const OPTIONS: AspectRatio[] = ["9:16", "1:1"];
+const OPTIONS: AspectRatio[] = ["1:1", "4:5", "9:16"];
 
 export function AspectRatioToggle({ value, onChange }: AspectRatioToggleProps) {
   return (
@@ -27,7 +27,11 @@ export function AspectRatioToggle({ value, onChange }: AspectRatioToggleProps) {
             <View
               style={[
                 styles.preview,
-                option === "9:16" ? styles.preview916 : styles.preview11,
+                option === "9:16"
+                  ? styles.preview916
+                  : option === "4:5"
+                  ? styles.preview45
+                  : styles.preview11,
                 active && styles.previewActive,
               ]}
             />
@@ -66,6 +70,10 @@ const styles = StyleSheet.create({
   preview916: {
     width: 9,
     height: 14,
+  },
+  preview45: {
+    width: 10,
+    height: 12,
   },
   preview11: {
     width: 12,

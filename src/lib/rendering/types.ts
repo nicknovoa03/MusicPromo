@@ -1,4 +1,4 @@
-export type RenderAspectRatio = "9:16" | "1:1";
+export type RenderAspectRatio = "9:16" | "4:5" | "1:1";
 
 export type RenderEngine = "ffmpeg";
 

@@ -13,7 +13,7 @@ import type { VinylToneId } from "@/lib/vinylTemplateSpec";
 export interface TemplateStageProps {
   width: number;
   height: number;
-  aspectRatio: "9:16" | "1:1";
+  aspectRatio: "9:16" | "4:5" | "1:1";
   photoUri?: string | null;
   isPlaying: boolean;
   playbackLabel: string;

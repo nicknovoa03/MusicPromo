@@ -67,7 +67,7 @@ const STAGE_HORIZONTAL_PADDING = spacing.xs * 2;
 const FALLBACK_AUDIO_DURATION = 180;
 const DEFAULT_TRIM_DURATION = 5;
 const DEFAULT_PROJECT_TITLE = "New Project";
-const NATIVE_ASPECT_RATIO_OPTIONS: AspectRatio[] = ["9:16", "1:1"];
+const NATIVE_ASPECT_RATIO_OPTIONS: AspectRatio[] = ["1:1", "4:5", "9:16"];
 const TRIM_PANEL_ANIMATION_DURATION_MS = 260;
 const TRIM_PANEL_MAX_HEIGHT = Math.max(260, Math.round(SCREEN_HEIGHT * 0.44));
 const audioDurationSecCache = new Map<string, number>();
@@ -92,7 +92,10 @@ function parseNumberParam(
 function parseAspectRatioParam(
   value: string | string[] | undefined,
 ): AspectRatio {
-  return firstParam(value) === "1:1" ? "1:1" : "9:16";
+  const v = firstParam(value);
+  if (v === "1:1") return "1:1";
+  if (v === "4:5") return "4:5";
+  return "9:16";
 }
 
 function parseShowTemplateInfoParam(
@@ -809,7 +812,7 @@ export default function EditorScreen() {
     trimEnd,
   ]);
 
-  const stageWidthRatio = aspectRatio === "9:16" ? 9 / 16 : 1;
+  const stageWidthRatio = aspectRatio === "9:16" ? 9 / 16 : aspectRatio === "4:5" ? 4 / 5 : 1;
   const fallbackMaxStageWidth = Math.min(SCREEN_WIDTH - STAGE_HORIZONTAL_PADDING, 520);
   const fallbackMaxStageHeight = SCREEN_HEIGHT *
     (aspectRatio === "9:16"
@@ -1484,7 +1487,7 @@ export default function EditorScreen() {
       setAspectRatio((prev) => {
         if (prev === nextValue) return prev;
         track("editor_controls_opened", {
-          surface: nextValue === "9:16" ? "aspect_ratio_9x16" : "aspect_ratio_1x1",
+          surface: nextValue === "9:16" ? "aspect_ratio_9x16" : nextValue === "4:5" ? "aspect_ratio_4x5" : "aspect_ratio_1x1",
         });
         return nextValue;
       });
@@ -1493,7 +1496,9 @@ export default function EditorScreen() {
   );
 
   const handleToggleAspectRatio = useCallback(() => {
-    handleSetAspectRatio(aspectRatio === "9:16" ? "1:1" : "9:16");
+    const next: AspectRatio =
+      aspectRatio === "1:1" ? "4:5" : aspectRatio === "4:5" ? "9:16" : "1:1";
+    handleSetAspectRatio(next);
   }, [aspectRatio, handleSetAspectRatio]);
 
   const handleNativeAspectRatioSelect = useCallback(

@@ -1,4 +1,4 @@
-export type SimpleSpinAspectRatio = "9:16" | "1:1";
+export type SimpleSpinAspectRatio = "9:16" | "4:5" | "1:1";
 
 export interface SimpleSpinTemplateLayout {
   discSize: number;

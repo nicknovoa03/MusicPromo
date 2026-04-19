@@ -1,6 +1,6 @@
 import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 
 const http = httpRouter();
 
@@ -40,6 +40,26 @@ http.route({
     return new Response(JSON.stringify(result), {
       status: 200,
       headers: { "Content-Type": "application/json", ...corsHeaders },
+    });
+  }),
+});
+
+http.route({
+  path: "/export-emails",
+  method: "GET",
+  handler: httpAction(async (ctx) => {
+    const signups = await ctx.runQuery(internal.betaSignups.getAllEmails);
+    const rows = signups.map((s) =>
+      `${s.email},${s.source ?? ""},${new Date(s.createdAt).toISOString()}`
+    );
+    const csv = ["email,source,createdAt", ...rows].join("\n");
+
+    return new Response(csv, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/csv",
+        "Content-Disposition": 'attachment; filename="beta-signups.csv"',
+      },
     });
   }),
 });

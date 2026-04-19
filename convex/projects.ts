@@ -19,7 +19,7 @@ export const create = mutation({
     title: v.optional(v.string()),
     templateId: v.optional(v.string()),
     templateTweaks: v.optional(v.string()),
-    aspectRatio: v.union(v.literal("9:16"), v.literal("1:1")),
+    aspectRatio: v.union(v.literal("9:16"), v.literal("4:5"), v.literal("1:1")),
     photoUri: v.optional(v.string()),
     photoName: v.optional(v.string()),
     audioUri: v.optional(v.string()),
@@ -40,7 +40,7 @@ export const create = mutation({
     const now = Date.now();
     const projectDoc: {
       userId: typeof user._id;
-      aspectRatio: "9:16" | "1:1";
+      aspectRatio: "9:16" | "4:5" | "1:1";
       status: "draft";
       createdAt: number;
       updatedAt: number;
@@ -105,7 +105,7 @@ export const update = mutation({
     title: v.optional(v.string()),
     templateId: v.optional(v.string()),
     templateTweaks: v.optional(v.string()),
-    aspectRatio: v.optional(v.union(v.literal("9:16"), v.literal("1:1"))),
+    aspectRatio: v.optional(v.union(v.literal("9:16"), v.literal("4:5"), v.literal("1:1"))),
     photoUri: v.optional(v.string()),
     photoName: v.optional(v.string()),
     audioUri: v.optional(v.string()),

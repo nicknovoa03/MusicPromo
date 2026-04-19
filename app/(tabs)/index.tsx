@@ -162,6 +162,7 @@ export default function HomeScreen() {
   const deleteProject = useMutation(api.projects.remove);
 const [localProjects, setLocalProjects] = useState<LocalProject[] | null>(null);
   const [localAvatarUrl, setLocalAvatarUrl] = useState<string | null>(null);
+  const [avatarError, setAvatarError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [actionProject, setActionProject] = useState<Project | null>(null);
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
@@ -283,6 +284,10 @@ const longPressProjectIdRef = useRef<string | null>(null);
     if (isLocalGuest) return normalizeAvatarUri(localAvatarUrl);
     return normalizeAvatarUri(convexUser?.avatarImageUrl ?? convexUser?.avatarUrl);
   }, [convexUser?.avatarImageUrl, convexUser?.avatarUrl, isLocalGuest, localAvatarUrl]);
+
+  useEffect(() => {
+    setAvatarError(false);
+  }, [profileAvatarUri]);
 
   const openProject = useCallback(
     (project: Project) => {
@@ -729,9 +734,9 @@ const longPressProjectIdRef = useRef<string | null>(null);
             accessibilityRole="button"
           >
             <Image
-              source={profileAvatarUri ? { uri: profileAvatarUri } : require("../../assets/defaults/MusicPromo-DefaultAvatar.jpg")}
+              source={profileAvatarUri && !avatarError ? { uri: profileAvatarUri } : require("../../assets/defaults/MusicPromo-DefaultAvatar.jpg")}
               style={styles.avatarImage}
-              onError={() => setLocalAvatarUrl(null)}
+              onError={() => setAvatarError(true)}
             />
           </Pressable>
         </View>
