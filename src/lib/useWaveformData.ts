@@ -1,8 +1,12 @@
 import { useState, useEffect } from "react";
+import { InteractionManager } from "react-native";
 import * as FileSystem from "expo-file-system/legacy";
 
 // Low sample rate is plenty for waveform visualization
 const SCAN_SAMPLE_RATE = 4000;
+
+// Module-level cache so the FFmpeg scan only runs once per URI+barCount
+const waveformCache = new Map<string, number[]>();
 
 function readF32LE(buf: Uint8Array, byteOffset: number): number {
   const u32 =
@@ -27,6 +31,10 @@ function b64ToBytes(s: string): Uint8Array {
 }
 
 async function extractWaveform(audioUri: string, barCount: number): Promise<number[] | null> {
+  const cacheKey = `${audioUri}:${barCount}`;
+  const cached = waveformCache.get(cacheKey);
+  if (cached) return cached;
+
   const cacheDir = FileSystem.cacheDirectory;
   if (!cacheDir) return null;
 
@@ -62,6 +70,9 @@ async function extractWaveform(audioUri: string, barCount: number): Promise<numb
       encoding: FileSystem.EncodingType.Base64,
     });
     const raw = b64ToBytes(rawB64);
+
+    // Defer heavy JS processing until animations are idle to avoid blocking the UI thread
+    await new Promise<void>((resolve) => InteractionManager.runAfterInteractions(() => resolve()));
 
     // Each sample = 4 bytes (f32le)
     const totalSamples = Math.floor(raw.length / 4);
@@ -107,6 +118,7 @@ async function extractWaveform(audioUri: string, barCount: number): Promise<numb
     });
 
     console.log(`[waveform] scan complete — ${totalSamples} samples, peak=${peak.toFixed(4)}`);
+    waveformCache.set(cacheKey, smoothed);
     return smoothed;
   } catch (e) {
     console.warn("[waveform] error:", e);
@@ -117,11 +129,20 @@ async function extractWaveform(audioUri: string, barCount: number): Promise<numb
 }
 
 export function useWaveformData(uri: string | undefined, barCount: number): number[] | null {
-  const [data, setData] = useState<number[] | null>(null);
+  const [data, setData] = useState<number[] | null>(() => {
+    if (!uri) return null;
+    return waveformCache.get(`${uri}:${barCount}`) ?? null;
+  });
 
   useEffect(() => {
     if (!uri) {
       setData(null);
+      return;
+    }
+    const cacheKey = `${uri}:${barCount}`;
+    const cached = waveformCache.get(cacheKey);
+    if (cached) {
+      setData(cached);
       return;
     }
     setData(null);

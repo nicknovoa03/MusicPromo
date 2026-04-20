@@ -140,7 +140,6 @@ export default function ShareScreen() {
   }, [handleShare]);
 
   const handleDone = useCallback(() => {
-    router.dismissAll();
     router.replace("/" as const);
   }, [router]);
 

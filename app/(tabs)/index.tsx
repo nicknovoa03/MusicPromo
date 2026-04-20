@@ -48,6 +48,9 @@ import { ProjectThumbnail } from "@/components/ProjectThumbnail";
 type Project = Doc<"projects"> | LocalProject;
 type ProjectAction = "duplicate" | "delete";
 
+// Survive unmount/remount so the list appears instantly on return.
+let _cachedRemoteProjects: Doc<"projects">[] | null = null;
+
 function isLocalProject(project: Project): project is LocalProject {
   return "id" in project;
 }
@@ -493,11 +496,19 @@ const longPressProjectIdRef = useRef<string | null>(null);
     [actionProject, closeProjectActions, handleProjectAction],
   );
 
+  useEffect(() => {
+    if (!isLocalGuest && projectsQuery !== undefined) {
+      _cachedRemoteProjects = projectsQuery;
+    }
+  }, [isLocalGuest, projectsQuery]);
+
   const stableProjects = useMemo(() => {
     if (isLocalGuest) return localProjects ?? [];
-    return projectsQuery ?? [];
+    return projectsQuery ?? _cachedRemoteProjects ?? [];
   }, [isLocalGuest, localProjects, projectsQuery]);
-  const isLoading = isLocalGuest ? localProjects === null : projectsQuery === undefined;
+  const isLoading = isLocalGuest
+    ? localProjects === null
+    : projectsQuery === undefined && _cachedRemoteProjects === null;
   const hasProjects = stableProjects.length > 0;
   const selectedProjects = useMemo(
     () =>

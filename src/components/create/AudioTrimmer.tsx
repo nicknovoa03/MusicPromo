@@ -28,11 +28,8 @@ interface AudioTrimmerProps {
   waveformData?: number[] | null;
 }
 
-const TIMELINE_FRAME_COUNT = 74;
-const WAVEFORM_ZOOM_FACTOR = 2.4;
-const WAVEFORM_BAR_COUNT = Math.round(
-  TIMELINE_FRAME_COUNT * WAVEFORM_ZOOM_FACTOR,
-);
+const WAVEFORM_BAR_COUNT = 60;
+const WAVEFORM_VISIBLE_SECONDS = 15;
 const DURATION_WHEEL_HEIGHT = 190;
 const START_DRAG_SENSITIVITY = 0.62;
 const START_DRAG_DEADZONE_PX = 2;
@@ -229,43 +226,21 @@ export function AudioTrimmer({
     [applyStart],
   );
 
-  const selectionLeft = secToX(safeStart);
-  const minSelectionVisualWidth = clamp(trackWidth * 0.36, 96, 170);
-  const selectionWidth = Math.max(
-    secToX(safeEnd) - selectionLeft,
-    minSelectionVisualWidth,
-  );
+  const selectionWidth = trackWidth > 0 ? trackWidth : Math.max(secToX(safeEnd) - secToX(safeStart), 96);
   // Keep selectionWidth in the ref so the gesture handler always has the latest value
   latestValuesRef.current.selectionWidth = selectionWidth;
 
-  const centeredSelectionLeft = Math.max((trackWidth - selectionWidth) / 2, 0);
-  const centeredSelectionRight = Math.max(
-    trackWidth - centeredSelectionLeft - selectionWidth,
-    0,
-  );
-  const waveformLeadingInset = centeredSelectionLeft;
-  const waveformTrailingInset = centeredSelectionRight;
+  const centeredSelectionLeft = 0;
+  const centeredSelectionRight = 0;
+  const waveformLeadingInset = 0;
+  const waveformTrailingInset = 0;
 
-  // Scale so that selectionWidth pixels = currentDuration seconds.
-  // This guarantees bar[safeStart] lands on the left edge of the selection window
-  // and bar[safeEnd] lands on the right edge — perfect 1:1 audio/visual alignment.
-  const secToPixel = currentDuration > 0 && selectionWidth > 0
-    ? selectionWidth / currentDuration
-    : trackWidth > 0 ? trackWidth / Math.max(safeDuration, 1) : 1;
-  const barSpanWidth = safeDuration * secToPixel;
-  const waveformContentWidth = Math.max(
-    barSpanWidth + waveformLeadingInset + waveformTrailingInset,
-    trackWidth,
-  );
   const railProgress = maxStart > 0 ? safeStart / maxStart : 0;
-  const waveformTranslateX = -(safeStart * secToPixel);
+  const waveformContentWidth = trackWidth;
+  const waveformTranslateX = 0;
   const railThumbLeft = railWidth > 0 ? railProgress * railWidth : 0;
-  const effectiveTrimProgressSec =
-    Number.isFinite(playbackProgressSec)
-      ? clamp(playbackProgressSec ?? 0, 0, currentDuration)
-      : trimProgressSec;
   const effectiveProgressRatio =
-    currentDuration > 0 ? clamp(effectiveTrimProgressSec / currentDuration, 0, 1) : 0;
+    currentDuration > 0 ? clamp(trimProgressSec / currentDuration, 0, 1) : 0;
   const effectiveSelectionProgressWidth = selectionWidth * effectiveProgressRatio;
   const effectiveSelectionProgressHeadLeft = clamp(
     effectiveSelectionProgressWidth - 1,
@@ -294,10 +269,8 @@ export function AudioTrimmer({
           if (latestSelectionWidth <= 0 || latestMaxStart <= 0) return;
           if (Math.abs(gestureState.dx) < START_DRAG_DEADZONE_PX) return;
 
-          // 1px of drag = currentDuration/selectionWidth seconds (matches waveformTranslateX scale)
           const deltaStart =
-            (-gestureState.dx * latestCurrentDuration / latestSelectionWidth) *
-            START_DRAG_SENSITIVITY;
+            (-gestureState.dx * latestCurrentDuration) / latestSelectionWidth;
           const nextStart = clamp(
             selectionGestureStartRef.current + deltaStart,
             0,
@@ -312,27 +285,31 @@ export function AudioTrimmer({
   const waveformBars = useMemo(() => {
     if (waveformData && waveformData.length > 0) {
       return Array.from({ length: WAVEFORM_BAR_COUNT }, (_, i) => {
-        const t = i / Math.max(WAVEFORM_BAR_COUNT - 1, 1);
+        const windowSec = safeStart + (i / WAVEFORM_BAR_COUNT) * currentDuration;
+        const t = clamp(windowSec / safeDuration, 0, 1);
         const srcIdx = t * (waveformData.length - 1);
         const lo = Math.floor(srcIdx);
         const hi = Math.min(lo + 1, waveformData.length - 1);
         const frac = srcIdx - lo;
         const amp = waveformData[lo] * (1 - frac) + waveformData[hi] * frac;
+        const curved = Math.pow(amp, 2.2);
         return {
-          height: 4 + amp * 38,
-          opacity: 0.3 + amp * 0.65,
+          height: 10 + curved * 52,
+          opacity: 0.2 + curved * 0.75,
         };
       });
     }
     return Array.from({ length: WAVEFORM_BAR_COUNT }, (_, i) => {
-      const envelope = (Math.sin(i * 0.34 + safeDuration * 0.13) + 1) / 2;
+      const phase = safeStart * 0.13 + i * 0.34;
+      const envelope = (Math.sin(phase) + 1) / 2;
       const texture = (Math.sin(i * 1.18 + 0.9) + 1) / 2;
+      const curved = Math.pow(envelope, 2.2);
       return {
-        height: 8 + envelope * 24 + texture * 9,
-        opacity: 0.38 + envelope * 0.52,
+        height: 10 + curved * 44 + texture * 8,
+        opacity: 0.2 + curved * 0.75,
       };
     });
-  }, [waveformData, safeDuration]);
+  }, [waveformData, safeStart, safeDuration]);
 
   useEffect(() => {
     setTrimProgressSec(0);
@@ -353,13 +330,21 @@ export function AudioTrimmer({
     }
   }, [safeStart]);
 
+  // Sync internal position from audio callback to correct drift.
+  useEffect(() => {
+    if (typeof playbackProgressSec !== "number" || !Number.isFinite(playbackProgressSec)) return;
+    const clamped = clamp(playbackProgressSec, 0, currentDuration);
+    setTrimProgressSec(clamped);
+    lastProgressTickRef.current = Date.now();
+  }, [playbackProgressSec, currentDuration]);
+
+  // Auto-pause logic (only used when no external position tracking).
   useEffect(() => {
     if (typeof playbackProgressSec === "number") return;
     if (!isPlaying) {
       lastProgressTickRef.current = null;
       return;
     }
-
     if (trimProgressSec >= currentDuration - 0.02) {
       if (shouldAutoPauseRef.current) {
         shouldAutoPauseRef.current = false;
@@ -367,7 +352,6 @@ export function AudioTrimmer({
         onTogglePlay?.();
         return;
       }
-
       if (didAutoPauseRef.current) {
         setTrimProgressSec(0);
         didAutoPauseRef.current = false;
@@ -375,28 +359,32 @@ export function AudioTrimmer({
     }
   }, [isPlaying, trimProgressSec, currentDuration, onTogglePlay, playbackProgressSec]);
 
+  // 60fps timer — always runs while playing for smooth animation.
+  // When external position is provided, the sync effect above corrects drift periodically.
   useEffect(() => {
-    if (typeof playbackProgressSec === "number") return;
-    if (!isPlaying) return;
+    if (!isPlaying) {
+      lastProgressTickRef.current = null;
+      return;
+    }
 
     const interval = setInterval(() => {
       setTrimProgressSec((previous) => {
         const now = Date.now();
-        const last = lastProgressTickRef.current ?? now;
+        const last = lastProgressTickRef.current ?? (now - 16);
         const delta = (now - last) / 1000;
         lastProgressTickRef.current = now;
         const next = previous + delta;
 
-        if (next >= currentDuration) {
+        if (typeof playbackProgressSec !== "number" && next >= currentDuration) {
           shouldAutoPauseRef.current = true;
           return currentDuration;
         }
-        return next;
+        return Math.min(next, currentDuration);
       });
-    }, 50);
+    }, 16);
 
     return () => clearInterval(interval);
-  }, [isPlaying, currentDuration, onTogglePlay, playbackProgressSec]);
+  }, [isPlaying, currentDuration, playbackProgressSec]);
 
   return (
     <View style={styles.wrapper}>
@@ -563,12 +551,14 @@ export function AudioTrimmer({
                     { width: effectiveSelectionProgressWidth },
                   ]}
                 />
-                <View
-                  style={[
-                    styles.selectionProgressHead,
-                    { left: effectiveSelectionProgressHeadLeft },
-                  ]}
-                />
+                {effectiveProgressRatio > 0 && (
+                  <View
+                    style={[
+                      styles.selectionProgressHead,
+                      { left: effectiveSelectionProgressHeadLeft },
+                    ]}
+                  />
+                )}
               </View>
             </View>
 
@@ -739,7 +729,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   track: {
-    height: 62,
+    height: 80,
     backgroundColor: "#090B12",
     borderRadius: radius.md,
     borderWidth: 1,
@@ -754,13 +744,13 @@ const styles = StyleSheet.create({
   frameStripContent: {
     height: "100%",
     flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 5,
-    paddingVertical: 8,
+    alignItems: "flex-end",
+    paddingHorizontal: 0,
+    paddingTop: 16,
+    paddingBottom: 0,
   },
   waveBar: {
-    width: 2.2,
+    flex: 1,
     borderRadius: radius.full,
     backgroundColor: "rgba(235,239,255,0.9)",
   },
@@ -772,18 +762,15 @@ const styles = StyleSheet.create({
   },
   selectionWindow: {
     position: "absolute",
-    top: 6,
-    bottom: 6,
+    top: 0,
+    bottom: 0,
     borderWidth: 2,
     borderColor: "rgba(255,255,255,0.92)",
-    borderRadius: radius.sm,
     backgroundColor: "rgba(255,255,255,0.12)",
-    padding: 3,
   },
   selectionInner: {
     flex: 1,
     borderRadius: radius.sm,
-    backgroundColor: "rgba(255,255,255,0.5)",
     overflow: "hidden",
   },
   selectionProgressFill: {
@@ -791,7 +778,7 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     left: 0,
-    backgroundColor: "rgba(102,116,255,0.45)",
+    backgroundColor: "rgba(255,255,255,0.25)",
   },
   selectionProgressHead: {
     position: "absolute",

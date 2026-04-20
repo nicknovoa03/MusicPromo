@@ -374,6 +374,8 @@ export default function EditorScreen() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [trimStart, setTrimStart] = useState(initialTrimStart);
   const [trimEnd, setTrimEnd] = useState(initialTrimEnd);
+  const trimStartRef = useRef(initialTrimStart);
+  const trimEndRef = useRef(initialTrimEnd);
   const [previewPositionSec, setPreviewPositionSec] = useState(0);
   const [projectTitle, setProjectTitle] = useState(initialProjectTitle);
   const [isNameModalVisible, setIsNameModalVisible] = useState(false);
@@ -805,8 +807,8 @@ export default function EditorScreen() {
       minTrimDuration,
       maxTrimDuration,
     );
-    if (nextStart !== trimStart) setTrimStart(nextStart);
-    if (nextEnd !== trimEnd) setTrimEnd(nextEnd);
+    if (nextStart !== trimStart) { trimStartRef.current = nextStart; setTrimStart(nextStart); }
+    if (nextEnd !== trimEnd) { trimEndRef.current = nextEnd; setTrimEnd(nextEnd); }
   }, [
     audioDurationSec,
     minTrimDuration,
@@ -860,6 +862,8 @@ export default function EditorScreen() {
       minTrimDuration,
       maxTrimDuration,
     );
+    trimStartRef.current = nextStart;
+    trimEndRef.current = nextEnd;
     setTrimStart(nextStart);
     setTrimEnd(nextEnd);
   }, [audioDurationSec, minTrimDuration, maxTrimDuration]);
@@ -909,8 +913,8 @@ export default function EditorScreen() {
     (status: AVPlaybackStatus) => {
       if (!status.isLoaded) return;
 
-      const safeTrimStart = Math.max(0, trimStart);
-      const safeTrimEnd = Math.max(safeTrimStart, trimEnd);
+      const safeTrimStart = Math.max(0, trimStartRef.current);
+      const safeTrimEnd = Math.max(safeTrimStart, trimEndRef.current);
       const endMillis = Math.round(safeTrimEnd * 1000);
       const relativeSec = Math.max(0, status.positionMillis / 1000 - safeTrimStart);
       setPreviewPositionSec(Math.min(relativeSec, safeTrimEnd - safeTrimStart));
@@ -927,7 +931,7 @@ export default function EditorScreen() {
         })();
       }
     },
-    [trimStart, trimEnd, stopAndResetPreview],
+    [stopAndResetPreview],
   );
 
   const ensurePreviewSound = useCallback(async () => {
