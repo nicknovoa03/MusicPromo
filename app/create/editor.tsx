@@ -791,7 +791,7 @@ export default function EditorScreen() {
     };
   }, [audioUri, missingFiles.audio]);
 
-  const waveformData = useWaveformData(audioUri || undefined, 178);
+  const waveformData = useWaveformData(audioUri || undefined, 800);
 
   const minTrimDuration = Math.min(5, Math.max(audioDurationSec, 1));
   const maxTrimDuration = Math.max(
@@ -1333,7 +1333,7 @@ export default function EditorScreen() {
           await createDraftProject();
         }
       } finally {
-        router.replace("/" as const);
+        router.back();
       }
     })();
   }, [

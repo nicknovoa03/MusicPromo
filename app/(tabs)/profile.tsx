@@ -47,7 +47,7 @@ import { clearLocalOnboardingCompleted } from "@/lib/onboarding";
 import { getExpoPushTokenAsync } from "@/lib/notifications";
 import type { EventName } from "@/lib/analytics";
 import { useLocalSession } from "@/providers/localSession";
-import { persistPickedMediaFile } from "@/lib/mediaStorage";
+import { persistPickedMediaFile, isLocalFileAccessible } from "@/lib/mediaStorage";
 import { sleep } from "@/lib/utils";
 import { ProjectThumbnail } from "@/components/ProjectThumbnail";
 import * as Sharing from "expo-sharing";
@@ -274,6 +274,30 @@ export default function ProfileScreen() {
   const [isProfileSettingsOpen, setIsProfileSettingsOpen] = useState(false);
   const [isClosingProfileSettings, setIsClosingProfileSettings] = useState(false);
   const profileSettingsTranslateX = useRef(new Animated.Value(windowWidth)).current;
+  const [brokenProjectIds, setBrokenProjectIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const list = projects ?? [];
+      if (!list.length) { setBrokenProjectIds(new Set()); return; }
+      const broken = new Set<string>();
+      await Promise.all(
+        list.map(async (project) => {
+          const photoOk = await isLocalFileAccessible(project.photoUri);
+          const audioOk = await isLocalFileAccessible(project.audioUri);
+          if (!photoOk || !audioOk) broken.add(String(project._id));
+        }),
+      );
+      if (!cancelled) setBrokenProjectIds(broken);
+    })();
+    return () => { cancelled = true; };
+  }, [projects]);
+
+  const visibleProjects = useMemo(
+    () => (projects ?? []).filter((p) => !brokenProjectIds.has(String(p._id))),
+    [projects, brokenProjectIds],
+  );
 
   useEffect(() => {
     let isActive = true;
@@ -1363,7 +1387,7 @@ export default function ProfileScreen() {
 
           {!isProfileLoading && !isGuest ? (() => {
             const activeLinks = sourceLinks.filter(l => l.url.trim().length > 0);
-            const recentPromos = (projects ?? []).slice(0, 6);
+            const recentPromos = visibleProjects.slice(0, 6);
 
             const handleLinkPress = async (platform: string, url: string) => {
               const webUrl = buildLinkUrl(platform as ProfileLinkPlatform, extractHandle(platform as ProfileLinkPlatform, url) || url);
@@ -1534,10 +1558,10 @@ export default function ProfileScreen() {
 
                 {/* Right column: featured promos */}
                 <View style={styles.shareCardRight}>
-                  {(projects ?? []).filter(p => p.audioName ?? p.title).length > 0 && (
+                  {visibleProjects.filter(p => p.audioName ?? p.title).length > 0 && (
                     <>
                       <Text style={styles.shareCardFeaturedLabel}>Songs</Text>
-                      {(projects ?? []).filter(p => p.audioName ?? p.title).slice(0, 3).map((project) => (
+                      {visibleProjects.filter(p => p.audioName ?? p.title).slice(0, 3).map((project) => (
                         <View key={String(project._id)} style={styles.shareCardSongRow}>
                           <Ionicons name="musical-note" size={11} color="rgba(255,255,255,0.4)" />
                           <Text style={styles.shareCardSongTitle} numberOfLines={1}>{project.audioName ?? project.title}</Text>
@@ -1549,11 +1573,11 @@ export default function ProfileScreen() {
               </View>
 
               {/* 3 promo thumbnails */}
-              {(projects ?? []).length > 0 && (
+              {visibleProjects.length > 0 && (
                 <View style={styles.shareCardGridSection}>
                   <Text style={styles.shareCardFeaturedLabel}>Music Promos</Text>
                   <View style={styles.shareCardGrid}>
-                    {(projects ?? []).slice(0, 3).map(project => (
+                    {visibleProjects.slice(0, 3).map(project => (
                       <View key={String(project._id)} style={styles.shareCardThumb}>
                         <ProjectThumbnail
                           project={project}

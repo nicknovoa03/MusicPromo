@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo } from "react";
 import { Image, StyleSheet } from "react-native";
-import { Redirect, Slot, useSegments } from "expo-router";
+import { Redirect, Stack, useSegments } from "expo-router";
 import { ClerkProvider, ClerkLoaded, useAuth } from "@clerk/clerk-expo";
 import { ConvexProviderWithAuth } from "convex/react";
 import { PostHogProvider } from "posthog-react-native";
@@ -49,7 +49,17 @@ function AuthGate() {
     return <Redirect href="/" />;
   }
 
-  return <Slot />;
+  return (
+    <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="(auth)" />
+      <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
+      <Stack.Screen
+        name="create"
+        options={{ gestureEnabled: false }}
+      />
+    </Stack>
+  );
 }
 
 function AppStatusBar() {

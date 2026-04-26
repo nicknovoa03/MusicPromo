@@ -382,7 +382,7 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
     }
 
     resetPickerState();
-    router.replace("/" as const);
+    router.navigate("/" as const);
   }, [
     returnToEditor,
     resetPickerState,

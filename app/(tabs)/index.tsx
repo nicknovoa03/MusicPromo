@@ -38,6 +38,7 @@ import {
   removeLocalProject,
   type LocalProject,
 } from "@/lib/localProjects";
+import { isLocalFileAccessible } from "@/lib/mediaStorage";
 import {
   getTemplateDefinition,
   parseTemplateTweaksParam,
@@ -164,6 +165,7 @@ export default function HomeScreen() {
   const projectsQuery = useQuery(api.projects.listByUser);
   const deleteProject = useMutation(api.projects.remove);
 const [localProjects, setLocalProjects] = useState<LocalProject[] | null>(null);
+  const [brokenProjectIds, setBrokenProjectIds] = useState<Set<string>>(new Set());
   const [localAvatarUrl, setLocalAvatarUrl] = useState<string | null>(null);
   const [avatarError, setAvatarError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -506,16 +508,44 @@ const longPressProjectIdRef = useRef<string | null>(null);
     if (isLocalGuest) return localProjects ?? [];
     return projectsQuery ?? _cachedRemoteProjects ?? [];
   }, [isLocalGuest, localProjects, projectsQuery]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      if (!stableProjects.length) {
+        setBrokenProjectIds(new Set());
+        return;
+      }
+      const broken = new Set<string>();
+      await Promise.all(
+        stableProjects.map(async (project) => {
+          const photoOk = await isLocalFileAccessible(project.photoUri);
+          const audioOk = await isLocalFileAccessible(project.audioUri);
+          if (!photoOk || !audioOk) {
+            broken.add(getProjectId(project));
+          }
+        }),
+      );
+      if (!cancelled) setBrokenProjectIds(broken);
+    })();
+    return () => { cancelled = true; };
+  }, [stableProjects]);
+
+  const visibleProjects = useMemo(
+    () => stableProjects.filter((p) => !brokenProjectIds.has(getProjectId(p))),
+    [stableProjects, brokenProjectIds],
+  );
+
   const isLoading = isLocalGuest
     ? localProjects === null
     : projectsQuery === undefined && _cachedRemoteProjects === null;
-  const hasProjects = stableProjects.length > 0;
+  const hasProjects = visibleProjects.length > 0;
   const selectedProjects = useMemo(
     () =>
-      stableProjects.filter((project) =>
+      visibleProjects.filter((project) =>
         selectedProjectIds.includes(getProjectId(project)),
       ),
-    [selectedProjectIds, stableProjects],
+    [selectedProjectIds, visibleProjects],
   );
 
   const runDeleteProjects = useCallback(
@@ -755,7 +785,7 @@ const longPressProjectIdRef = useRef<string | null>(null);
 
       {/* TODO: Add cursor pagination if project history grows beyond v1 size. */}
       <FlatList
-        data={stableProjects}
+        data={visibleProjects}
         keyExtractor={(item) => getProjectId(item)}
         renderItem={renderProjectCard}
         numColumns={2}

@@ -1,4 +1,5 @@
 import * as FileSystem from "expo-file-system/legacy";
+import { normalizeMediaUri } from "@/lib/mediaUri";
 
 const MEDIA_DIR_NAME = "musicpromo-media";
 
@@ -23,6 +24,18 @@ async function ensureMediaDirectory() {
     // Directory may already exist.
   }
   return mediaDirectoryUri;
+}
+
+export async function isLocalFileAccessible(uri: string | undefined): Promise<boolean> {
+  if (!uri) return true;
+  const normalized = normalizeMediaUri(uri);
+  if (!normalized.startsWith("file://")) return true;
+  try {
+    const info = await FileSystem.getInfoAsync(normalized);
+    return info.exists;
+  } catch {
+    return false;
+  }
 }
 
 export async function persistPickedMediaFile(params: {

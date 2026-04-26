@@ -28,8 +28,14 @@ interface AudioTrimmerProps {
   waveformData?: number[] | null;
 }
 
-const WAVEFORM_BAR_COUNT = 60;
+const WAVEFORM_BAR_COUNT = 100;
 const WAVEFORM_VISIBLE_SECONDS = 15;
+const TRACK_HEIGHT = 88;
+const UPPER_SECTION_H = 55;
+const CENTER_GAP_H = 3;
+const LOWER_SECTION_H = TRACK_HEIGHT - UPPER_SECTION_H - CENTER_GAP_H; // 30
+const UPPER_MAX_H = UPPER_SECTION_H - 4;  // 51px — leaves breathing room at top
+const LOWER_MAX_H = Math.round(LOWER_SECTION_H * 0.78); // 23px
 const DURATION_WHEEL_HEIGHT = 190;
 const START_DRAG_SENSITIVITY = 0.62;
 const START_DRAG_DEADZONE_PX = 2;
@@ -230,23 +236,12 @@ export function AudioTrimmer({
   // Keep selectionWidth in the ref so the gesture handler always has the latest value
   latestValuesRef.current.selectionWidth = selectionWidth;
 
-  const centeredSelectionLeft = 0;
-  const centeredSelectionRight = 0;
-  const waveformLeadingInset = 0;
-  const waveformTrailingInset = 0;
-
   const railProgress = maxStart > 0 ? safeStart / maxStart : 0;
   const waveformContentWidth = trackWidth;
   const waveformTranslateX = 0;
   const railThumbLeft = railWidth > 0 ? railProgress * railWidth : 0;
   const effectiveProgressRatio =
     currentDuration > 0 ? clamp(trimProgressSec / currentDuration, 0, 1) : 0;
-  const effectiveSelectionProgressWidth = selectionWidth * effectiveProgressRatio;
-  const effectiveSelectionProgressHeadLeft = clamp(
-    effectiveSelectionProgressWidth - 1,
-    0,
-    Math.max(selectionWidth - 2, 0),
-  );
 
   const selectionWindowPan = useMemo(
     () =>
@@ -291,11 +286,10 @@ export function AudioTrimmer({
         const lo = Math.floor(srcIdx);
         const hi = Math.min(lo + 1, waveformData.length - 1);
         const frac = srcIdx - lo;
-        const amp = waveformData[lo] * (1 - frac) + waveformData[hi] * frac;
-        const curved = Math.pow(amp, 2.2);
+        const amp = Math.pow(waveformData[lo] * (1 - frac) + waveformData[hi] * frac, 1.8);
         return {
-          height: 10 + curved * 52,
-          opacity: 0.2 + curved * 0.75,
+          upperHeight: Math.max(6, amp * UPPER_MAX_H),
+          lowerHeight: Math.max(3, amp * LOWER_MAX_H),
         };
       });
     }
@@ -303,13 +297,13 @@ export function AudioTrimmer({
       const phase = safeStart * 0.13 + i * 0.34;
       const envelope = (Math.sin(phase) + 1) / 2;
       const texture = (Math.sin(i * 1.18 + 0.9) + 1) / 2;
-      const curved = Math.pow(envelope, 2.2);
+      const amp = envelope * 0.8 + texture * 0.2;
       return {
-        height: 10 + curved * 44 + texture * 8,
-        opacity: 0.2 + curved * 0.75,
+        upperHeight: Math.max(6, amp * UPPER_MAX_H),
+        lowerHeight: Math.max(3, amp * LOWER_MAX_H),
       };
     });
-  }, [waveformData, safeStart, safeDuration]);
+  }, [waveformData, safeStart, safeDuration, currentDuration]);
 
   useEffect(() => {
     setTrimProgressSec(0);
@@ -507,74 +501,33 @@ export function AudioTrimmer({
               styles.frameStripContent,
               {
                 width: waveformContentWidth,
-                paddingLeft: waveformLeadingInset,
-                paddingRight: waveformTrailingInset,
                 transform: [{ translateX: waveformTranslateX }],
               },
             ]}
             pointerEvents="none"
           >
-            {waveformBars.map((bar, i) => (
-              <View
-                key={`bg-${i}`}
-                style={[
-                  styles.waveBar,
-                  {
-                    opacity: bar.opacity,
-                    height: bar.height,
-                  },
-                ]}
-              />
-            ))}
+            {waveformBars.map((bar, i) => {
+              const barPos = (i + 0.5) / WAVEFORM_BAR_COUNT;
+              const fadeWidth = 4 / WAVEFORM_BAR_COUNT;
+              const t = effectiveProgressRatio > 0
+                ? clamp((effectiveProgressRatio - barPos) / fadeWidth, 0, 1)
+                : 0;
+              const opacity = 0.30 + t * 0.60;
+              return (
+                <View key={`bar-${i}`} style={styles.barColumn}>
+                  <View style={styles.upperSection}>
+                    <View style={[styles.upperBar, { height: bar.upperHeight, opacity }]} />
+                  </View>
+                  <View style={styles.centerGap} />
+                  <View style={styles.lowerSection}>
+                    <View style={[styles.lowerBar, { height: bar.lowerHeight, opacity: opacity * 0.5 }]} />
+                  </View>
+                </View>
+              );
+            })}
           </View>
         </View>
 
-        {trackLayoutReady && (
-          <>
-            {centeredSelectionLeft > 0 && (
-              <View style={[styles.inactive, { left: 0, width: centeredSelectionLeft }]} />
-            )}
-
-            <View
-              style={[
-                styles.selectionWindow,
-                {
-                  left: centeredSelectionLeft,
-                  width: selectionWidth,
-                },
-              ]}
-            >
-              <View style={styles.selectionInner}>
-                <View
-                  style={[
-                    styles.selectionProgressFill,
-                    { width: effectiveSelectionProgressWidth },
-                  ]}
-                />
-                {effectiveProgressRatio > 0 && (
-                  <View
-                    style={[
-                      styles.selectionProgressHead,
-                      { left: effectiveSelectionProgressHeadLeft },
-                    ]}
-                  />
-                )}
-              </View>
-            </View>
-
-            {centeredSelectionRight > 0 && (
-              <View
-                style={[
-                  styles.inactive,
-                  {
-                    left: centeredSelectionLeft + selectionWidth,
-                    width: centeredSelectionRight,
-                  },
-                ]}
-              />
-            )}
-          </>
-        )}
       </View>
     </View>
   );
@@ -729,7 +682,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   track: {
-    height: 80,
+    height: TRACK_HEIGHT,
     backgroundColor: "#090B12",
     borderRadius: radius.md,
     borderWidth: 1,
@@ -744,48 +697,33 @@ const styles = StyleSheet.create({
   frameStripContent: {
     height: "100%",
     flexDirection: "row",
-    alignItems: "flex-end",
-    paddingHorizontal: 0,
-    paddingTop: 16,
-    paddingBottom: 0,
+    alignItems: "stretch",
+    gap: 1,
+    paddingHorizontal: 2,
   },
-  waveBar: {
+  barColumn: {
     flex: 1,
-    borderRadius: radius.full,
-    backgroundColor: "rgba(235,239,255,0.9)",
+    flexDirection: "column",
   },
-  inactive: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    backgroundColor: "rgba(0,0,0,0.62)",
+  upperSection: {
+    height: UPPER_SECTION_H,
+    justifyContent: "flex-end",
   },
-  selectionWindow: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    borderWidth: 2,
-    borderColor: "rgba(255,255,255,0.92)",
-    backgroundColor: "rgba(255,255,255,0.12)",
+  upperBar: {
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 1,
+    borderTopRightRadius: 1,
   },
-  selectionInner: {
-    flex: 1,
-    borderRadius: radius.sm,
-    overflow: "hidden",
+  centerGap: {
+    height: CENTER_GAP_H,
   },
-  selectionProgressFill: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    left: 0,
-    backgroundColor: "rgba(255,255,255,0.25)",
+  lowerSection: {
+    height: LOWER_SECTION_H,
+    justifyContent: "flex-start",
   },
-  selectionProgressHead: {
-    position: "absolute",
-    top: 1,
-    bottom: 1,
-    width: 2,
-    borderRadius: radius.full,
-    backgroundColor: "rgba(255,255,255,0.98)",
+  lowerBar: {
+    backgroundColor: "#FFFFFF",
+    borderBottomLeftRadius: 1,
+    borderBottomRightRadius: 1,
   },
 });
