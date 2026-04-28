@@ -6,7 +6,7 @@ import { getTemplateDefinition, type TemplateTweaks } from "@/lib/templates";
 interface TemplateInfoBadgeProps {
   templateId: string;
   templateTweaks: TemplateTweaks;
-  aspectRatio: "9:16" | "1:1";
+  aspectRatio: "9:16" | "4:5" | "1:1";
   compact?: boolean;
   style?: StyleProp<ViewStyle>;
 }

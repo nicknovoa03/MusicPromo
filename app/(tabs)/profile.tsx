@@ -48,10 +48,11 @@ import { clearLocalOnboardingCompleted } from "@/lib/onboarding";
 import { getExpoPushTokenAsync } from "@/lib/notifications";
 import type { EventName } from "@/lib/analytics";
 import { useLocalSession } from "@/providers/localSession";
-import { persistPickedMediaFile } from "@/lib/mediaStorage";
+import { persistPickedMediaFile, isLocalFileAccessible } from "@/lib/mediaStorage";
 import { sleep } from "@/lib/utils";
 import { ProjectThumbnail } from "@/components/ProjectThumbnail";
 import * as Sharing from "expo-sharing";
+import * as FileSystem from "expo-file-system";
 import ViewShot from "react-native-view-shot";
 
 const PLATFORM_LABELS: Record<ProfileLinkPlatform, string> = {
@@ -251,6 +252,8 @@ export default function ProfileScreen() {
   const [errorText, setErrorText] = useState<string | null>(null);
   const [isShareCardVisible, setIsShareCardVisible] = useState(false);
   const [isSharingProfile, setIsSharingProfile] = useState(false);
+  const [shareAvatarUri, setShareAvatarUri] = useState<string | null>(null);
+  const [shareHeroUri, setShareHeroUri] = useState<string | null>(null);
   const shareCardRef = useRef<ViewShot>(null);
   const shareCardBannerReadyRef = useRef<(() => void) | null>(null);
   const bioInputRef = useRef<TextInput>(null);
@@ -272,6 +275,30 @@ export default function ProfileScreen() {
   const [isProfileSettingsOpen, setIsProfileSettingsOpen] = useState(false);
   const [isClosingProfileSettings, setIsClosingProfileSettings] = useState(false);
   const profileSettingsTranslateX = useRef(new Animated.Value(windowWidth)).current;
+  const [brokenProjectIds, setBrokenProjectIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const list = projects ?? [];
+      if (!list.length) { setBrokenProjectIds(new Set()); return; }
+      const broken = new Set<string>();
+      await Promise.all(
+        list.map(async (project) => {
+          const photoOk = await isLocalFileAccessible(project.photoUri);
+          const audioOk = await isLocalFileAccessible(project.audioUri);
+          if (!photoOk || !audioOk) broken.add(String(project._id));
+        }),
+      );
+      if (!cancelled) setBrokenProjectIds(broken);
+    })();
+    return () => { cancelled = true; };
+  }, [projects]);
+
+  const visibleProjects = useMemo(
+    () => (projects ?? []).filter((p) => !brokenProjectIds.has(String(p._id))),
+    [projects, brokenProjectIds],
+  );
 
   useEffect(() => {
     let isActive = true;
@@ -805,11 +832,29 @@ export default function ProfileScreen() {
 
     setIsSharingProfile(true);
     try {
-      // Prefetch remote images so they're in cache before the card renders
-      const prefetches: Promise<unknown>[] = [];
-      if (sourceAvatarImageUrl) prefetches.push(Image.prefetch(sourceAvatarImageUrl));
-      if (sourceHeroImageUrl) prefetches.push(Image.prefetch(sourceHeroImageUrl));
-      await Promise.all(prefetches);
+      // Validate URIs — local file:// paths may no longer exist on device.
+      // Fall back to null so the share card renders the default images instead of blank.
+      const validateUri = async (url: string | null): Promise<string | null> => {
+        if (!url) return null;
+        if (url.startsWith("file://") || url.startsWith("/")) {
+          const info = await FileSystem.getInfoAsync(url).catch(() => ({ exists: false }));
+          return info.exists ? url : null;
+        }
+        return url;
+      };
+      const [validatedAvatar, validatedHero] = await Promise.all([
+        validateUri(sourceAvatarImageUrl),
+        validateUri(sourceHeroImageUrl),
+      ]);
+      setShareAvatarUri(validatedAvatar);
+      setShareHeroUri(validatedHero);
+
+      // Prefetch valid remote images so they're in cache before the card renders.
+      const prefetch = (url: string) => Image.prefetch(url).catch(() => null);
+      await Promise.all([
+        validatedAvatar && !validatedAvatar.startsWith("file://") ? prefetch(validatedAvatar) : null,
+        validatedHero && !validatedHero.startsWith("file://") ? prefetch(validatedHero) : null,
+      ]);
 
       setIsShareCardVisible(true);
 
@@ -828,12 +873,15 @@ export default function ProfileScreen() {
       const uri = await shareCardRef.current?.capture?.();
       if (!uri) {
         setIsShareCardVisible(false);
+        Alert.alert("Share failed", "Could not capture the share card. Please try again.");
         return;
       }
       setIsShareCardVisible(false);
       await Sharing.shareAsync(uri, { mimeType: "image/png", dialogTitle: "Share your profile" });
-    } catch {
+    } catch (e) {
+      console.error("[handleShareProfile]", e);
       setIsShareCardVisible(false);
+      Alert.alert("Share failed", String(e instanceof Error ? e.message : e));
     } finally {
       setIsSharingProfile(false);
     }
@@ -1341,7 +1389,7 @@ export default function ProfileScreen() {
 
           {!isProfileLoading && !isGuest ? (() => {
             const activeLinks = sourceLinks.filter(l => l.url.trim().length > 0);
-            const recentPromos = (projects ?? []).slice(0, 5);
+            const recentPromos = visibleProjects.slice(0, 6);
 
             const handleLinkPress = async (platform: string, url: string) => {
               const webUrl = buildLinkUrl(platform as ProfileLinkPlatform, extractHandle(platform as ProfileLinkPlatform, url) || url);
@@ -1479,8 +1527,8 @@ export default function ProfileScreen() {
               {/* Banner */}
               <View style={styles.shareCardBanner}>
                 <Image
-                  source={sourceHeroImageUrl ? { uri: sourceHeroImageUrl } : require("../../assets/branding/MusicPromo-Banner.png")}
-                  style={[styles.shareCardBannerImage, !sourceHeroImageUrl && styles.shareCardBannerImageDefault]}
+                  source={shareHeroUri ? { uri: shareHeroUri } : require("../../assets/branding/MusicPromo-Banner.png")}
+                  style={[styles.shareCardBannerImage, !shareHeroUri && styles.shareCardBannerImageDefault]}
                   resizeMode="cover"
                   onLoad={() => shareCardBannerReadyRef.current?.()}
                 />
@@ -1491,7 +1539,7 @@ export default function ProfileScreen() {
               <View style={styles.shareCardNameRow}>
                 <View style={styles.shareCardAvatarWrap}>
                   <Image
-                    source={sourceAvatarImageUrl ? { uri: sourceAvatarImageUrl } : require("../../assets/defaults/MusicPromo-DefaultAvatar.jpg")}
+                    source={shareAvatarUri ? { uri: shareAvatarUri } : require("../../assets/defaults/MusicPromo-DefaultAvatar.jpg")}
                     style={styles.shareCardAvatarImage}
                   />
                 </View>
@@ -1535,10 +1583,10 @@ export default function ProfileScreen() {
 
                 {/* Right column: featured promos */}
                 <View style={styles.shareCardRight}>
-                  {(projects ?? []).filter(p => p.audioName ?? p.title).length > 0 && (
+                  {visibleProjects.filter(p => p.audioName ?? p.title).length > 0 && (
                     <>
                       <Text style={styles.shareCardFeaturedLabel}>Songs</Text>
-                      {(projects ?? []).filter(p => p.audioName ?? p.title).slice(0, 3).map((project) => (
+                      {visibleProjects.filter(p => p.audioName ?? p.title).slice(0, 3).map((project) => (
                         <View key={String(project._id)} style={styles.shareCardSongRow}>
                           <Ionicons name="musical-note" size={11} color="rgba(255,255,255,0.4)" />
                           <Text style={styles.shareCardSongTitle} numberOfLines={1}>{project.audioName ?? project.title}</Text>
@@ -1550,11 +1598,11 @@ export default function ProfileScreen() {
               </View>
 
               {/* 3 promo thumbnails */}
-              {(projects ?? []).length > 0 && (
+              {visibleProjects.length > 0 && (
                 <View style={styles.shareCardGridSection}>
                   <Text style={styles.shareCardFeaturedLabel}>Music Promos</Text>
                   <View style={styles.shareCardGrid}>
-                    {(projects ?? []).slice(0, 3).map(project => (
+                    {visibleProjects.slice(0, 3).map(project => (
                       <View key={String(project._id)} style={styles.shareCardThumb}>
                         <ProjectThumbnail
                           project={project}

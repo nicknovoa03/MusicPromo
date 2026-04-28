@@ -33,6 +33,13 @@ function extractNotificationType(data: unknown) {
   return typeof type === "string" ? type : "unknown";
 }
 
+// Survive remount (e.g. returning from editor) so the loading gate doesn't flash.
+let _cachedOnboardingSession: {
+  userId: string | null | undefined;
+  isLocalGuest: boolean;
+  completed: boolean;
+} | null = null;
+
 export default function TabsLayout() {
   const router = useRouter();
   const colorScheme = useColorScheme();
@@ -48,8 +55,14 @@ export default function TabsLayout() {
   const didBootstrapPush = useRef(false);
   const hasWarnedMissingConvexToken = useRef(false);
   const previousPathnameRef = useRef<string | null>(null);
-  const [localOnboardingReady, setLocalOnboardingReady] = useState(false);
-  const [localOnboardingCompleted, setLocalOnboardingCompleted] = useState(false);
+  const cachedOnboarding =
+    _cachedOnboardingSession !== null &&
+    _cachedOnboardingSession.userId === userId &&
+    _cachedOnboardingSession.isLocalGuest === isLocalGuest
+      ? _cachedOnboardingSession
+      : null;
+  const [localOnboardingReady, setLocalOnboardingReady] = useState(() => cachedOnboarding !== null);
+  const [localOnboardingCompleted, setLocalOnboardingCompleted] = useState(() => cachedOnboarding?.completed ?? false);
   const isDarkMode = colorScheme === "dark";
   const tabActiveColor = isDarkMode ? colors.dark.text : colors.light.text;
   const tabInactiveColor = isDarkMode
@@ -78,6 +91,14 @@ export default function TabsLayout() {
   }, [hasSession]);
 
   useEffect(() => {
+    if (
+      _cachedOnboardingSession !== null &&
+      _cachedOnboardingSession.userId === userId &&
+      _cachedOnboardingSession.isLocalGuest === isLocalGuest
+    ) {
+      return;
+    }
+
     let isActive = true;
     setLocalOnboardingReady(false);
 
@@ -87,6 +108,7 @@ export default function TabsLayout() {
           localGuest: isLocalGuest,
         });
         if (!isActive) return;
+        _cachedOnboardingSession = { userId, isLocalGuest, completed };
         setLocalOnboardingCompleted(completed);
       } catch (error) {
         console.warn("Failed to read onboarding state:", error);

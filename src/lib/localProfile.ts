@@ -3,7 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 const LOCAL_PROFILE_PREFERENCES_KEY = "musicpromo:local-profile-preferences";
 const LOCAL_ARTIST_PROFILE_KEY = "musicpromo:local-artist-profile";
 
-type LocalAspectRatio = "9:16" | "1:1";
+type LocalAspectRatio = "9:16" | "4:5" | "1:1";
 type LocalVideoLength = 15 | 30 | 60;
 export const PROFILE_LINK_PLATFORMS = [
   "spotify",
@@ -49,7 +49,9 @@ export const DEFAULT_LOCAL_ARTIST_PROFILE: LocalArtistProfile = {
 };
 
 function normalizeAspectRatio(value: unknown): LocalAspectRatio {
-  return value === "1:1" ? "1:1" : "9:16";
+  if (value === "1:1") return "1:1";
+  if (value === "4:5") return "4:5";
+  return "9:16";
 }
 
 function normalizeVideoLength(value: unknown): LocalVideoLength {

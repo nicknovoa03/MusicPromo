@@ -1,5 +1,11 @@
-import { mutation } from "./_generated/server";
+import { internalQuery, mutation } from "./_generated/server";
 import { v } from "convex/values";
+
+export const getAllEmails = internalQuery({
+  handler: async (ctx) => {
+    return await ctx.db.query("betaSignups").collect();
+  },
+});
 
 export const submit = mutation({
   args: {

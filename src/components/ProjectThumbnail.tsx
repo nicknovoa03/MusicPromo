@@ -21,9 +21,10 @@ type Props = {
 };
 
 const BASE_RENDER_SIZE = 300;
+let _cachedThumbnailWidth = 0;
 
 export function ProjectThumbnail({ project, title, surfaceColor, fallbackIconColor }: Props) {
-  const [thumbnailSize, setThumbnailSize] = useState(0);
+  const [thumbnailSize, setThumbnailSize] = useState(_cachedThumbnailWidth);
   const photoUri = normalizeMediaUri(project.photoUri);
   const fallbackPreviewUri = normalizeMediaUri(project.exportedVideoUri);
   const templateId = resolveTemplateId(project.templateId);
@@ -44,6 +45,7 @@ export function ProjectThumbnail({ project, title, surfaceColor, fallbackIconCol
       style={[styles.thumbnail, { backgroundColor: surfaceColor }]}
       onLayout={(event) => {
         const nextSize = Math.round(event.nativeEvent.layout.width);
+        if (nextSize !== _cachedThumbnailWidth) _cachedThumbnailWidth = nextSize;
         setThumbnailSize((current) => (current === nextSize ? current : nextSize));
       }}
     >

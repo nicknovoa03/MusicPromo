@@ -19,7 +19,7 @@ export const create = mutation({
     title: v.optional(v.string()),
     templateId: v.optional(v.string()),
     templateTweaks: v.optional(v.string()),
-    aspectRatio: v.union(v.literal("9:16"), v.literal("1:1")),
+    aspectRatio: v.union(v.literal("9:16"), v.literal("4:5"), v.literal("1:1")),
     photoUri: v.optional(v.string()),
     photoName: v.optional(v.string()),
     audioUri: v.optional(v.string()),
@@ -40,7 +40,9 @@ export const create = mutation({
     const now = Date.now();
     const projectDoc: {
       userId: typeof user._id;
-      aspectRatio: "9:16" | "1:1";
+      createdByName?: string;
+      createdByEmail?: string;
+      aspectRatio: "9:16" | "4:5" | "1:1";
       status: "draft";
       createdAt: number;
       updatedAt: number;
@@ -55,6 +57,8 @@ export const create = mutation({
       trimEnd?: number;
     } = {
       userId: user._id,
+      createdByName: user.artistName ?? user.name,
+      createdByEmail: user.email,
       aspectRatio: args.aspectRatio,
       status: "draft",
       createdAt: now,
@@ -105,7 +109,7 @@ export const update = mutation({
     title: v.optional(v.string()),
     templateId: v.optional(v.string()),
     templateTweaks: v.optional(v.string()),
-    aspectRatio: v.optional(v.union(v.literal("9:16"), v.literal("1:1"))),
+    aspectRatio: v.optional(v.union(v.literal("9:16"), v.literal("4:5"), v.literal("1:1"))),
     photoUri: v.optional(v.string()),
     photoName: v.optional(v.string()),
     audioUri: v.optional(v.string()),
@@ -179,6 +183,30 @@ export const getById = query({
     if (!user || project.userId !== user._id) return null;
 
     return project;
+  },
+});
+
+export const listAll = query({
+  args: {},
+  handler: async (ctx) => {
+    const projects = await ctx.db.query("projects").order("desc").collect();
+
+    return await Promise.all(
+      projects.map(async (project) => {
+        const user = await ctx.db.get(project.userId);
+        return {
+          ...project,
+          user: user
+            ? {
+                name: user.name,
+                artistName: user.artistName,
+                email: user.email,
+                clerkId: user.clerkId,
+              }
+            : null,
+        };
+      })
+    );
   },
 });
 

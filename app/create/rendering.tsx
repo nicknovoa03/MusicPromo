@@ -174,7 +174,7 @@ export default function RenderingScreen() {
     [photoUriParam],
   );
   const trackTitle = displayMediaLabel(audioName, "Untitled track");
-  const stageWidthRatio = aspectRatio === "9:16" ? 9 / 16 : 1;
+  const stageWidthRatio = aspectRatio === "9:16" ? 9 / 16 : aspectRatio === "4:5" ? 4 / 5 : 1;
   const maxStageWidth = Math.min(windowWidth - STAGE_HORIZONTAL_PADDING, 440);
   const fallbackTopInset = Math.max(
     initialWindowMetrics?.insets.top ?? 0,

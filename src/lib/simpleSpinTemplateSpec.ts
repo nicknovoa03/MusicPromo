@@ -1,4 +1,4 @@
-export type SimpleSpinAspectRatio = "9:16" | "1:1";
+export type SimpleSpinAspectRatio = "9:16" | "4:5" | "1:1";
 
 export interface SimpleSpinTemplateLayout {
   discSize: number;
@@ -72,7 +72,7 @@ export function getSimpleSpinTemplateLayout(params: {
 }): SimpleSpinTemplateLayout {
   const { width, height, aspectRatio } = params;
   const basis = Math.min(width, height);
-  const discScale = aspectRatio === "9:16" ? 0.82 : 0.78;
+  const discScale = 0.76;
   const discSize = Math.max(120, toEven(Math.round(basis * discScale)));
   const discRadius = Math.round(discSize / 2);
   const labelRadius = Math.max(28, Math.round(discSize * 0.3));

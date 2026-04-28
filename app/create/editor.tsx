@@ -32,6 +32,7 @@ import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
 import { AudioTrimmer } from "@/components/create/AudioTrimmer";
+import { useWaveformData } from "@/lib/useWaveformData";
 import { type AspectRatio } from "@/components/create/AspectRatioToggle";
 import { TemplateCustomizeModal } from "@/components/create/TemplateCustomizeModal";
 import { TemplateInfoBadge } from "@/components/create/TemplateInfoBadge";
@@ -67,7 +68,7 @@ const STAGE_HORIZONTAL_PADDING = spacing.xs * 2;
 const FALLBACK_AUDIO_DURATION = 180;
 const DEFAULT_TRIM_DURATION = 5;
 const DEFAULT_PROJECT_TITLE = "New Project";
-const NATIVE_ASPECT_RATIO_OPTIONS: AspectRatio[] = ["9:16", "1:1"];
+const NATIVE_ASPECT_RATIO_OPTIONS: AspectRatio[] = ["1:1", "4:5", "9:16"];
 const TRIM_PANEL_ANIMATION_DURATION_MS = 260;
 const TRIM_PANEL_MAX_HEIGHT = Math.max(260, Math.round(SCREEN_HEIGHT * 0.44));
 const audioDurationSecCache = new Map<string, number>();
@@ -92,7 +93,10 @@ function parseNumberParam(
 function parseAspectRatioParam(
   value: string | string[] | undefined,
 ): AspectRatio {
-  return firstParam(value) === "1:1" ? "1:1" : "9:16";
+  const v = firstParam(value);
+  if (v === "1:1") return "1:1";
+  if (v === "4:5") return "4:5";
+  return "9:16";
 }
 
 function parseShowTemplateInfoParam(
@@ -370,6 +374,8 @@ export default function EditorScreen() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [trimStart, setTrimStart] = useState(initialTrimStart);
   const [trimEnd, setTrimEnd] = useState(initialTrimEnd);
+  const trimStartRef = useRef(initialTrimStart);
+  const trimEndRef = useRef(initialTrimEnd);
   const [previewPositionSec, setPreviewPositionSec] = useState(0);
   const [projectTitle, setProjectTitle] = useState(initialProjectTitle);
   const [isNameModalVisible, setIsNameModalVisible] = useState(false);
@@ -785,6 +791,8 @@ export default function EditorScreen() {
     };
   }, [audioUri, missingFiles.audio]);
 
+  const waveformData = useWaveformData(audioUri || undefined, 800);
+
   const minTrimDuration = Math.min(5, Math.max(audioDurationSec, 1));
   const maxTrimDuration = Math.max(
     minTrimDuration,
@@ -799,8 +807,8 @@ export default function EditorScreen() {
       minTrimDuration,
       maxTrimDuration,
     );
-    if (nextStart !== trimStart) setTrimStart(nextStart);
-    if (nextEnd !== trimEnd) setTrimEnd(nextEnd);
+    if (nextStart !== trimStart) { trimStartRef.current = nextStart; setTrimStart(nextStart); }
+    if (nextEnd !== trimEnd) { trimEndRef.current = nextEnd; setTrimEnd(nextEnd); }
   }, [
     audioDurationSec,
     minTrimDuration,
@@ -809,16 +817,14 @@ export default function EditorScreen() {
     trimEnd,
   ]);
 
-  const stageWidthRatio = aspectRatio === "9:16" ? 9 / 16 : 1;
+  const stageWidthRatio = aspectRatio === "9:16" ? 9 / 16 : aspectRatio === "4:5" ? 4 / 5 : 1;
   const fallbackMaxStageWidth = Math.min(SCREEN_WIDTH - STAGE_HORIZONTAL_PADDING, 520);
   const fallbackMaxStageHeight = SCREEN_HEIGHT *
     (aspectRatio === "9:16"
-      ? isTrimPanelVisible
-        ? 0.62
-        : 0.78
-      : isTrimPanelVisible
-        ? 0.44
-        : 0.66);
+      ? isTrimPanelVisible ? 0.62 : 0.78
+      : aspectRatio === "4:5"
+      ? isTrimPanelVisible ? 0.56 : 0.66
+      : isTrimPanelVisible ? 0.44 : 0.66);
   const measuredMaxStageWidth =
     previewViewport.width > 0
       ? Math.max(previewViewport.width - spacing.sm * 2, 0)
@@ -856,6 +862,8 @@ export default function EditorScreen() {
       minTrimDuration,
       maxTrimDuration,
     );
+    trimStartRef.current = nextStart;
+    trimEndRef.current = nextEnd;
     setTrimStart(nextStart);
     setTrimEnd(nextEnd);
   }, [audioDurationSec, minTrimDuration, maxTrimDuration]);
@@ -905,8 +913,8 @@ export default function EditorScreen() {
     (status: AVPlaybackStatus) => {
       if (!status.isLoaded) return;
 
-      const safeTrimStart = Math.max(0, trimStart);
-      const safeTrimEnd = Math.max(safeTrimStart, trimEnd);
+      const safeTrimStart = Math.max(0, trimStartRef.current);
+      const safeTrimEnd = Math.max(safeTrimStart, trimEndRef.current);
       const endMillis = Math.round(safeTrimEnd * 1000);
       const relativeSec = Math.max(0, status.positionMillis / 1000 - safeTrimStart);
       setPreviewPositionSec(Math.min(relativeSec, safeTrimEnd - safeTrimStart));
@@ -923,7 +931,7 @@ export default function EditorScreen() {
         })();
       }
     },
-    [trimStart, trimEnd, stopAndResetPreview],
+    [stopAndResetPreview],
   );
 
   const ensurePreviewSound = useCallback(async () => {
@@ -1325,7 +1333,7 @@ export default function EditorScreen() {
           await createDraftProject();
         }
       } finally {
-        router.replace("/" as const);
+        router.back();
       }
     })();
   }, [
@@ -1484,7 +1492,7 @@ export default function EditorScreen() {
       setAspectRatio((prev) => {
         if (prev === nextValue) return prev;
         track("editor_controls_opened", {
-          surface: nextValue === "9:16" ? "aspect_ratio_9x16" : "aspect_ratio_1x1",
+          surface: nextValue === "9:16" ? "aspect_ratio_9x16" : nextValue === "4:5" ? "aspect_ratio_4x5" : "aspect_ratio_1x1",
         });
         return nextValue;
       });
@@ -1493,7 +1501,9 @@ export default function EditorScreen() {
   );
 
   const handleToggleAspectRatio = useCallback(() => {
-    handleSetAspectRatio(aspectRatio === "9:16" ? "1:1" : "9:16");
+    const next: AspectRatio =
+      aspectRatio === "1:1" ? "4:5" : aspectRatio === "4:5" ? "9:16" : "1:1";
+    handleSetAspectRatio(next);
   }, [aspectRatio, handleSetAspectRatio]);
 
   const handleNativeAspectRatioSelect = useCallback(
@@ -1795,7 +1805,7 @@ export default function EditorScreen() {
               accessibilityRole="button"
             >
               <Ionicons name="settings-outline" size={15} color={colors.dark.text} />
-              <Text style={styles.previewTrimToggleText}>Template Settings</Text>
+              <Text style={styles.previewTrimToggleText}>Settings</Text>
             </Pressable>
           </View>
           <Pressable
@@ -1927,6 +1937,7 @@ export default function EditorScreen() {
               onTogglePlay={handlePlayPause}
               minDuration={minTrimDuration}
               maxDuration={maxTrimDuration}
+              waveformData={waveformData}
             />
           </View>
         </Animated.View>

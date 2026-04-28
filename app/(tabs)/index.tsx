@@ -38,6 +38,7 @@ import {
   removeLocalProject,
   type LocalProject,
 } from "@/lib/localProjects";
+import { isLocalFileAccessible } from "@/lib/mediaStorage";
 import {
   getTemplateDefinition,
   parseTemplateTweaksParam,
@@ -47,6 +48,9 @@ import { ProjectThumbnail } from "@/components/ProjectThumbnail";
 
 type Project = Doc<"projects"> | LocalProject;
 type ProjectAction = "duplicate" | "delete";
+
+// Survive unmount/remount so the list appears instantly on return.
+let _cachedRemoteProjects: Doc<"projects">[] | null = null;
 
 function isLocalProject(project: Project): project is LocalProject {
   return "id" in project;
@@ -161,7 +165,9 @@ export default function HomeScreen() {
   const projectsQuery = useQuery(api.projects.listByUser);
   const deleteProject = useMutation(api.projects.remove);
 const [localProjects, setLocalProjects] = useState<LocalProject[] | null>(null);
+  const [brokenProjectIds, setBrokenProjectIds] = useState<Set<string>>(new Set());
   const [localAvatarUrl, setLocalAvatarUrl] = useState<string | null>(null);
+  const [avatarError, setAvatarError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [actionProject, setActionProject] = useState<Project | null>(null);
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
@@ -283,6 +289,10 @@ const longPressProjectIdRef = useRef<string | null>(null);
     if (isLocalGuest) return normalizeAvatarUri(localAvatarUrl);
     return normalizeAvatarUri(convexUser?.avatarImageUrl ?? convexUser?.avatarUrl);
   }, [convexUser?.avatarImageUrl, convexUser?.avatarUrl, isLocalGuest, localAvatarUrl]);
+
+  useEffect(() => {
+    setAvatarError(false);
+  }, [profileAvatarUri]);
 
   const openProject = useCallback(
     (project: Project) => {
@@ -488,18 +498,54 @@ const longPressProjectIdRef = useRef<string | null>(null);
     [actionProject, closeProjectActions, handleProjectAction],
   );
 
+  useEffect(() => {
+    if (!isLocalGuest && projectsQuery !== undefined) {
+      _cachedRemoteProjects = projectsQuery;
+    }
+  }, [isLocalGuest, projectsQuery]);
+
   const stableProjects = useMemo(() => {
     if (isLocalGuest) return localProjects ?? [];
-    return projectsQuery ?? [];
+    return projectsQuery ?? _cachedRemoteProjects ?? [];
   }, [isLocalGuest, localProjects, projectsQuery]);
-  const isLoading = isLocalGuest ? localProjects === null : projectsQuery === undefined;
-  const hasProjects = stableProjects.length > 0;
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      if (!stableProjects.length) {
+        setBrokenProjectIds(new Set());
+        return;
+      }
+      const broken = new Set<string>();
+      await Promise.all(
+        stableProjects.map(async (project) => {
+          const photoOk = await isLocalFileAccessible(project.photoUri);
+          const audioOk = await isLocalFileAccessible(project.audioUri);
+          if (!photoOk || !audioOk) {
+            broken.add(getProjectId(project));
+          }
+        }),
+      );
+      if (!cancelled) setBrokenProjectIds(broken);
+    })();
+    return () => { cancelled = true; };
+  }, [stableProjects]);
+
+  const visibleProjects = useMemo(
+    () => stableProjects.filter((p) => !brokenProjectIds.has(getProjectId(p))),
+    [stableProjects, brokenProjectIds],
+  );
+
+  const isLoading = isLocalGuest
+    ? localProjects === null
+    : projectsQuery === undefined && _cachedRemoteProjects === null;
+  const hasProjects = visibleProjects.length > 0;
   const selectedProjects = useMemo(
     () =>
-      stableProjects.filter((project) =>
+      visibleProjects.filter((project) =>
         selectedProjectIds.includes(getProjectId(project)),
       ),
-    [selectedProjectIds, stableProjects],
+    [selectedProjectIds, visibleProjects],
   );
 
   const runDeleteProjects = useCallback(
@@ -729,9 +775,9 @@ const longPressProjectIdRef = useRef<string | null>(null);
             accessibilityRole="button"
           >
             <Image
-              source={profileAvatarUri ? { uri: profileAvatarUri } : require("../../assets/defaults/MusicPromo-DefaultAvatar.jpg")}
+              source={profileAvatarUri && !avatarError ? { uri: profileAvatarUri } : require("../../assets/defaults/MusicPromo-DefaultAvatar.jpg")}
               style={styles.avatarImage}
-              onError={() => setLocalAvatarUrl(null)}
+              onError={() => setAvatarError(true)}
             />
           </Pressable>
         </View>
@@ -739,7 +785,7 @@ const longPressProjectIdRef = useRef<string | null>(null);
 
       {/* TODO: Add cursor pagination if project history grows beyond v1 size. */}
       <FlatList
-        data={stableProjects}
+        data={visibleProjects}
         keyExtractor={(item) => getProjectId(item)}
         renderItem={renderProjectCard}
         numColumns={2}

@@ -61,12 +61,13 @@ export default function ShareScreen() {
   const maxPreviewWidth = windowWidth - horizontalPadding;
   const maxPreviewHeight = windowHeight * 0.50;
 
+  const widthToHeightRatio =
+    aspectRatio === "9:16" ? 16 / 9 : aspectRatio === "4:5" ? 5 / 4 : 1;
   const previewWidth =
-    aspectRatio === "9:16"
-      ? Math.min(maxPreviewHeight * (9 / 16), maxPreviewWidth)
-      : Math.min(maxPreviewWidth, maxPreviewHeight);
-  const previewHeight =
-    aspectRatio === "9:16" ? previewWidth * (16 / 9) : previewWidth;
+    aspectRatio === "1:1"
+      ? Math.min(maxPreviewWidth, maxPreviewHeight)
+      : Math.min(maxPreviewHeight / widthToHeightRatio, maxPreviewWidth);
+  const previewHeight = previewWidth * widthToHeightRatio;
 
   const [savedToRoll, setSavedToRoll] = useState(false);
   const [saveError, setSaveError] = useState<"permission" | "failed" | null>(
@@ -139,8 +140,7 @@ export default function ShareScreen() {
   }, [handleShare]);
 
   const handleDone = useCallback(() => {
-    router.dismissAll();
-    router.replace("/" as const);
+    router.navigate("/" as const);
   }, [router]);
 
   return (
