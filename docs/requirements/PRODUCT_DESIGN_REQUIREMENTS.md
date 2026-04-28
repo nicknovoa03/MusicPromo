@@ -5,21 +5,22 @@
 - Product name: MusicPromo
 - Doc owner: Nick
 - Stakeholders: Nick (sole developer / product owner)
-- Last updated (YYYY-MM-DD): 2026-03-11
-- Version: 1.8 (Phase 5 iOS-native rollout in progress)
+- Last updated (YYYY-MM-DD): 2026-04-28
+- Version: 1.9 (Artist discovery / online profiles planned)
 - Links: GitHub repo at `/home/nick/MusicPromo`
 
 ## 1) Product Summary
 
-- **One-liner:** A dead-simple mobile tool that turns a photo and audio clip into a short promo video for social media.
-- **Problem statement:** Musicians and creators waste hours cobbling together tools like CapCut, Photoshop, and random websites to make simple promotional videos for their music. The process is slow, fragmented, and requires skills most artists don't have or want to learn.
+- **One-liner:** A dead-simple mobile tool that turns a photo and audio clip into a short promo video for social media, then helps artists present that work through a public MusicPromo artist profile.
+- **Problem statement:** Musicians and creators waste hours cobbling together tools like CapCut, Photoshop, and random websites to make simple promotional videos for their music. The process is slow, fragmented, and requires skills most artists do not have or want to learn. After the promo is made, artists still lack a purpose-built place to present themselves professionally to venues, promoters, labels, and other artists; discovery usually falls back to word of mouth or Instagram, where the artist must also be good at Instagram rather than simply good at music and live performance.
 - **Target users (v1):**
   - **Indie Artist / Creator** — Independent musician or content creator who self-promotes on Instagram, TikTok, and other social platforms. Creates promos every release or weekly. Currently hacks it together with CapCut or similar tools.
 - **Target users (future):**
+  - **Venue / Promoter / Booker** — Someone looking for an artist or DJ to book for a party, venue night, local lineup, or label/community opportunity. They need fast artist discovery, credible profile context, and enough media to understand style and fit.
   - **Small Label / Publisher** — Record label or publishing company creating promo for a roster of artists. Deferred to post-v1.
 - **Core job-to-be-done (JTBD):** "When I release music and want to promote it on social media, I want to quickly generate a short promo video from a photo and audio clip, so I can share it without learning video editing or spending an hour in CapCut."
 - **What is "success" for v1:**
-  - **North star:** Number of videos exported/downloaded
+  - **North star:** Number of videos exported/downloaded. Post-v1 discovery adds a secondary north star: qualified artist profile views generated inside MusicPromo.
   - **Input metrics:** Create flow starts, photo selections, audio selections, preview views
   - **Guardrails:** Video generation time under 60 seconds, app crash rate ~0%
 
@@ -31,9 +32,15 @@
   - Save project history for revisiting and re-exporting
   - Guest mode for frictionless first use
   - Push notifications for engagement
+- **Goals (post-v1 online platform):**
+  - Turn MusicPromo from a local creation utility into a lightweight artist discovery network
+  - Let artists publish a professional public profile that shows who they are, what they sound/look like, and why they are credible
+  - Let artists upload/select showcase media beyond promo videos, especially short set highlights and performance snippets
+  - Let users search artists from a dedicated bottom-tab Search surface and open public artist pages
+  - Preserve creator simplicity: discovery should amplify the existing promo workflow, not replace it with a heavy social network
 - **Non-goals (v1):**
   - Not a music distribution platform
-  - Not a social network
+  - Not a social network for v1 launch; post-v1 discovery adds public profiles/search without comments, DMs, feeds, or follower mechanics in the first discovery slice
   - Not a DAW or music creation tool
   - Not an analytics dashboard
   - Not a full-featured video editor
@@ -60,7 +67,7 @@
 - **Backend:**
   - Data store: Convex (existing boilerplate in repo)
   - Realtime needs: Minimal — project metadata CRUD, user profile
-  - File/media storage: On-device only (no cloud file storage for v1)
+  - File/media storage: On-device only for v1 promo creation; post-v1 public profiles and set highlights require a cloud media storage decision before implementation
   - Video rendering runtime: `ffmpeg-kit-react-native-alt` (aliased as `ffmpeg-kit-react-native`)
 - **Environments:**
   - Local: Expo Dev Client
@@ -81,7 +88,7 @@
 
 Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 
-- **Global navigation pattern:** Bottom tab bar, 3 tabs: Home, Create, Profile
+- **Global navigation pattern:** Bottom tab bar, 3 tabs for v1: Home, Create, Profile. Post-v1 discovery expands this to 4 tabs by adding Search between Home and Create or between Create and Profile after information-architecture testing.
 - **Global primary action:** "+" FAB button (black rounded square, bottom-right on Home screen)
 - **Color theme strategy:** System color-scheme adaptive surfaces with high-contrast neutral accents; create/edit/export screens preserve dark-first readability
 
@@ -95,6 +102,9 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 6. **Post-Export — Rendering** — Dark background. X top-left. Percentage text. Video preview with gradient border. "Please don't close" messaging. Stage layout responsively scales from window dimensions + safe-area insets.
 7. **Post-Export — Share** — Dark background. X top-left. "Ready to share" heading. Video preview (with optional template-info and beta watermark overlays), responsive compact-height layout, "Share to Instagram" gradient button, "Share to TikTok" button, and "Saved to camera roll" confirmation.
 8. **Profile / Settings** — Hero-first dark profile surface with cinematic banner, oversized overlapping avatar, and large artist name treatment. `Edit Profile` opens a light slide-in editing surface (React Native canonical path) for avatar, banner, and name updates with explicit back/done controls. Sign out + delete account remain grouped at bottom.
+9. **Search / Discover Artists** — Post-v1 bottom-tab surface for searching artist names, aliases, genres/tags, city/location, and linked profile context. Results open public artist profile pages.
+10. **Public Artist Profile** — Read-only public version of an artist profile showing hero/avatar/name, bio, links, promo videos, set highlights, profile media, shows/credibility context, and clear external actions.
+11. **Artist Showcase Manager** — Owner-only profile management surface for publishing/unpublishing public profile fields, adding set highlights, selecting which exported promos appear publicly, and ordering media.
 
 ## 5) Core Entities (Conceptual Data Model)
 
@@ -138,6 +148,30 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 - Relationships: Belongs to User
 - Typical queries: List notifications by userId, unread count
 - Permissions: User reads own, system/admin writes
+
+### Artist Showcase Media (Post-v1)
+- Owner: User
+- Visibility: Public when `visibility` is `public`, owner-only when `private` or `draft`
+- Key fields: `userId`, `type` (`promo`, `set-highlight`, `photo`, `flyer`, `press`, `external-link`), `title`, `caption`, `mediaUri`, `thumbnailUri`, `sourceProjectId`, `duration`, `visibility`, `sortOrder`, `createdAt`, `updatedAt`
+- Relationships: Belongs to User; may reference Project when a public promo originates from an exported MusicPromo project
+- Typical queries: List public showcase media by artist, list owner media by current user, update ordering/visibility
+- Permissions: Owner creates/updates/deletes own media; public reads only media marked public
+
+### Show / Booking Credit (Post-v1)
+- Owner: User
+- Visibility: Public when attached to a public profile
+- Key fields: `userId`, `venue`, `city`, `date`, `type`, `description`, `mediaIds`, `createdAt`, `updatedAt`
+- Relationships: Belongs to User; may link to Artist Showcase Media
+- Typical queries: List recent public shows by artist
+- Permissions: Owner manages own shows; public reads only public show cards
+
+### Public Artist Profile Index (Post-v1)
+- Owner: User
+- Visibility: Public search index for opted-in artists only
+- Key fields: `userId`, `displayName`, `handle`, `searchText`, `genres`, `city`, `isPublic`, `publishedAt`, `updatedAt`
+- Relationships: Mirrors selected User Profile fields and publication state
+- Typical queries: Search public artists by normalized name/handle/tags/city; get artist by handle or user ID
+- Permissions: Owner controls publication; public reads only indexed public profiles
 
 ## 6) Feature Requirements (By Epic)
 
@@ -282,6 +316,39 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
   - Error: "Couldn't load profile" + retry
   - Partial-save warning: Profile save can succeed while invalid links are reported and skipped
 
+### Epic: Artist Discovery and Public Profiles (Post-v1)
+
+- **User problem:** Artists need a professional, purpose-built place to show who they are, what they sound/look like, and why someone should book or follow them. Venues, promoters, labels, and other artists need a cleaner discovery path than word of mouth or searching Instagram.
+- **Primary user story:** As a promoter or artist, I can search MusicPromo for artists and open a public artist page so I can quickly understand their identity, style, links, promo videos, and performance highlights.
+- **Secondary stories:**
+  - As an artist, I can publish or unpublish my public profile without changing my private account settings.
+  - As an artist, I can select exported MusicPromo videos to appear on my public profile.
+  - As an artist, I can upload short set highlights or performance snippets that make me look professional and bookable.
+  - As a viewer, I can open an artist's external links such as Spotify, SoundCloud, Apple Music, YouTube, Instagram, TikTok, X, and website.
+  - As a viewer, I can understand where an artist is based, what genres/scenes they fit, and what credible shows or set highlights they have.
+- **Scope (first discovery slice):** Public-profile opt-in, artist search tab, read-only public artist pages, owner-only showcase manager, public promo selection from existing projects, set-highlight upload metadata, basic moderation/report hooks, and analytics.
+- **Non-goals (first discovery slice):** No DMs, comments, likes, public follower counts, algorithmic For You feed, label marketplace, booking payments, calendar availability, or direct Instagram/TikTok ingestion.
+- **Key screens/components:** Search tab, search result row/card, public artist profile route, public media carousel/grid, set-highlight viewer, edit-profile publication controls, showcase manager.
+- **Backend/data needs:** Extend Convex with public profile fields and indexes, showcase media, shows/booking credits, and future-safe interaction/report tables. A cloud media storage provider must be selected before implementation because public set highlights cannot rely on local device URIs.
+- **Permissions/abuse risks:** Public profiles require explicit opt-in. Public read queries must never expose email, Clerk IDs, private project URIs, guest accounts, or unpublished media. Upload surfaces need file-size limits, content ownership warnings, and report/moderation hooks.
+- **Analytics/events:** `search_viewed`, `artist_search_submitted`, `artist_search_result_tapped`, `public_profile_viewed`, `public_profile_link_tapped`, `showcase_media_opened`, `showcase_media_uploaded`, `showcase_media_published`, `public_profile_published`, `public_profile_unpublished`
+- **Acceptance criteria:**
+  - A signed-in non-guest artist can publish a public profile with artist name, handle, avatar, hero image, bio, links, city, and optional genres/tags.
+  - Guest users are not included in public search until upgraded to a signed-in account.
+  - Search tab supports empty, loading, error, no-results, and results states.
+  - Public search results show only opted-in public artists and never show email or private account data.
+  - A viewer can open another artist's profile from search and view only public profile fields and public showcase media.
+  - Owner can select which exported promos appear publicly without exposing local-only files that have not been uploaded or published.
+  - Owner can add a short set highlight with title/caption/thumbnail metadata after the storage decision is implemented.
+  - Public profile publication and media visibility can be reversed by the owner.
+  - All public queries are indexed or intentionally paginated; no accidental unbounded full-table scans are introduced.
+- **States:**
+  - Search empty: "Search artists, DJs, genres, or cities"
+  - No results: "No artists found yet" with prompt to try another query
+  - Public profile empty media: "No public highlights yet"
+  - Private/unpublished profile: "This artist profile is not public"
+  - Upload error: "Could not upload this highlight. Please try again."
+
 ### Epic: Onboarding
 
 - **User problem:** First-time user doesn't know how the app works.
@@ -393,6 +460,38 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 - **Analytics:** None specific
 - **Reference:** `Profile screens/Profile screens 0.png`, `Profile screens/Profile screens 1.png`, `Profile screens/Profile screens 2.png`, `Profile screens/profile-settings.png`, `Profile screens/apple-contact-card.jpeg`
 
+### Search / Discover Artists (Post-v1)
+- **Route:** `/search` (Search tab)
+- **Primary intent:** Find public artist profiles by name, handle, genre/tag, or city
+- **Header:** "Search" title with search input pinned near top
+- **Main sections:** Recent searches or suggested artists when empty, result list/card grid when searching, filters for genre/city once enough profile data exists
+- **Primary CTA:** Tap result → public artist profile
+- **Secondary actions:** Clear search, open external artist links from result previews only if intentionally exposed
+- **Empty/loading/error:** Empty prompt, skeleton result rows, "No artists found yet", "Couldn't search artists" + retry
+- **Theme:** Light browsing surface by default, consistent with Home
+- **Analytics:** `search_viewed`, `artist_search_submitted`, `artist_search_result_tapped`
+
+### Public Artist Profile (Post-v1)
+- **Route:** `/artists/[handle]` or `/profile/[userId]` after routing decision
+- **Primary intent:** Let viewers understand who an artist is and what they can show professionally
+- **Header:** Back button when pushed from Search; optional share profile action
+- **Main sections:** Hero/banner, avatar, artist name/handle, city/genres, bio, external links, featured promo video, set highlights, profile media, shows/booking credits
+- **Primary CTA:** Open/listen/follow through external links; later contact/booking CTAs once trust and account roles exist
+- **Secondary actions:** Share profile, report profile/media
+- **Empty/loading/error:** Loading skeleton, private/unpublished state, media empty state, profile-not-found state
+- **Theme:** Dark cinematic profile surface, reusing current brand-first profile language while making the page read-only to non-owners
+- **Analytics:** `public_profile_viewed`, `public_profile_link_tapped`, `showcase_media_opened`
+
+### Artist Showcase Manager (Post-v1)
+- **Route:** `/profile/showcase` or nested from Profile edit surface
+- **Primary intent:** Let the owner decide what appears on their public MusicPromo page
+- **Main sections:** Publish profile toggle, handle/city/genres fields, public promo selector, set-highlight upload list, media ordering, visibility controls
+- **Primary CTA:** Publish profile / Save changes
+- **Secondary actions:** Unpublish, remove media from public profile, reorder media
+- **Empty/loading/error:** Storage unavailable, media upload progress, upload failure, unpublished warning
+- **Theme:** Light utility surface for editing, consistent with current edit-profile modal pattern
+- **Analytics:** `public_profile_published`, `public_profile_unpublished`, `showcase_media_uploaded`, `showcase_media_published`
+
 ### Onboarding
 - **Route:** `/onboarding`
 - **Primary intent:** Introduce first-time users to the app
@@ -429,6 +528,25 @@ Design reference: Meta's Edits app. Screenshots in `docs/design-inspiration/`.
 1. Receive push notification
 2. Tap notification
 3. App opens to home screen
+
+### Flow 4: Viewer → Search → Public Artist Profile (Post-v1)
+1. Open app as signed-in user or approved guest-viewer mode, depending on access decision
+2. Tap Search tab
+3. Enter artist name, handle, genre, or city
+4. View public artist results
+5. Tap artist result
+6. Public artist profile opens with hero, bio, links, promo videos, set highlights, and credibility context
+7. Viewer opens a public media item or external link
+
+### Flow 5: Artist → Publish Public Profile and Highlights (Post-v1)
+1. Open Profile
+2. Open public-profile/showcase manager
+3. Add or confirm artist name, handle, avatar, hero, bio, city, genres, and links
+4. Select exported MusicPromo promos that are allowed to appear publicly
+5. Upload or attach short set highlights after cloud storage is available
+6. Reorder media and set visibility
+7. Publish profile
+8. Profile becomes searchable and viewable to other users
 
 ## 9) Visual Design Requirements (Mini Design System)
 
@@ -514,6 +632,7 @@ Primary reference: Meta's Edits app. Secondary: Spotify (legacy profile patterns
   - Distribution: `video_saved_to_camera_roll`, `share_tapped_instagram`, `share_tapped_tiktok`
   - Retention: `project_reopened`
   - Notifications: `notification_received`, `notification_tapped`
+  - Discovery: `search_viewed`, `artist_search_submitted`, `artist_search_result_tapped`, `public_profile_viewed`, `public_profile_link_tapped`, `showcase_media_opened`, `showcase_media_uploaded`, `showcase_media_published`, `public_profile_published`, `public_profile_unpublished`
 - **Logging for debugging:** Expo default logging + Convex function logs
 - **A/B testing needs:** None for v1
 
@@ -653,6 +772,14 @@ Primary reference: Meta's Edits app. Secondary: Spotify (legacy profile patterns
 - Re-evaluate local Remotion viability with explicit pass/fail gates
 - If Remotion remains blocked on-device, continue with maintained local FFmpeg backend behind renderer abstraction
 - Migrate additional templates and prove fast new-template onboarding
+
+### Phase 7: Artist Discovery + Online Profiles (Post-Phase 6 or parallel product-track spike)
+- Reframe MusicPromo from a local promo maker into a lightweight artist presence platform while preserving the current create/export core
+- Add public-profile opt-in, public artist search, read-only public artist pages, and an owner-managed showcase surface
+- Add schema support for public profile indexes, showcase media, set highlights, show/booking credits, and future interaction/report hooks
+- Select cloud media storage for public videos/thumbnails before enabling set-highlight uploads
+- Keep the first discovery slice intentionally non-social: no comments, DMs, follower counts, algorithmic feed, label marketplace, or booking payments
+- Use `docs/requirements/ARTIST_DISCOVERY_ONLINE_PROFILES.md` and `docs/requirements/prompts/phase-7-artist-discovery-online-profiles.md` as the implementation handoff for Claude Code
 
 ### Deferred (Post-v1)
 - SoundCloud URL audio extraction

@@ -1,7 +1,10 @@
 {
   "name": "MusicPromo",
-  "one_liner": "A dead-simple mobile tool that turns a photo and audio clip into a short promo video for social media.",
-  "platforms": ["iOS", "Android"],
+  "one_liner": "A dead-simple mobile tool that turns a photo and audio clip into a short promo video for social media, then helps artists present that work through public MusicPromo artist profiles.",
+  "platforms": [
+    "iOS",
+    "Android"
+  ],
   "tech_stack": {
     "framework": "React Native + Expo",
     "auth": "Clerk",
@@ -18,12 +21,17 @@
       "v1": true
     },
     {
+      "name": "Venue / Promoter / Booker",
+      "description": "Someone searching for artists or DJs to book for shows, parties, venue nights, or local opportunities.",
+      "v1": false
+    },
+    {
       "name": "Small Label / Publisher",
       "description": "Record label or publishing company creating promo for a roster of artists.",
       "v1": false
     }
   ],
-  "north_star": "Number of videos exported/downloaded",
+  "north_star": "Number of videos exported/downloaded; post-v1 discovery adds qualified public artist profile views as a secondary north star",
   "guardrail_metrics": [
     "Video generation time under 60 seconds",
     "App crash rate ~0%",
@@ -33,59 +41,280 @@
     {
       "name": "User Profile",
       "storage": "Convex",
-      "key_fields": ["clerkId", "name", "email", "avatarUrl", "subscriptionTier", "preferences", "createdAt"]
+      "key_fields": [
+        "clerkId",
+        "name",
+        "email",
+        "avatarUrl",
+        "subscriptionTier",
+        "preferences",
+        "createdAt"
+      ]
     },
     {
       "name": "Project",
       "storage": "Convex (metadata) + Device (files)",
-      "key_fields": ["userId", "title", "templateId", "aspectRatio", "videoLength", "photoUri", "audioUri", "exportedVideoUri", "status", "createdAt", "updatedAt"]
+      "key_fields": [
+        "userId",
+        "title",
+        "templateId",
+        "aspectRatio",
+        "videoLength",
+        "photoUri",
+        "audioUri",
+        "exportedVideoUri",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
     },
     {
       "name": "Template",
       "storage": "Convex",
-      "key_fields": ["id", "name", "description", "previewImageUrl", "type", "config"],
-      "v1_entries": ["whole", "cd", "vinyl"],
-      "legacy_aliases": ["graphic-pop->cd", "simple-spin->vinyl", "hybrid->whole"]
+      "key_fields": [
+        "id",
+        "name",
+        "description",
+        "previewImageUrl",
+        "type",
+        "config"
+      ],
+      "v1_entries": [
+        "whole",
+        "cd",
+        "vinyl"
+      ],
+      "legacy_aliases": [
+        "graphic-pop->cd",
+        "simple-spin->vinyl",
+        "hybrid->whole"
+      ]
     },
     {
       "name": "Push Token",
       "storage": "Convex",
-      "key_fields": ["userId", "expoPushToken", "platform", "createdAt", "updatedAt"]
+      "key_fields": [
+        "userId",
+        "expoPushToken",
+        "platform",
+        "createdAt",
+        "updatedAt"
+      ]
     },
     {
       "name": "Notification",
       "storage": "Convex",
-      "key_fields": ["id", "userId", "type", "title", "body", "read", "trigger", "sentAt"]
+      "key_fields": [
+        "id",
+        "userId",
+        "type",
+        "title",
+        "body",
+        "read",
+        "trigger",
+        "sentAt"
+      ]
+    },
+    {
+      "name": "Public Artist Profile Index",
+      "storage": "Convex",
+      "key_fields": [
+        "userId",
+        "handle",
+        "displayName",
+        "searchText",
+        "genres",
+        "city",
+        "isPublic",
+        "publishedAt",
+        "updatedAt"
+      ]
+    },
+    {
+      "name": "Showcase Media",
+      "storage": "Convex metadata + cloud media storage TBD",
+      "key_fields": [
+        "userId",
+        "type",
+        "title",
+        "caption",
+        "mediaUri",
+        "thumbnailUri",
+        "sourceProjectId",
+        "duration",
+        "visibility",
+        "sortOrder",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    {
+      "name": "Show / Booking Credit",
+      "storage": "Convex",
+      "key_fields": [
+        "userId",
+        "venue",
+        "date",
+        "city",
+        "type",
+        "description",
+        "mediaIds",
+        "createdAt",
+        "updatedAt"
+      ]
     }
   ],
   "design_reference": "Meta's Edits app (Instagram companion). Dual theme: light for browsing, dark for editing.",
   "screens": [
-    { "name": "Sign In", "route": "/sign-in", "theme": "light" },
-    { "name": "Onboarding", "route": "/onboarding", "theme": "TBD" },
-    { "name": "Home / Projects", "route": "/", "theme": "light", "tab": "Home" },
-    { "name": "Create — Media Picker", "route": "/create/picker", "theme": "light", "tab": "Create" },
-    { "name": "Create — Editor/Trimmer", "route": "/create/editor", "theme": "dark" },
-    { "name": "Post-Export — Rendering", "route": "/create/rendering", "theme": "dark" },
-    { "name": "Post-Export — Share", "route": "/create/share", "theme": "dark" },
-    { "name": "Profile / Settings", "route": "/profile", "theme": "dark", "tab": "Profile" }
+    {
+      "name": "Sign In",
+      "route": "/sign-in",
+      "theme": "light"
+    },
+    {
+      "name": "Onboarding",
+      "route": "/onboarding",
+      "theme": "TBD"
+    },
+    {
+      "name": "Home / Projects",
+      "route": "/",
+      "theme": "light",
+      "tab": "Home"
+    },
+    {
+      "name": "Create \u2014 Media Picker",
+      "route": "/create/picker",
+      "theme": "light",
+      "tab": "Create"
+    },
+    {
+      "name": "Create \u2014 Editor/Trimmer",
+      "route": "/create/editor",
+      "theme": "dark"
+    },
+    {
+      "name": "Post-Export \u2014 Rendering",
+      "route": "/create/rendering",
+      "theme": "dark"
+    },
+    {
+      "name": "Post-Export \u2014 Share",
+      "route": "/create/share",
+      "theme": "dark"
+    },
+    {
+      "name": "Profile / Settings",
+      "route": "/profile",
+      "theme": "dark",
+      "tab": "Profile"
+    },
+    {
+      "name": "Search / Discover Artists",
+      "route": "/search",
+      "theme": "light",
+      "tab": "Search",
+      "v1": false
+    },
+    {
+      "name": "Public Artist Profile",
+      "route": "/artists/[handle]",
+      "theme": "dark",
+      "v1": false
+    },
+    {
+      "name": "Artist Showcase Manager",
+      "route": "/profile/showcase",
+      "theme": "light",
+      "v1": false
+    }
   ],
   "epics": [
-    { "name": "Authentication & Guest Mode", "v1": true, "phase": 0 },
-    { "name": "Create Promo Video", "v1": true, "phase": 1 },
-    { "name": "Save & Share", "v1": true, "phase": 1 },
-    { "name": "Project History", "v1": true, "phase": 1 },
-    { "name": "Push Notifications", "v1": true, "phase": 2 },
-    { "name": "Profile & Settings", "v1": true, "phase": 2 },
-    { "name": "Onboarding", "v1": true, "phase": 2 },
-    { "name": "Release Hardening & Regression", "v1": true, "phase": 3 },
-    { "name": "Template Fidelity & Export Standardization", "v1": true, "phase": 4 },
-    { "name": "iOS Native Surface + Liquid Glass Adoption", "v1": true, "phase": 5 },
-    { "name": "SoundCloud Integration", "v1": false, "phase": null },
-    { "name": "Additional Video Templates", "v1": false, "phase": null },
-    { "name": "AI-Generated Templates", "v1": false, "phase": null },
-    { "name": "Label/Agency Multi-User", "v1": false, "phase": null },
-    { "name": "Template Marketplace", "v1": false, "phase": null },
-    { "name": "Subscription / Monetization", "v1": false, "phase": null }
+    {
+      "name": "Authentication & Guest Mode",
+      "v1": true,
+      "phase": 0
+    },
+    {
+      "name": "Create Promo Video",
+      "v1": true,
+      "phase": 1
+    },
+    {
+      "name": "Save & Share",
+      "v1": true,
+      "phase": 1
+    },
+    {
+      "name": "Project History",
+      "v1": true,
+      "phase": 1
+    },
+    {
+      "name": "Push Notifications",
+      "v1": true,
+      "phase": 2
+    },
+    {
+      "name": "Profile & Settings",
+      "v1": true,
+      "phase": 2
+    },
+    {
+      "name": "Onboarding",
+      "v1": true,
+      "phase": 2
+    },
+    {
+      "name": "Release Hardening & Regression",
+      "v1": true,
+      "phase": 3
+    },
+    {
+      "name": "Template Fidelity & Export Standardization",
+      "v1": true,
+      "phase": 4
+    },
+    {
+      "name": "iOS Native Surface + Liquid Glass Adoption",
+      "v1": true,
+      "phase": 5
+    },
+    {
+      "name": "SoundCloud Integration",
+      "v1": false,
+      "phase": null
+    },
+    {
+      "name": "Additional Video Templates",
+      "v1": false,
+      "phase": null
+    },
+    {
+      "name": "AI-Generated Templates",
+      "v1": false,
+      "phase": null
+    },
+    {
+      "name": "Label/Agency Multi-User",
+      "v1": false,
+      "phase": null
+    },
+    {
+      "name": "Template Marketplace",
+      "v1": false,
+      "phase": null
+    },
+    {
+      "name": "Subscription / Monetization",
+      "v1": false,
+      "phase": null
+    },
+    {
+      "name": "Artist Discovery and Public Profiles",
+      "v1": false,
+      "phase": 7
+    }
   ],
   "analytics_events": [
     "app_opened",
@@ -109,7 +338,17 @@
     "project_delete_started",
     "project_deleted",
     "notification_received",
-    "notification_tapped"
+    "notification_tapped",
+    "search_viewed",
+    "artist_search_submitted",
+    "artist_search_result_tapped",
+    "public_profile_viewed",
+    "public_profile_link_tapped",
+    "showcase_media_opened",
+    "showcase_media_uploaded",
+    "showcase_media_published",
+    "public_profile_published",
+    "public_profile_unpublished"
   ],
   "open_questions": [
     "Can a true native Remotion on-device renderer path be shipped in this Expo architecture without cloud rendering?",
@@ -118,6 +357,11 @@
     "What minimum template primitive set should be standardized to speed up new template authoring?",
     "Verify Clerk supports anonymous sessions in React Native SDK",
     "Verify soft-delete satisfies Apple's account deletion requirement",
-    "Expo + FFmpeg-kit compatibility — spike in Phase 0"
+    "Expo + FFmpeg-kit compatibility \u2014 spike in Phase 0",
+    "Which cloud media storage provider should host public showcase videos and thumbnails?",
+    "Should public artist profile routes use handles, immutable user IDs, or both?",
+    "What profile fields are required before an artist can publish publicly?",
+    "Should Search be available to signed-out users, guest users, or only signed-in users in the first slice?",
+    "What minimum moderation/reporting workflow is required before public media is allowed?"
   ]
 }
