@@ -11,6 +11,14 @@ import {
   Modal,
 } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import Svg, {
+  Path,
+  Defs,
+  LinearGradient,
+  Stop,
+  ClipPath,
+  Rect,
+} from "react-native-svg";
 import { Picker } from "@react-native-picker/picker";
 import * as Haptics from "expo-haptics";
 import { colors, spacing, radius, typography } from "@/constants/tokens";
@@ -39,6 +47,37 @@ const LOWER_MAX_H = Math.round(LOWER_SECTION_H * 0.78); // 23px
 const DURATION_WHEEL_HEIGHT = 190;
 const START_DRAG_SENSITIVITY = 0.62;
 const START_DRAG_DEADZONE_PX = 2;
+
+const WAVE_BASE_UPPER = UPPER_SECTION_H; // 55 — flat baseline for upper wave
+const WAVE_BASE_LOWER = UPPER_SECTION_H + CENTER_GAP_H; // 58 — flat baseline for lower wave
+
+function buildWavePath(
+  amplitudes: number[],
+  width: number,
+  baseY: number,
+  dir: 1 | -1,
+): string {
+  if (!width || !amplitudes.length) return "";
+  const N = amplitudes.length;
+  const pts: [number, number][] = [
+    [0, baseY],
+    ...amplitudes.map((amp, i) => [((i + 0.5) / N) * width, baseY + dir * amp] as [number, number]),
+    [width, baseY],
+  ];
+  let d = `M ${pts[0][0]},${pts[0][1]}`;
+  for (let i = 1; i < pts.length; i++) {
+    const p0 = pts[Math.max(0, i - 2)];
+    const p1 = pts[i - 1];
+    const p2 = pts[i];
+    const p3 = pts[Math.min(pts.length - 1, i + 1)];
+    const cp1x = p1[0] + (p2[0] - p0[0]) / 6;
+    const cp1y = p1[1] + (p2[1] - p0[1]) / 6;
+    const cp2x = p2[0] - (p3[0] - p1[0]) / 6;
+    const cp2y = p2[1] - (p3[1] - p1[1]) / 6;
+    d += ` C ${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`;
+  }
+  return d + " Z";
+}
 
 function formatTime(sec: number): string {
   const m = Math.floor(sec / 60);
@@ -237,11 +276,10 @@ export function AudioTrimmer({
   latestValuesRef.current.selectionWidth = selectionWidth;
 
   const railProgress = maxStart > 0 ? safeStart / maxStart : 0;
-  const waveformContentWidth = trackWidth;
-  const waveformTranslateX = 0;
   const railThumbLeft = railWidth > 0 ? railProgress * railWidth : 0;
   const effectiveProgressRatio =
     currentDuration > 0 ? clamp(trimProgressSec / currentDuration, 0, 1) : 0;
+  const progressX = trackWidth * effectiveProgressRatio;
 
   const selectionWindowPan = useMemo(
     () =>
@@ -286,7 +324,7 @@ export function AudioTrimmer({
         const lo = Math.floor(srcIdx);
         const hi = Math.min(lo + 1, waveformData.length - 1);
         const frac = srcIdx - lo;
-        const amp = Math.pow(waveformData[lo] * (1 - frac) + waveformData[hi] * frac, 1.8);
+        const amp = Math.pow(waveformData[lo] * (1 - frac) + waveformData[hi] * frac, 0.7);
         return {
           upperHeight: Math.max(6, amp * UPPER_MAX_H),
           lowerHeight: Math.max(3, amp * LOWER_MAX_H),
@@ -304,6 +342,14 @@ export function AudioTrimmer({
       };
     });
   }, [waveformData, safeStart, safeDuration, currentDuration]);
+
+  const svgPaths = useMemo(() => {
+    if (!trackWidth) return null;
+    return {
+      upper: buildWavePath(waveformBars.map((b) => b.upperHeight), trackWidth, WAVE_BASE_UPPER, -1),
+      lower: buildWavePath(waveformBars.map((b) => b.lowerHeight), trackWidth, WAVE_BASE_LOWER, 1),
+    };
+  }, [waveformBars, trackWidth]);
 
   useEffect(() => {
     setTrimProgressSec(0);
@@ -324,13 +370,23 @@ export function AudioTrimmer({
     }
   }, [safeStart]);
 
-  // Sync internal position from audio callback to correct drift.
+  // Reset visual progress when playback stops so there's no stale position on next play.
   useEffect(() => {
+    if (isPlaying) return;
+    setTrimProgressSec(0);
+    lastProgressTickRef.current = null;
+  }, [isPlaying]);
+
+  // Sync internal position from audio callback to correct drift.
+  // Guard: ignore updates while stopped — status callbacks can arrive during async play setup
+  // (before isPlaying=true) and would cause a stale-position jump on the first frame.
+  useEffect(() => {
+    if (!isPlaying) return;
     if (typeof playbackProgressSec !== "number" || !Number.isFinite(playbackProgressSec)) return;
     const clamped = clamp(playbackProgressSec, 0, currentDuration);
     setTrimProgressSec(clamped);
     lastProgressTickRef.current = Date.now();
-  }, [playbackProgressSec, currentDuration]);
+  }, [isPlaying, playbackProgressSec, currentDuration]);
 
   // Auto-pause logic (only used when no external position tracking).
   useEffect(() => {
@@ -495,38 +551,44 @@ export function AudioTrimmer({
         onLayout={onTrackLayout}
         {...selectionWindowPan.panHandlers}
       >
-        <View style={styles.frameStrip}>
-          <View
-            style={[
-              styles.frameStripContent,
-              {
-                width: waveformContentWidth,
-                transform: [{ translateX: waveformTranslateX }],
-              },
-            ]}
+        {trackLayoutReady && svgPaths && (
+          <Svg
+            width={trackWidth}
+            height={TRACK_HEIGHT}
+            style={StyleSheet.absoluteFillObject}
             pointerEvents="none"
           >
-            {waveformBars.map((bar, i) => {
-              const barPos = (i + 0.5) / WAVEFORM_BAR_COUNT;
-              const fadeWidth = 4 / WAVEFORM_BAR_COUNT;
-              const t = effectiveProgressRatio > 0
-                ? clamp((effectiveProgressRatio - barPos) / fadeWidth, 0, 1)
-                : 0;
-              const opacity = 0.30 + t * 0.60;
-              return (
-                <View key={`bar-${i}`} style={styles.barColumn}>
-                  <View style={styles.upperSection}>
-                    <View style={[styles.upperBar, { height: bar.upperHeight, opacity }]} />
-                  </View>
-                  <View style={styles.centerGap} />
-                  <View style={styles.lowerSection}>
-                    <View style={[styles.lowerBar, { height: bar.lowerHeight, opacity: opacity * 0.5 }]} />
-                  </View>
-                </View>
-              );
-            })}
-          </View>
-        </View>
+            <Defs>
+              <LinearGradient id="wvUpperDim" x1="0" y1="0" x2="0" y2={WAVE_BASE_UPPER} gradientUnits="userSpaceOnUse">
+                <Stop offset="0" stopColor="#FFFFFF" stopOpacity="0.52" />
+                <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0.03" />
+              </LinearGradient>
+              <LinearGradient id="wvLowerDim" x1="0" y1={WAVE_BASE_LOWER} x2="0" y2={TRACK_HEIGHT} gradientUnits="userSpaceOnUse">
+                <Stop offset="0" stopColor="#FFFFFF" stopOpacity="0.10" />
+                <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0.01" />
+              </LinearGradient>
+              <LinearGradient id="wvUpperLit" x1="0" y1="0" x2="0" y2={WAVE_BASE_UPPER} gradientUnits="userSpaceOnUse">
+                <Stop offset="0" stopColor={colors.accent.primary} stopOpacity="0.95" />
+                <Stop offset="1" stopColor={colors.accent.primary} stopOpacity="0.10" />
+              </LinearGradient>
+              <LinearGradient id="wvLowerLit" x1="0" y1={WAVE_BASE_LOWER} x2="0" y2={TRACK_HEIGHT} gradientUnits="userSpaceOnUse">
+                <Stop offset="0" stopColor={colors.accent.primary} stopOpacity="0.30" />
+                <Stop offset="1" stopColor={colors.accent.primary} stopOpacity="0.02" />
+              </LinearGradient>
+              <ClipPath id="wvPlayedClip">
+                <Rect x="0" y="0" width={progressX} height={TRACK_HEIGHT} />
+              </ClipPath>
+            </Defs>
+            <Path d={svgPaths.upper} fill="url(#wvUpperDim)" />
+            <Path d={svgPaths.lower} fill="url(#wvLowerDim)" />
+            {progressX > 0 && (
+              <>
+                <Path d={svgPaths.upper} fill="url(#wvUpperLit)" clipPath="url(#wvPlayedClip)" />
+                <Path d={svgPaths.lower} fill="url(#wvLowerLit)" clipPath="url(#wvPlayedClip)" />
+              </>
+            )}
+          </Svg>
+        )}
 
       </View>
     </View>
