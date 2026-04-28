@@ -780,6 +780,7 @@ Primary reference: Meta's Edits app. Secondary: Spotify (legacy profile patterns
 - Select cloud media storage for public videos/thumbnails before enabling set-highlight uploads
 - Keep the first discovery slice intentionally non-social: no comments, DMs, follower counts, algorithmic feed, label marketplace, or booking payments
 - Use `docs/requirements/ARTIST_DISCOVERY_ONLINE_PROFILES.md` and `docs/requirements/prompts/phase-7-artist-discovery-online-profiles.md` as the implementation handoff for Claude Code
+- Before implementation, review `https://github.com/nicknovoa03/togetherly` as a reference for how Nick built an online app layer in another product; adapt useful Convex/routing/profile patterns without copying Togetherly-specific product assumptions
 
 ### Deferred (Post-v1)
 - SoundCloud URL audio extraction

@@ -6,6 +6,7 @@ Stack: React Native + Expo, Clerk, Convex, PostHog
 PRD: docs/requirements/PRODUCT_DESIGN_REQUIREMENTS.md
 Agent Design: docs/requirements/AGENT_DESIGN_REQUIREMENTS.md
 Planning Spec: docs/requirements/ARTIST_DISCOVERY_ONLINE_PROFILES.md
+Reference Repo: https://github.com/nicknovoa03/togetherly
 Current phase: Phase 7
 Focus: Add public artist search, read-only public artist profiles, and owner-managed showcase media while preserving the current create/export core.
 
@@ -19,6 +20,7 @@ Before coding:
 - Run the Preflight Checklist in `docs/requirements/AGENT_DESIGN_REQUIREMENTS.md` Section 3.1.
 - Read `docs/requirements/ARTIST_DISCOVERY_ONLINE_PROFILES.md`.
 - Inspect `convex/schema.ts`, `convex/users.ts`, `app/(tabs)/_layout.tsx`, `app/(tabs)/profile.tsx`, and the current analytics helper.
+- Inspect Nick's Togetherly repository at `https://github.com/nicknovoa03/togetherly` as a reference for how he built an online app layer in another product. Use it as a pattern reference for Convex-backed online state, public/interactive surfaces, profile-like data flows, route organization, and Nick's app conventions. Do not copy Togetherly directly into MusicPromo; adapt only compatible patterns to React Native + Expo.
 - Preserve existing Home, Create, Profile, project history, and export behavior.
 
 ## Goal
@@ -54,6 +56,15 @@ Run Phase 7 as five shippable slices:
 5. `7e-set-highlight-upload-storage-spike`
 
 Each ticket must be independently verifiable and must update documentation when behavior changes.
+
+## Step 0 - Togetherly Reference Pass
+
+Before modifying MusicPromo, inspect `https://github.com/nicknovoa03/togetherly` and capture the reusable implementation patterns in your working notes. Focus on schema organization, Convex query/mutation boundaries, public/private data handling, route/component structure, and any prior online engagement or profile-like surfaces. Treat Togetherly as a reference implementation from another product, not as source code to paste into MusicPromo.
+
+Acceptance criteria:
+- You can name which Togetherly patterns are being reused or intentionally ignored.
+- You do not introduce Togetherly-specific product assumptions into MusicPromo.
+- You preserve all MusicPromo Phase 7 privacy constraints.
 
 ## Step 1 - Schema and Privacy Foundation
 

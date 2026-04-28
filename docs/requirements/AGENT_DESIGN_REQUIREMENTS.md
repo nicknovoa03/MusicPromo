@@ -235,6 +235,7 @@ Phase 6 — Template System + Export Standardization
 Phase 7 — Artist Discovery + Online Profiles
   └── Epic: Artist Discovery and Public Profiles
       Goal: add Search tab, public artist profile pages, owner-managed showcase media, and safe public Convex queries without turning the app into a full social network
+      Reference: review https://github.com/nicknovoa03/togetherly for Nick's prior online app-layer patterns before coding
 ```
 
 Work through epics within a phase, then move to the next phase. Update "Current phase" and "Focus" as you go. Examples:
@@ -278,6 +279,7 @@ Focus: Artist Discovery and Public Profiles
 - [ ] Confirm entities and Convex schema changes needed
 - [ ] Confirm screens/components affected
 - [ ] Confirm acceptance criteria exists and is testable
+- [ ] For Phase 7 work, inspect `https://github.com/nicknovoa03/togetherly` as Nick's reference implementation for a prior online app layer, then document which Convex/routing/profile patterns are reused or intentionally ignored
 - [ ] Check if this feature has Mobbin-dependent design decisions (if so, use reasonable defaults and note them)
 
 ### 3.2 Code Review Checklist (Per PR)

@@ -8,6 +8,7 @@
 - Last updated (YYYY-MM-DD): 2026-04-28
 - Status: Planning / Claude Code handoff
 - Related docs: `docs/requirements/PRODUCT_DESIGN_REQUIREMENTS.md`, `docs/requirements/AGENT_DESIGN_REQUIREMENTS.md`, `docs/requirements/summary.json`
+- Implementation reference: `https://github.com/nicknovoa03/togetherly` for how Nick previously built an online app layer with Next.js/Convex patterns in another project
 
 ## 1) Strategic Intent
 
@@ -85,7 +86,18 @@ Public artist profiles should reuse the current hero-first profile direction, bu
 
 The showcase manager should live under the owner’s Profile area. It should keep public publishing explicit, because this is a major privacy shift from v1. The default state must be private. A user should understand that publishing makes selected profile data and selected media visible to other MusicPromo users.
 
-## 8) Implementation Slices for Claude Code
+## 8) Implementation Reference: Togetherly
+
+Before Claude Code implements Phase 7, it should inspect Nick's Togetherly repository at `https://github.com/nicknovoa03/togetherly` as a reference implementation for how Nick has already approached an online app layer in another product. Togetherly should not be copied directly into MusicPromo, because MusicPromo is a React Native + Expo app with its own navigation, media, and mobile constraints. Instead, it should be used as a **pattern reference** for structuring Convex-backed online state, public/interactive surfaces, profile-style data flows, and any existing conventions Nick prefers around app organization.
+
+| Reference Area | What Claude Code Should Look For | How To Apply It To MusicPromo |
+|---|---|---|
+| Convex data modeling | Existing schema patterns, query/mutation organization, ownership checks, and public/private data boundaries | Reuse compatible conventions for public profile/search/showcase functions while preserving MusicPromo's stricter privacy requirements |
+| Online app surfaces | How Togetherly structures discoverable or interactive pages, user-generated content, and shared state | Inform Search, public artist pages, and showcase manager UX without importing Togetherly-specific product assumptions |
+| Routing and app organization | Folder structure, route/component boundaries, and shared utilities | Adapt the cleanest patterns to Expo Router and MusicPromo's existing `app/` structure |
+| Engagement/media concepts | Any prior work around posts, comments, reactions, events, or profile-like objects | Use only as future context; Phase 7 still excludes comments, DMs, follower counts, and algorithmic feeds |
+
+## 9) Implementation Slices for Claude Code
 
 | Slice | Goal | Deliverable | Verification |
 |---|---|---|---|
@@ -95,13 +107,13 @@ The showcase manager should live under the owner’s Profile area. It should kee
 | 7d — Showcase manager | Let owner publish profile and control displayed media | Profile entry point, publish toggle, media visibility/order controls | Owner can publish/unpublish and reverse visibility without data loss |
 | 7e — Set highlight upload spike | Decide and implement minimal public media storage path | Storage adapter, upload progress/error states, thumbnail policy | A small highlight can be uploaded, displayed publicly, and deleted/unpublished |
 
-## 9) Acceptance Criteria
+## 10) Acceptance Criteria
 
 A first discovery build is acceptable when a signed-in artist can publish a public profile, another user can search for that artist, open the public profile, view only public fields and public showcase media, and tap external links. Guest accounts must not be searchable by default. Email, Clerk IDs, private projects, private local file URIs, push tokens, and notifications must never appear in public query results.
 
 Search must include empty, loading, error, no-results, and results states. Public profiles must include loading, not-found, unpublished/private, and empty-media states. All public list queries must be indexed and paginated or bounded. The existing create/export/share critical path must not regress, and the bottom-tab change must preserve current Home, Create, and Profile behavior.
 
-## 10) Open Questions
+## 11) Open Questions
 
 | Question | Proposed Default |
 |---|---|

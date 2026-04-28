@@ -165,6 +165,13 @@
     }
   ],
   "design_reference": "Meta's Edits app (Instagram companion). Dual theme: light for browsing, dark for editing.",
+  "implementation_references": [
+    {
+      "name": "Togetherly",
+      "url": "https://github.com/nicknovoa03/togetherly",
+      "purpose": "Reference Nick's prior online app-layer implementation for Convex-backed state, route organization, public/interactive surfaces, and profile-like data flows before implementing Phase 7. Adapt compatible patterns only; do not copy product-specific assumptions."
+    }
+  ],
   "screens": [
     {
       "name": "Sign In",
@@ -359,6 +366,7 @@
     "Verify soft-delete satisfies Apple's account deletion requirement",
     "Expo + FFmpeg-kit compatibility \u2014 spike in Phase 0",
     "Which cloud media storage provider should host public showcase videos and thumbnails?",
+    "Which Togetherly online-app patterns should MusicPromo reuse, and which should be intentionally ignored because MusicPromo is a mobile Expo app with different product constraints?",
     "Should public artist profile routes use handles, immutable user IDs, or both?",
     "What profile fields are required before an artist can publish publicly?",
     "Should Search be available to signed-out users, guest users, or only signed-in users in the first slice?",
