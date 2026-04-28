@@ -5,19 +5,19 @@
 - Project / repo: MusicPromo (`/home/nick/MusicPromo`)
 - Product name: MusicPromo
 - Owners: Nick
-- Date: 2026-02-20
-- Version: 1.1 (phase mapping updated through Phase 5)
+- Date: 2026-04-28
+- Version: 1.2 (artist discovery / online profiles planning added)
 - Links: PRD at `docs/requirements/PRODUCT_DESIGN_REQUIREMENTS.md`
 
 ## 1) Guideline (Shared AI-Human Understanding)
 
 ### 1.1 Product Summary
 
-- **One-liner:** A dead-simple mobile tool that turns a photo and audio clip into a short promo video for social media.
-- **Target users:** Indie musicians and creators who self-promote on Instagram, TikTok, etc.
-- **Primary value:** Eliminates the hour-long CapCut/Photoshop workflow — two inputs, one output, done.
+- **One-liner:** A dead-simple mobile tool that turns a photo and audio clip into a short promo video for social media, then helps artists present that work through a public MusicPromo artist profile.
+- **Target users:** Indie musicians and creators who self-promote on Instagram, TikTok, etc.; post-v1 discovery also serves venues, promoters, labels, curators, and artists searching for other artists.
+- **Primary value:** Eliminates the hour-long CapCut/Photoshop workflow — two inputs, one output, done — and then gives artists a professional MusicPromo presence that can be discovered without relying entirely on Instagram or word of mouth.
 - **Definition of v1 "done":** A user can sign in (or go guest), pick a photo + audio, trim audio, preview a spinning CD video, export as MP4, and save to camera roll or share to Instagram/TikTok. Project history is saved. Push notifications work.
-- **Non-goals:** Not a video editor, not a social network, not a distribution platform, no SoundCloud integration, no multi-user/label features, no monetization.
+- **Non-goals:** Not a full-featured video editor, not a social network for the first discovery slice, not a distribution platform yet, no SoundCloud ingestion, no multi-user/label features, no monetization. Phase 7 may add public search/profile discovery, but still excludes DMs, comments, follower counts, algorithmic feed, booking payments, and label marketplace mechanics.
 
 ### 1.2 Current State
 
@@ -44,12 +44,14 @@
 
 ### 1.4 System Map
 
-- **Key entities:** User Profile, Project, Template, Push Token, Notification
-- **Navigation model:** Bottom tab bar, 3 tabs: Home, Create, Profile. Light theme for browsing, dark theme for editing (Edits-inspired).
+- **Key entities:** User Profile, Project, Template, Push Token, Notification. Phase 7 adds public-profile/search fields, Showcase Media, Shows/Booking Credits, and Reports while keeping raw account data private.
+- **Navigation model:** Bottom tab bar, 3 tabs for v1: Home, Create, Profile. Phase 7 expands to 4 tabs with Search, preferably Home, Search, Create, Profile. Light theme for browsing, dark theme for editing/profile presence (Edits-inspired).
 - **Critical flows:**
   1. First-time user → sign in / guest → onboarding → create first video → export → share
   2. Returning user → open project → change settings → re-export → share
   3. Push notification → tap → app opens to home
+  4. Post-v1 discovery → Search tab → public artist result → read-only public artist profile
+  5. Post-v1 artist publishing → Profile → Showcase manager → publish profile/media → appears in Search
 - **Integrations:**
   - Auth: Clerk (React Native SDK)
   - Database: Convex (React Native SDK)
@@ -98,6 +100,7 @@
 - 2026-03-06: **Editor actions were anchored directly on preview with modal sheet parity behavior** → Consolidated controls into preview overlays (`settings`, info toggle, `Edit Template`) and standardized template/media surfaces as partial-height sheets with outside-tap and swipe-down dismissal expectations.
 - 2026-03-06: **Roadmap sequencing updated to introduce an iOS-native UI adoption phase before broader post-MVP template expansion** → Phase 5 is now dedicated to iOS-native surface/liquid-glass adoption with explicit Android and unsupported-iOS fallbacks.
 - 2026-03-11: **Vinyl export path now prefers pre-baked shell compositing by artwork-size state** → Added `vinyl_shell_{small|normal|large}.png` overlays and explicit artwork-scale mapping in the FFmpeg pipeline to remove per-frame groove/rim synthesis on the Vinyl template while preserving procedural fallback reliability.
+- 2026-04-28: **Phase 7 artist discovery planned as public-profile/search layer, not a full social network** → MusicPromo should evolve into an online artist presence platform where users can search artists and view public profiles with promos, links, and set highlights. First slice must remain opt-in, read-only for viewers, privacy-safe, and non-social: no DMs, comments, follower counts, algorithmic feed, booking payments, or label marketplace. Public set highlights require a cloud media storage decision before implementation.
 
 ## 2) Guidance (Methodology for Evolving Prompts)
 
@@ -224,6 +227,15 @@ Phase 4 — MVP Finalization
 Phase 5 — iOS Native Surface Adoption
   └── Epic: iOS Native Surface + Liquid Glass Adoption
       Goal: iOS-native interaction polish (context menus, grouped settings/forms, selective glass surfaces) with strict fallback behavior for Android/unsupported capability paths
+
+Phase 6 — Template System + Export Standardization
+  └── Epic: Template Fidelity & Export Standardization
+      Goal: standardize template authoring and preview/export parity for post-MVP template growth
+
+Phase 7 — Artist Discovery + Online Profiles
+  └── Epic: Artist Discovery and Public Profiles
+      Goal: add Search tab, public artist profile pages, owner-managed showcase media, and safe public Convex queries without turning the app into a full social network
+      Reference: review https://github.com/nicknovoa03/togetherly for Nick's prior online app-layer patterns before coding
 ```
 
 Work through epics within a phase, then move to the next phase. Update "Current phase" and "Focus" as you go. Examples:
@@ -253,6 +265,11 @@ Current phase: Phase 5
 Focus: iOS Native Surface + Liquid Glass Adoption
 ```
 
+```
+Current phase: Phase 7
+Focus: Artist Discovery and Public Profiles
+```
+
 ## 3) Guardrails (AI-Assisted Reviews and Quality Gates)
 
 ### 3.1 Preflight Checklist (Before Coding)
@@ -262,6 +279,7 @@ Focus: iOS Native Surface + Liquid Glass Adoption
 - [ ] Confirm entities and Convex schema changes needed
 - [ ] Confirm screens/components affected
 - [ ] Confirm acceptance criteria exists and is testable
+- [ ] For Phase 7 work, inspect `https://github.com/nicknovoa03/togetherly` as Nick's reference implementation for a prior online app layer, then document which Convex/routing/profile patterns are reused or intentionally ignored
 - [ ] Check if this feature has Mobbin-dependent design decisions (if so, use reasonable defaults and note them)
 
 ### 3.2 Code Review Checklist (Per PR)
@@ -272,8 +290,9 @@ Focus: iOS Native Surface + Liquid Glass Adoption
   - Non-destructive editing preserved (photo/audio independence)
 - **Security/privacy:**
   - Clerk auth check on all Convex mutations
-  - No PII beyond email stored
+  - No PII beyond email stored unless explicitly approved in the PRD
   - Guest mode uses Clerk anonymous sessions properly
+  - Public queries return sanitized DTOs only and never expose email, Clerk IDs, push tokens, notifications, private project data, or unpublished media
 - **Data integrity:**
   - Convex indexes for queries that will be called frequently (e.g., projects by userId)
   - No accidental full-table scans
@@ -283,7 +302,7 @@ Focus: iOS Native Surface + Liquid Glass Adoption
   - File picker filters for compatible formats
 - **Performance:**
   - Video export under 60 seconds
-  - No unbounded lists (paginate project history if needed)
+  - No unbounded lists (paginate project history/search/showcase media if needed)
   - App cold start under 3 seconds
 
 ### 3.3 Regression Tests (Minimum)
