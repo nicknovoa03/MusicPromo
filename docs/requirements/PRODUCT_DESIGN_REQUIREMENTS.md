@@ -5,7 +5,7 @@
 - Product name: MusicPromo
 - Doc owner: Nick
 - Stakeholders: Nick (sole developer / product owner)
-- Last updated (YYYY-MM-DD): 2026-04-28
+- Last updated (YYYY-MM-DD): 2026-04-28 (Phase 7 open questions expanded)
 - Version: 1.9 (Artist discovery / online profiles planned)
 - Links: GitHub repo at `/home/nick/MusicPromo`
 
@@ -659,6 +659,9 @@ Primary reference: Meta's Edits app. Secondary: Spotify (legacy profile patterns
 4. Apple App Store review delays — submit early, expect 1-2 cycles
 5. Clerk anonymous-to-authenticated session merge edge cases — test thoroughly
 6. Remotion has no proven production-ready native on-device renderer path for this Expo app yet — maintain FFmpeg fallback until this is solved and validated on hardware
+7. (Phase 7) Handle squatting / impersonation — first-come-first-served is workable on a small user base but requires a report path before public launch; defer formal verification
+8. (Phase 7) Cold start empty Search tab — without seeded profiles the Search feature appears broken at launch; a launch seeding plan must be in place before Phase 7b ships
+9. (Phase 7) App Store privacy label update required — publicly searchable user-generated content is a new data category; the App Privacy questionnaire must be reviewed and updated before any Phase 7 build is submitted to TestFlight or production
 
 ### Open Questions
 - ~~Navigation pattern~~ — RESOLVED: Bottom tab bar, 3 tabs (Home, Create, Profile)
@@ -670,6 +673,12 @@ Primary reference: Meta's Edits app. Secondary: Spotify (legacy profile patterns
 - Notification content strategy — before Phase 2
 - App Store production readiness gaps: do we have final screenshots, App Privacy answers, and required legal/support URLs prepared for submission?
 - ~~If local Remotion fails Phase 4 gates, which maintained FFmpeg fork becomes the long-term local export backend?~~ — RESOLVED (2026-03-04): keep the current FFmpeg backend as the active local export path behind the renderer abstraction while Remotion-native blockers are evaluated
+- **(Phase 7) Handle claiming rules** — format, uniqueness enforcement, change rate-limiting, and squatter/report path must be resolved before Slice 7a schema work begins; see `ARTIST_DISCOVERY_ONLINE_PROFILES.md §5`
+- **(Phase 7) Genre taxonomy** — predefined list vs free-text tags must be decided before Slice 7a because it determines the schema field type and search index strategy; see `ARTIST_DISCOVERY_ONLINE_PROFILES.md §5`
+- **(Phase 7) Deep link / web profile sharing model** — profile URLs shared outside MusicPromo (e.g., in an Instagram bio) need a web fallback or universal link strategy; deep-link-only has near-zero distribution value for new viewer acquisition; must be decided before Slice 7c
+- **(Phase 7) Cold start seeding strategy** — what appears in Search before enough artists have published profiles; must be decided before Slice 7b ships
+- **(Phase 7) Artist-facing view count** — lightweight owner-visible profile view count targeted for Phase 7 scope (not fully deferred); see `ARTIST_DISCOVERY_ONLINE_PROFILES.md §7`
+- **(Phase 7) App Store privacy labels** — UGC + public search requires App Privacy questionnaire update before first Phase 7 TestFlight submission
 
 ## 14) Phasing and Milestones
 

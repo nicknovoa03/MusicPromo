@@ -5,7 +5,7 @@
 - Product name: MusicPromo
 - Doc owner: Nick
 - Prepared by: Manus AI
-- Last updated (YYYY-MM-DD): 2026-04-28
+- Last updated (YYYY-MM-DD): 2026-04-28 (open questions expanded)
 - Status: Planning / Claude Code handoff
 - Related docs: `docs/requirements/PRODUCT_DESIGN_REQUIREMENTS.md`, `docs/requirements/AGENT_DESIGN_REQUIREMENTS.md`, `docs/requirements/summary.json`
 - Implementation reference: `https://github.com/nicknovoa03/togetherly` for how Nick previously built an online app layer with Next.js/Convex patterns in another project
@@ -64,6 +64,24 @@ The current Convex schema already has several artist-facing `users` fields: `art
 
 Public set highlights and thumbnails cannot use local device URIs. Before implementation, Nick should choose a storage path such as Convex file storage if available in the current stack, S3-compatible storage, Cloudflare R2, or another Expo-friendly upload path. The first engineering spike should decide upload limits, thumbnail creation, deletion behavior, and whether transcoding is required.
 
+### Genre Taxonomy Decision Required
+
+The data model includes `genres` on the public profile and genre chips in search results, but the spec does not define what valid genre values are. Two options exist:
+
+- **Predefined list:** 15-25 genres relevant to the target audience (e.g., House, Techno, Hip-Hop, R&B, Afrobeats, Reggaeton, Pop, Ambient, Drum & Bass, Lo-Fi, Jazz, Latin, Electronic, Funk, Trap). This keeps search quality high and avoids fragmentation where "hip hop," "hiphop," and "Hip Hop" are treated as three distinct values.
+- **Free-text tags:** Artists type anything. Lower friction, higher diversity, worse searchability.
+
+The recommended default is a predefined list with an optional one free-text "other" field. This decision must be made before the Slice 7a schema is written because it determines the `genres` field type (`string[]` enum vs `string[]` free text) and whether a genre index is needed on the search query.
+
+### Handle Claiming Decision Required
+
+The data model includes a `handle` field but does not define the claiming flow, validation rules, or character constraints. Before Slice 7a:
+
+- **Format:** Lowercase alphanumeric and underscores, 3–30 characters (e.g., `@nick_dj`, `@sunsetrave`). No spaces, no periods, no at-sign stored in the database.
+- **Uniqueness:** Enforced at the database level with a `by_handle` unique index. The showcase manager must show real-time availability feedback (available / taken / invalid format).
+- **Claiming model:** First-come-first-served. On a small user base this is manageable. Add a report path for obvious impersonation; defer a formal dispute/verification system.
+- **Handle changes:** Allow handle changes but rate-limit to once per 30 days to prevent link rot. Old handles should not be immediately reassignable to prevent redirect abuse.
+
 ## 6) Convex Function Plan
 
 | File | Function | Type | Purpose |
@@ -85,6 +103,14 @@ Search should feel like a browsing surface, not a heavy database tool. The empty
 Public artist profiles should reuse the current hero-first profile direction, but with read-only boundaries for non-owners. The viewer should see the artist’s strongest identity first, followed by links and media. The page should answer four questions quickly: **Who are they? What do they sound/look like? Where are they credible? Where can I follow/listen/contact externally?**
 
 The showcase manager should live under the owner’s Profile area. It should keep public publishing explicit, because this is a major privacy shift from v1. The default state must be private. A user should understand that publishing makes selected profile data and selected media visible to other MusicPromo users.
+
+**Profile completeness funnel:** The showcase manager must never open to a blank form. On first open it should pre-populate all existing user profile fields — `artistName`, `bio`, `avatarImageUrl`, `heroImageUrl`, and `links` — from the current private profile. The owner confirms and augments rather than re-entering data they have already provided. A completeness indicator (e.g., "3 of 5 fields complete") helps artists understand what is missing before they can publish.
+
+**Cold start / empty Search:** At launch there will be zero or very few public profiles. Search must not open to a blank screen. Proposed default: show a small set of manually curated "featured artists" or "recently joined" profiles seeded during launch so the tab is immediately useful. If zero profiles are indexed, show an explicit "Be the first artist to appear here" prompt that routes directly to the showcase manager. The curated seed list and threshold for switching to algorithmic results should be decided before Phase 7b ships.
+
+**Sharing profiles outside MusicPromo:** Artists will want to paste a MusicPromo profile URL in their Instagram bio or DMs. The spec does not yet define whether profiles are web-accessible. Options: (a) deep link only (`musicpromo://artists/[handle]`), (b) universal link that opens the app with a web fallback page, (c) a lightweight public web page at a domain like `musicpromo.app/artists/[handle]`. Option (b) or (c) is strongly recommended because a link that only works if the app is installed has near-zero distribution value for new viewer acquisition. This decision must be made before Slice 7c because it determines the routing strategy.
+
+**Artist-facing profile analytics:** The primary motivation for an artist to publish and keep their profile updated is knowing that people are finding them. A lightweight owner-visible view count (e.g., "47 profile views this month") should be in scope for Phase 7, not fully deferred. A full analytics dashboard is deferred, but a single visible metric is low effort and high motivation. The `public_profile_viewed` event is already instrumented; surfacing an aggregated count to the owner requires only a simple Convex query against that event log or a lightweight counter field on the profile index.
 
 ## 8) Implementation Reference: Togetherly
 
@@ -115,11 +141,18 @@ Search must include empty, loading, error, no-results, and results states. Publi
 
 ## 11) Open Questions
 
-| Question | Proposed Default |
-|---|---|
-| Which storage provider should host public media? | Run a Phase 7e spike before enabling uploads; do not introduce storage dependency blindly. |
-| Should public routes use handles or IDs? | Use handles for user-facing routes and retain user IDs internally for stable queries. |
-| Should Search be visible to signed-out users? | Start signed-in only to reduce abuse and simplify launch; revisit public web/search later. |
-| What fields are required to publish? | Artist name, handle, at least one avatar or hero fallback, and explicit publish confirmation. |
-| Are venues/promoters separate account roles? | Not in first slice; everyone can search, artist accounts can publish. |
-| What moderation is required before public media? | Add report hooks and owner takedown/unpublish first; defer full admin console until volume requires it. |
+| Question | Proposed Default | Must Resolve Before |
+|---|---|---|
+| Which storage provider should host public media? | Run a Phase 7e spike before enabling uploads; do not introduce storage dependency blindly. | Slice 7e |
+| Should public routes use handles or IDs? | Use handles for user-facing routes and retain user IDs internally for stable queries. | Slice 7a |
+| Should Search be visible to signed-out users? | Start signed-in only to reduce abuse and simplify launch; revisit public web/search later. | Slice 7b |
+| What fields are required to publish? | Artist name, handle, at least one avatar or hero fallback, and explicit publish confirmation. | Slice 7a |
+| Are venues/promoters separate account roles? | Not in first slice; everyone can search, artist accounts can publish. | Slice 7b |
+| What moderation is required before public media? | Add report hooks and owner takedown/unpublish first; defer full admin console until volume requires it. | Slice 7d |
+| How are handles claimed and validated? | First-come-first-served with uniqueness check enforced at the database level; lowercase alphanumeric plus underscores, 3–30 chars; real-time availability feedback in showcase manager; handle changes rate-limited to once per 30 days; old handles not immediately re-assignable. | Slice 7a |
+| What appears in Search when there are zero or very few public profiles? | A manually seeded set of featured/launch artists. If truly zero profiles are indexed, show a "Be the first" prompt routing to the showcase manager. Do not show a blank screen. | Slice 7b |
+| Can public profiles be shared outside MusicPromo via a link? | Universal link with web fallback strongly recommended over deep-link-only; a profile URL with no web fallback has near-zero distribution value for new viewer acquisition. Exact domain and web implementation TBD before Slice 7c. | Slice 7c |
+| Are genres a predefined list or free-text tags? | Predefined list of 15–25 genres relevant to DJs and indie artists; optional one free-text override. Avoids search fragmentation. Must be decided before schema is written because it determines field type and indexing. | Slice 7a |
+| How does the showcase manager handle existing profile data? | Pre-populate `artistName`, `bio`, `avatarImageUrl`, `heroImageUrl`, and `links` from the current private profile on first open. Owner confirms and augments; never shows a blank form. | Slice 7d |
+| Can artists see their own profile view count? | Yes — a lightweight owner-visible view count (e.g., "47 views this month") should be in Phase 7 scope, not deferred. Full dashboard deferred. | Slice 7d |
+| Does Phase 7 require new App Store privacy label disclosures? | Yes — publicly searchable user-generated content is a new data category that may require updating the App Privacy questionnaire before Phase 7 ships to TestFlight or production. Review and update before submitting any Phase 7 build. | Before first Phase 7 TestFlight |
