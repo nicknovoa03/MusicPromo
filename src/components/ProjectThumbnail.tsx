@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
-import { View, Image, StyleSheet } from "react-native";
+import { View, Image, StyleSheet, Text } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import type { Doc } from "../../convex/_generated/dataModel";
-import type { LocalProject } from "@/lib/localProjects";
+import { isLocalProject, type LocalProject } from "@/lib/localProjects";
 import { normalizeMediaUri } from "@/lib/mediaUri";
 import {
   getTemplateDefinition,
@@ -27,6 +27,31 @@ export function ProjectThumbnail({ project, title, surfaceColor, fallbackIconCol
   const [thumbnailSize, setThumbnailSize] = useState(_cachedThumbnailWidth);
   const photoUri = normalizeMediaUri(project.photoUri);
   const fallbackPreviewUri = normalizeMediaUri(project.exportedVideoUri);
+
+  const isEpk = !isLocalProject(project) && project.type === "epk";
+
+  if (isEpk) {
+    return (
+      <View
+        style={[styles.thumbnail, { backgroundColor: "#0A0A0A" }]}
+        onLayout={(event) => {
+          const nextSize = Math.round(event.nativeEvent.layout.width);
+          if (nextSize !== _cachedThumbnailWidth) _cachedThumbnailWidth = nextSize;
+          setThumbnailSize((current) => (current === nextSize ? current : nextSize));
+        }}
+      >
+        {photoUri ? (
+          <Image source={{ uri: photoUri }} style={styles.thumbnailImage} resizeMode="cover" />
+        ) : (
+          <Ionicons name="layers-outline" size={30} color={fallbackIconColor} />
+        )}
+        <View style={styles.epkBadge}>
+          <Text style={styles.epkBadgeText}>EPK</Text>
+        </View>
+      </View>
+    );
+  }
+
   const templateId = resolveTemplateId(project.templateId);
   const templateTweaks = useMemo(
     () => parseTemplateTweaksParam(project.templateTweaks),
@@ -93,5 +118,20 @@ const styles = StyleSheet.create({
   thumbnailImage: {
     width: "100%",
     height: "100%",
+  },
+  epkBadge: {
+    position: "absolute",
+    bottom: 4,
+    left: 4,
+    backgroundColor: "rgba(0,0,0,0.72)",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  epkBadgeText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#FFFFFF",
+    letterSpacing: 0.5,
   },
 });

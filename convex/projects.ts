@@ -26,6 +26,8 @@ export const create = mutation({
     audioName: v.optional(v.string()),
     trimStart: v.optional(v.number()),
     trimEnd: v.optional(v.number()),
+    type: v.optional(v.union(v.literal("video"), v.literal("epk"))),
+    vision: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const user = await getActiveUserByIdentity(ctx);
@@ -55,6 +57,8 @@ export const create = mutation({
       audioName?: string;
       trimStart?: number;
       trimEnd?: number;
+      type?: "video" | "epk";
+      vision?: string;
     } = {
       userId: user._id,
       createdByName: user.artistName ?? user.name,
@@ -75,6 +79,8 @@ export const create = mutation({
     if (args.audioName !== undefined) projectDoc.audioName = args.audioName;
     if (args.trimStart !== undefined) projectDoc.trimStart = args.trimStart;
     if (args.trimEnd !== undefined) projectDoc.trimEnd = args.trimEnd;
+    if (args.type !== undefined) projectDoc.type = args.type;
+    if (args.vision !== undefined) projectDoc.vision = args.vision;
 
     return await ctx.db.insert("projects", projectDoc);
   },
@@ -118,6 +124,7 @@ export const update = mutation({
     trimEnd: v.optional(v.number()),
     exportedVideoUri: v.optional(v.string()),
     status: v.optional(v.union(v.literal("draft"), v.literal("exported"))),
+    vision: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const project = await ctx.db.get(args.projectId);
@@ -146,6 +153,7 @@ export const update = mutation({
       updates.exportedVideoUri = args.exportedVideoUri;
     }
     if (args.status !== undefined) updates.status = args.status;
+    if (args.vision !== undefined) updates.vision = args.vision;
 
     await ctx.db.patch(args.projectId, {
       ...updates,

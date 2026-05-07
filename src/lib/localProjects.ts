@@ -6,6 +6,10 @@ const LOCAL_PROJECTS_KEY = "musicpromo:local-projects";
 type LocalProjectStatus = "draft" | "exported";
 type LocalProjectAspectRatio = "9:16" | "4:5" | "1:1";
 
+export function isLocalProject(project: object): project is LocalProject {
+  return typeof (project as LocalProject).id === "string";
+}
+
 export type LocalProject = {
   id: string;
   title?: string;

@@ -74,6 +74,8 @@ function normalizeAvatarUri(value: string | null | undefined): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+
+
 let hasWarnedHapticsUnavailable = false;
 
 async function triggerSelectionHaptic(type: "enter" | "toggle-on" | "toggle-off") {
@@ -324,6 +326,21 @@ const longPressProjectIdRef = useRef<string | null>(null);
       }
       if (stageBackgroundUri) {
         void Image.prefetch(stageBackgroundUri).catch(() => {});
+      }
+
+      if (!isLocalProject(project) && project.type === "epk") {
+        router.push({
+          pathname: "/create/epk/preview" as any,
+          params: {
+            projectId: String(project._id),
+            photoUri: encodeUriParam(projectPhotoUri ?? ""),
+            photoName: project.photoName ?? "",
+            title: project.title ?? "",
+            vision: project.vision ?? "",
+            isExistingProject: "1",
+          },
+        });
+        return;
       }
 
       if (isLocalProject(project)) {
@@ -613,6 +630,7 @@ const longPressProjectIdRef = useRef<string | null>(null);
       const canRenderNativeProjectGestures =
         canUseNativeProjectGestures && expoSwiftUI && !isSelectionMode && !isDeleting;
       const isRNCardGestureOwner = !canRenderNativeProjectGestures;
+      const isEpkProject = !isLocalProject(item) && item.type === "epk";
       const cardContent = (
         <View style={styles.cardContent}>
           <ProjectThumbnail
@@ -626,7 +644,7 @@ const longPressProjectIdRef = useRef<string | null>(null);
               {title}
             </Text>
             <Text style={[styles.cardDate, { color: homeTextSecondaryColor }]}>
-              {formatDate(item.createdAt)}
+              {isEpkProject ? "EPK Carousel" : formatDate(item.createdAt)}
             </Text>
           </View>
         </View>
@@ -958,7 +976,7 @@ const longPressProjectIdRef = useRef<string | null>(null);
             { backgroundColor: fabBackgroundColor },
             pressed && styles.fabPressed,
           ]}
-          onPress={() => router.push("/create/picker" as const)}
+          onPress={() => router.push("/create/type-picker" as any)}
           accessibilityLabel="Create new project"
           accessibilityRole="button"
         >

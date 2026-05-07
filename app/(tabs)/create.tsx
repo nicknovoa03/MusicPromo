@@ -1,5 +1,5 @@
-import PickerScreen from "../create/picker";
+import TypePickerScreen from "../create/type-picker";
 
 export default function CreateScreen() {
-  return <PickerScreen tabEmbedded />;
+  return <TypePickerScreen tabEmbedded />;
 }

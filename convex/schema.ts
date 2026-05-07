@@ -65,6 +65,8 @@ export default defineSchema({
     exportedVideoUri: v.optional(v.string()),
     trimStart: v.optional(v.number()),
     trimEnd: v.optional(v.number()),
+    type: v.optional(v.union(v.literal("video"), v.literal("epk"))),
+    vision: v.optional(v.string()),
     status: v.union(v.literal("draft"), v.literal("exported")),
     createdAt: v.number(),
     updatedAt: v.number(),
