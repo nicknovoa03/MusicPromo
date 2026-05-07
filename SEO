@@ -1,1 +1,3 @@
-https://github.com/Bhanunamikaze/Agentic-SEO-Skill.git
+git clone https://github.com/Bhanunamikaze/Agentic-SEO-Skill.git
+cd Agentic-SEO-Skill
+./install.sh --target all --force
