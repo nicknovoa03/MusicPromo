@@ -11,6 +11,7 @@ import {
   NativeSyntheticEvent,
   NativeScrollEvent,
 } from "react-native";
+import * as Sharing from "expo-sharing";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams, useFocusEffect } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -24,10 +25,10 @@ import { decodeUriParam, encodeUriParam } from "@/lib/uri";
 import { normalizeMediaUri } from "@/lib/mediaUri";
 import { useLocalSession } from "@/providers/localSession";
 import { getLocalArtistProfile, type LocalArtistProfile } from "@/lib/localProfile";
-import { EpkCoverSlide } from "@/components/epk/EpkCoverSlide";
-import { EpkTrackDetailsSlide } from "@/components/epk/EpkTrackDetailsSlide";
-import { EpkVisionSlide } from "@/components/epk/EpkVisionSlide";
-import { EpkBioSlide } from "@/components/epk/EpkBioSlide";
+import { SpkCoverSlide } from "@/components/spk/SpkCoverSlide";
+import { SpkTrackDetailsSlide } from "@/components/spk/SpkTrackDetailsSlide";
+import { SpkVisionSlide } from "@/components/spk/SpkVisionSlide";
+import { SpkBioSlide } from "@/components/spk/SpkBioSlide";
 
 const SLIDE_COUNT = 4;
 const SLIDE_WIDTH = Dimensions.get("window").width;
@@ -39,13 +40,14 @@ function firstParam(p: string | string[] | undefined): string {
 
 const SLIDE_LABELS = ["Cover", "Track Details", "Vision", "Bio"];
 
-export default function EpkPreviewScreen() {
+export default function SpkPreviewScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { isLocalGuest } = useLocalSession();
   const { isAuthenticated } = useConvexAuth();
 
   const params = useLocalSearchParams<{
+    artistName: string;
     photoUri: string;
     photoName: string;
     title: string;
@@ -57,6 +59,7 @@ export default function EpkPreviewScreen() {
     isExistingProject: string;
   }>();
 
+  const customArtistName = firstParam(params.artistName) || null;
   const photoUri = normalizeMediaUri(decodeUriParam(firstParam(params.photoUri)));
   const photoName = firstParam(params.photoName);
   const title = firstParam(params.title);
@@ -73,6 +76,8 @@ export default function EpkPreviewScreen() {
   const [localProfile, setLocalProfile] = useState<LocalArtistProfile | null>(null);
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isExporting, setIsExporting] = useState(false);
+  const [isExported, setIsExported] = useState(false);
+  const [firstSlideUri, setFirstSlideUri] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -85,9 +90,10 @@ export default function EpkPreviewScreen() {
     }, [isLocalGuest]),
   );
 
-  const artistName = isLocalGuest
+  const profileArtistName = isLocalGuest
     ? (localProfile?.artistName ?? "")
     : (convexUser?.artistName ?? convexUser?.name ?? "");
+  const artistName = customArtistName ?? profileArtistName;
 
   const bio = isLocalGuest
     ? ""
@@ -148,6 +154,7 @@ export default function EpkPreviewScreen() {
       for (const uri of uris) {
         await MediaLibrary.saveToLibraryAsync(uri);
       }
+      setFirstSlideUri(uris[0] ?? null);
 
       if (isAuthenticated) {
         try {
@@ -158,7 +165,7 @@ export default function EpkPreviewScreen() {
             });
           } else {
             await createProject({
-              type: "epk",
+              type: "spk",
               title: title || undefined,
               vision: vision || undefined,
               photoUri: photoUri || undefined,
@@ -171,14 +178,10 @@ export default function EpkPreviewScreen() {
         }
       }
 
-      Alert.alert(
-        "Exported!",
-        "4 slides saved to your Camera Roll. Open Instagram and create a carousel post.",
-        [{ text: "Done", onPress: () => router.replace("/") }],
-      );
+      setIsExported(true);
     } catch (err) {
       Alert.alert("Export failed", "Something went wrong. Please try again.");
-      console.warn("EPK export error:", err);
+      console.warn("SPK export error:", err);
     } finally {
       setIsExporting(false);
     }
@@ -196,6 +199,23 @@ export default function EpkPreviewScreen() {
     photoName,
     router,
   ]);
+
+  const handleShare = useCallback(async () => {
+    if (!firstSlideUri) return;
+    try {
+      const isAvailable = await Sharing.isAvailableAsync();
+      if (!isAvailable) {
+        Alert.alert("Sharing not available", "Sharing is not supported on this device.");
+        return;
+      }
+      await Sharing.shareAsync(firstSlideUri, {
+        mimeType: "image/jpeg",
+        UTI: "public.jpeg",
+      });
+    } catch {
+      Alert.alert("Share failed", "Could not open sharing. Please try again.");
+    }
+  }, [firstSlideUri]);
 
   const text = colors.dark.text;
   const secondary = colors.dark.textSecondary;
@@ -226,7 +246,7 @@ export default function EpkPreviewScreen() {
         contentContainerStyle={styles.swiperContent}
       >
         <View ref={slideRefs[0]} style={styles.slide} collapsable={false}>
-          <EpkCoverSlide
+          <SpkCoverSlide
             width={SLIDE_WIDTH}
             height={SLIDE_HEIGHT}
             photoUri={photoUri}
@@ -236,7 +256,7 @@ export default function EpkPreviewScreen() {
           />
         </View>
         <View ref={slideRefs[1]} style={styles.slide} collapsable={false}>
-          <EpkTrackDetailsSlide
+          <SpkTrackDetailsSlide
             width={SLIDE_WIDTH}
             height={SLIDE_HEIGHT}
             trackTitle={title}
@@ -245,7 +265,7 @@ export default function EpkPreviewScreen() {
           />
         </View>
         <View ref={slideRefs[2]} style={styles.slide} collapsable={false}>
-          <EpkVisionSlide
+          <SpkVisionSlide
             width={SLIDE_WIDTH}
             height={SLIDE_HEIGHT}
             vision={vision}
@@ -253,7 +273,7 @@ export default function EpkPreviewScreen() {
           />
         </View>
         <View ref={slideRefs[3]} style={styles.slide} collapsable={false}>
-          <EpkBioSlide
+          <SpkBioSlide
             width={SLIDE_WIDTH}
             height={SLIDE_HEIGHT}
             artistName={artistName}
@@ -290,35 +310,63 @@ export default function EpkPreviewScreen() {
         >
           <Ionicons name="person-circle-outline" size={16} color={secondary} />
           <Text style={[styles.nudgeText, { color: secondary }]}>
-            Add a bio and social links to complete your EPK
+            Add a bio and social links to complete your press kit
           </Text>
           <Text style={[styles.nudgeAction, { color: text }]}>Edit</Text>
         </Pressable>
       ) : null}
 
-      {/* Export button */}
+      {/* Footer: export or post-export share */}
       <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.sm }]}>
-        <Pressable
-          style={({ pressed }) => [
-            styles.exportButton,
-            isExporting && styles.exportButtonDisabled,
-            pressed && !isExporting && styles.pressed,
-          ]}
-          onPress={handleExport}
-          disabled={isExporting}
-          accessibilityRole="button"
-          accessibilityLabel="Export carousel"
-          accessibilityState={{ disabled: isExporting }}
-        >
-          {isExporting ? (
-            <ActivityIndicator size="small" color={colors.accent.onPrimary} />
-          ) : (
-            <Ionicons name="share-outline" size={20} color={colors.accent.onPrimary} />
-          )}
-          <Text style={styles.exportButtonText}>
-            {isExporting ? "Exporting…" : "Export Carousel"}
-          </Text>
-        </Pressable>
+        {isExported ? (
+          <>
+            <View style={styles.savedConfirm}>
+              <Ionicons name="checkmark-circle" size={16} color={colors.accent.primary} />
+              <Text style={[styles.savedConfirmText, { color: secondary }]}>
+                4 slides saved to Camera Roll
+              </Text>
+            </View>
+            <Pressable
+              style={({ pressed }) => [styles.instagramButton, pressed && styles.pressed]}
+              onPress={() => void handleShare()}
+              accessibilityRole="button"
+              accessibilityLabel="Share to Instagram"
+            >
+              <Ionicons name="logo-instagram" size={20} color="#000000" />
+              <Text style={styles.instagramButtonText}>Share to Instagram</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.doneButton, pressed && styles.pressed]}
+              onPress={() => router.replace("/")}
+              accessibilityRole="button"
+              accessibilityLabel="Done"
+            >
+              <Text style={[styles.doneButtonText, { color: secondary }]}>Done</Text>
+            </Pressable>
+          </>
+        ) : (
+          <Pressable
+            style={({ pressed }) => [
+              styles.exportButton,
+              isExporting && styles.exportButtonDisabled,
+              pressed && !isExporting && styles.pressed,
+            ]}
+            onPress={handleExport}
+            disabled={isExporting}
+            accessibilityRole="button"
+            accessibilityLabel="Export carousel"
+            accessibilityState={{ disabled: isExporting }}
+          >
+            {isExporting ? (
+              <ActivityIndicator size="small" color={colors.accent.onPrimary} />
+            ) : (
+              <Ionicons name="share-outline" size={20} color={colors.accent.onPrimary} />
+            )}
+            <Text style={styles.exportButtonText}>
+              {isExporting ? "Exporting…" : "Export Carousel"}
+            </Text>
+          </Pressable>
+        )}
       </View>
     </SafeAreaView>
   );
@@ -421,6 +469,39 @@ const styles = StyleSheet.create({
   exportButtonText: {
     ...typography.button,
     color: colors.accent.onPrimary,
+  },
+  savedConfirm: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  savedConfirmText: {
+    fontSize: 13,
+    fontWeight: "500",
+  },
+  instagramButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+    backgroundColor: colors.accent.primary,
+    borderRadius: radius.md,
+    paddingVertical: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  instagramButtonText: {
+    ...typography.button,
+    color: "#000000",
+  },
+  doneButton: {
+    alignItems: "center",
+    paddingVertical: spacing.sm,
+  },
+  doneButtonText: {
+    fontSize: 15,
+    fontWeight: "500",
   },
   pressed: {
     opacity: 0.85,

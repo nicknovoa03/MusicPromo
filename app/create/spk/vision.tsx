@@ -23,11 +23,12 @@ function firstParam(p: string | string[] | undefined): string {
   return Array.isArray(p) ? (p[0] ?? "") : (p ?? "");
 }
 
-export default function EpkVisionScreen() {
+export default function SpkVisionScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
   const params = useLocalSearchParams<{
+    artistName: string;
     photoUri: string;
     photoName: string;
     title: string;
@@ -36,6 +37,7 @@ export default function EpkVisionScreen() {
     clipDurationSec: string;
   }>();
 
+  const artistName = firstParam(params.artistName);
   const photoUri = normalizeMediaUri(decodeUriParam(firstParam(params.photoUri)));
   const photoName = firstParam(params.photoName);
   const title = firstParam(params.title);
@@ -50,8 +52,9 @@ export default function EpkVisionScreen() {
   const handleNext = useCallback(() => {
     if (!canAdvance) return;
     router.push({
-      pathname: "/create/epk/preview" as any,
+      pathname: "/create/spk/preview" as any,
       params: {
+        artistName,
         photoUri: encodeUriParam(photoUri ?? ""),
         photoName,
         title,
@@ -96,8 +99,23 @@ export default function EpkVisionScreen() {
                 <Ionicons name="image-outline" size={18} color={secondary} />
               </View>
             )}
-            <Text style={[styles.stripTitle, { color: text }]} numberOfLines={1}>
-              {title || "Untitled"}
+            <View style={styles.stripInfo}>
+              <Text style={[styles.stripTitle, { color: text }]} numberOfLines={1}>
+                {title || "Untitled"}
+              </Text>
+              {artistName ? (
+                <Text style={[styles.stripSubtitle, { color: secondary }]} numberOfLines={1}>
+                  by {artistName}
+                </Text>
+              ) : null}
+            </View>
+          </View>
+
+          {/* Tip box */}
+          <View style={[styles.tipBox, { backgroundColor: colors.dark.surfaceMuted }]}>
+            <Text style={[styles.tipLabel, { color: text }]}>Tip</Text>
+            <Text style={[styles.tipText, { color: secondary }]}>
+              Tell the story of why you made this track. What inspired it? What mood should listeners feel?
             </Text>
           </View>
 
@@ -200,7 +218,7 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
   },
   stripThumb: {
     width: 44,
@@ -213,10 +231,31 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  stripTitle: {
+  stripInfo: {
     flex: 1,
+    gap: 2,
+  },
+  stripTitle: {
     fontSize: 15,
     fontWeight: "600",
+  },
+  stripSubtitle: {
+    fontSize: 12,
+    fontWeight: "400",
+  },
+  tipBox: {
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+    gap: 4,
+  },
+  tipLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  tipText: {
+    fontSize: 13,
+    lineHeight: 19,
   },
   inputLabel: {
     fontSize: 11,

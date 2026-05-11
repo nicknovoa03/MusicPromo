@@ -9,7 +9,7 @@ export interface ProfileLink {
   sortOrder?: number;
 }
 
-export interface EpkCoverSlideProps {
+export interface SpkCoverSlideProps {
   width: number;
   height: number;
   photoUri?: string | null;
@@ -32,19 +32,23 @@ function platformIcon(platform: string): IoniconName {
   return map[platform] ?? "link-outline";
 }
 
-export function EpkCoverSlide({
+export function SpkCoverSlide({
   width,
   height,
   photoUri,
   artistName,
   trackTitle,
   links = [],
-}: EpkCoverSlideProps) {
+}: SpkCoverSlideProps) {
   const pad = Math.round(width * 0.072);
   const visibleLinks = links.slice(0, 4);
 
+  const titleFontSize = Math.min(Math.round(width * 0.11), 46);
+  const iconSize = Math.round(width * 0.045);
+  const iconCircle = Math.round(width * 0.1);
+
   return (
-    <View style={[styles.container, { width, height, backgroundColor: "#111111" }]}>
+    <View style={[styles.container, { width, height, backgroundColor: "#000" }]}>
       {photoUri ? (
         <Image
           source={{ uri: photoUri }}
@@ -54,27 +58,39 @@ export function EpkCoverSlide({
       ) : (
         <View style={[StyleSheet.absoluteFill, styles.noPhotoBackground]} />
       )}
-      <View style={[StyleSheet.absoluteFill, photoUri ? styles.overlay : styles.overlayLight]} />
+      {/* Base overlay */}
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(0,0,0,0.28)" }]} />
+      {/* Bottom strengthener for text legibility */}
+      <View style={[StyleSheet.absoluteFill, styles.bottomGradient]} />
 
       <View style={[styles.content, { padding: pad }]}>
+        {/* Artist name — small caps label at top */}
         <Text style={styles.artistName} numberOfLines={2}>
-          {artistName || "Artist"}
+          {(artistName || "Artist").toUpperCase()}
         </Text>
 
+        {/* Track title + social icons at bottom */}
         <View style={styles.bottom}>
-          <Text style={styles.trackTitle} numberOfLines={2}>
+          <Text
+            style={[styles.trackTitle, { fontSize: titleFontSize, lineHeight: titleFontSize * 0.92 }]}
+            numberOfLines={3}
+            adjustsFontSizeToFit
+            minimumFontScale={0.7}
+          >
             {trackTitle || "Track Title"}
           </Text>
 
           {visibleLinks.length > 0 ? (
             <View style={styles.socialRow}>
               {visibleLinks.map((link) => (
-                <View key={link.platform} style={styles.socialIcon}>
-                  <Ionicons
-                    name={platformIcon(link.platform)}
-                    size={Math.round(width * 0.045)}
-                    color="#FFFFFF"
-                  />
+                <View
+                  key={link.platform}
+                  style={[
+                    styles.socialIcon,
+                    { width: iconCircle, height: iconCircle, borderRadius: iconCircle / 2 },
+                  ]}
+                >
+                  <Ionicons name={platformIcon(link.platform)} size={iconSize} color="#FFFFFF" />
                 </View>
               ))}
             </View>
@@ -89,44 +105,40 @@ const styles = StyleSheet.create({
   container: {
     overflow: "hidden",
   },
-  overlay: {
-    backgroundColor: "rgba(0,0,0,0.52)",
-  },
-  overlayLight: {
-    backgroundColor: "rgba(0,0,0,0.1)",
+  bottomGradient: {
+    top: "45%",
+    backgroundColor: "rgba(0,0,0,0.42)",
   },
   noPhotoBackground: {
-    backgroundColor: "#1A1A2E",
+    backgroundColor: "#0E1014",
   },
   content: {
     flex: 1,
     justifyContent: "space-between",
   },
   artistName: {
-    fontSize: 30,
-    fontWeight: "800",
+    fontSize: 11,
+    fontWeight: "700",
     color: "#FFFFFF",
-    letterSpacing: -0.5,
-    lineHeight: 34,
+    letterSpacing: 2,
   },
   bottom: {
     gap: 10,
   },
   trackTitle: {
-    fontSize: 17,
-    fontWeight: "600",
-    color: "rgba(255,255,255,0.9)",
-    lineHeight: 22,
+    fontWeight: "800",
+    color: "#FFFFFF",
+    letterSpacing: -1,
   },
   socialRow: {
     flexDirection: "row",
     gap: 8,
+    alignSelf: "flex-end",
   },
   socialIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 6,
-    backgroundColor: "rgba(255,255,255,0.15)",
+    backgroundColor: "rgba(255,255,255,0.18)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.4)",
     alignItems: "center",
     justifyContent: "center",
   },

@@ -31,7 +31,7 @@ export default function CreateLayout() {
         }}
       />
       <Stack.Screen
-        name="epk"
+        name="spk"
         options={{
           contentStyle: { backgroundColor: colors.dark.background },
           gestureEnabled: false,

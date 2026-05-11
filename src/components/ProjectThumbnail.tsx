@@ -28,9 +28,9 @@ export function ProjectThumbnail({ project, title, surfaceColor, fallbackIconCol
   const photoUri = normalizeMediaUri(project.photoUri);
   const fallbackPreviewUri = normalizeMediaUri(project.exportedVideoUri);
 
-  const isEpk = !isLocalProject(project) && project.type === "epk";
+  const isSpk = !isLocalProject(project) && project.type === "spk";
 
-  if (isEpk) {
+  if (isSpk) {
     return (
       <View
         style={[styles.thumbnail, { backgroundColor: "#0A0A0A" }]}
@@ -45,8 +45,8 @@ export function ProjectThumbnail({ project, title, surfaceColor, fallbackIconCol
         ) : (
           <Ionicons name="layers-outline" size={30} color={fallbackIconColor} />
         )}
-        <View style={styles.epkBadge}>
-          <Text style={styles.epkBadgeText}>EPK</Text>
+        <View style={styles.spkBadge}>
+          <Text style={styles.spkBadgeText}>SPK</Text>
         </View>
       </View>
     );
@@ -119,19 +119,20 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
   },
-  epkBadge: {
+  spkBadge: {
     position: "absolute",
-    bottom: 4,
-    left: 4,
-    backgroundColor: "rgba(0,0,0,0.72)",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
+    top: 8,
+    left: 8,
+    backgroundColor: "#11131A",
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 999,
   },
-  epkBadgeText: {
-    fontSize: 10,
-    fontWeight: "700",
+  spkBadgeText: {
+    fontSize: 8,
+    fontWeight: "800",
     color: "#FFFFFF",
-    letterSpacing: 0.5,
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
   },
 });

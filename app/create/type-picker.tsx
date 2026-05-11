@@ -22,13 +22,15 @@ const PROJECT_TYPES = [
     description: "Turn a photo + audio clip into a short promo video",
     icon: "film-outline" as const,
     route: "/create/picker" as const,
+    isNew: false,
   },
   {
-    id: "epk",
-    title: "EPK Carousel",
+    id: "spk",
+    title: "Song Press Kit",
     description: "Generate a 4-slide Instagram carousel for a track",
     icon: "layers-outline" as const,
-    route: "/create/epk/details" as const,
+    route: "/create/spk/details" as const,
+    isNew: true,
   },
 ] as const;
 
@@ -89,7 +91,14 @@ export default function TypePickerScreen({ tabEmbedded = false }: TypePickerScre
                 <Ionicons name={type.icon} size={22} color={colors.accent.onFill} />
               </View>
               <View style={styles.cardBody}>
-                <Text style={[styles.cardTitle, { color: text }]}>{type.title}</Text>
+                <View style={styles.cardTitleRow}>
+                  <Text style={[styles.cardTitle, { color: text }]}>{type.title}</Text>
+                  {type.isNew ? (
+                    <View style={[styles.newBadge, { backgroundColor: colors.accent.fill }]}>
+                      <Text style={styles.newBadgeText}>New</Text>
+                    </View>
+                  ) : null}
+                </View>
                 <Text style={[styles.cardDescription, { color: secondary }]}>
                   {type.description}
                 </Text>
@@ -162,6 +171,11 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 3,
   },
+  cardTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
   cardTitle: {
     fontSize: 16,
     fontWeight: "600",
@@ -169,5 +183,16 @@ const styles = StyleSheet.create({
   cardDescription: {
     fontSize: 13,
     lineHeight: 18,
+  },
+  newBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
+  newBadgeText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#FFFFFF",
+    letterSpacing: 0.3,
   },
 });

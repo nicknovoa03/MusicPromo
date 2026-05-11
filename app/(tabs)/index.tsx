@@ -328,9 +328,9 @@ const longPressProjectIdRef = useRef<string | null>(null);
         void Image.prefetch(stageBackgroundUri).catch(() => {});
       }
 
-      if (!isLocalProject(project) && project.type === "epk") {
+      if (!isLocalProject(project) && project.type === "spk") {
         router.push({
-          pathname: "/create/epk/preview" as any,
+          pathname: "/create/spk/preview" as any,
           params: {
             projectId: String(project._id),
             photoUri: encodeUriParam(projectPhotoUri ?? ""),
@@ -630,7 +630,7 @@ const longPressProjectIdRef = useRef<string | null>(null);
       const canRenderNativeProjectGestures =
         canUseNativeProjectGestures && expoSwiftUI && !isSelectionMode && !isDeleting;
       const isRNCardGestureOwner = !canRenderNativeProjectGestures;
-      const isEpkProject = !isLocalProject(item) && item.type === "epk";
+      const isSpkProject = !isLocalProject(item) && item.type === "spk";
       const cardContent = (
         <View style={styles.cardContent}>
           <ProjectThumbnail
@@ -644,7 +644,7 @@ const longPressProjectIdRef = useRef<string | null>(null);
               {title}
             </Text>
             <Text style={[styles.cardDate, { color: homeTextSecondaryColor }]}>
-              {isEpkProject ? "EPK Carousel" : formatDate(item.createdAt)}
+              {isSpkProject ? "Song Press Kit" : formatDate(item.createdAt)}
             </Text>
           </View>
         </View>

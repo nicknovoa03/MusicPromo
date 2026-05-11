@@ -34,4 +34,4 @@ All wireframes, mockups, and web-rendered previews must load Inter via the font 
 
 ## Current Phase
 
-Phase 8 — EPK Carousel. Requirements: `docs/requirements/EPK_CAROUSEL_REQUIREMENTS.md`.
+Phase 8 — Song Press Kit. Requirements: `docs/requirements/SONG_PRESS_KIT_REQUIREMENTS.md`.

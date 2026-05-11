@@ -1,6 +1,6 @@
 import { View, Text, StyleSheet } from "react-native";
 
-export interface EpkTrackDetailsSlideProps {
+export interface SpkTrackDetailsSlideProps {
   width: number;
   height: number;
   trackTitle?: string | null;
@@ -15,13 +15,13 @@ function formatDuration(sec: number): string {
   return s > 0 ? `${m}m ${s}s clip` : `${m}m clip`;
 }
 
-export function EpkTrackDetailsSlide({
+export function SpkTrackDetailsSlide({
   width,
   height,
   trackTitle,
   templateName,
   clipDurationSec,
-}: EpkTrackDetailsSlideProps) {
+}: SpkTrackDetailsSlideProps) {
   const pad = Math.round(width * 0.072);
   const hasMeta = Boolean(templateName || (clipDurationSec && clipDurationSec > 0));
 
@@ -40,29 +40,20 @@ export function EpkTrackDetailsSlide({
         </Text>
 
         {hasMeta ? (
-          <View style={styles.metaRow}>
-            {templateName ? (
-              <View style={styles.metaChip}>
-                <Text style={styles.metaText}>{templateName}</Text>
-              </View>
-            ) : null}
-            {clipDurationSec && clipDurationSec > 0 ? (
-              <View style={styles.metaChip}>
-                <Text style={styles.metaText}>{formatDuration(clipDurationSec)}</Text>
-              </View>
-            ) : null}
-          </View>
+          <Text style={styles.metaText}>
+            {[templateName, clipDurationSec && clipDurationSec > 0 ? formatDuration(clipDurationSec) : null]
+              .filter(Boolean)
+              .join(" · ")}
+          </Text>
         ) : null}
       </View>
-
-      <View style={styles.accent} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: "#0A0A0A",
+    backgroundColor: "#0E1014",
     overflow: "hidden",
   },
   sectionLabel: {
@@ -76,7 +67,7 @@ const styles = StyleSheet.create({
   body: {
     flex: 1,
     justifyContent: "center",
-    gap: 20,
+    gap: 12,
   },
   title: {
     fontWeight: "800",
@@ -84,26 +75,10 @@ const styles = StyleSheet.create({
     letterSpacing: -1,
     lineHeight: undefined,
   },
-  metaRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  metaChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 100,
-    backgroundColor: "rgba(255,255,255,0.1)",
-  },
   metaText: {
     fontSize: 13,
-    fontWeight: "500",
-    color: "rgba(255,255,255,0.6)",
-  },
-  accent: {
-    height: 2,
-    width: 40,
-    backgroundColor: "rgba(255,255,255,0.2)",
-    borderRadius: 1,
+    fontWeight: "400",
+    color: "rgba(255,255,255,0.55)",
+    lineHeight: 18,
   },
 });

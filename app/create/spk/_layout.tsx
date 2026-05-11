@@ -2,7 +2,7 @@ import { Stack } from "expo-router";
 import { Platform } from "react-native";
 import { colors } from "@/constants/tokens";
 
-export default function EpkLayout() {
+export default function SpkLayout() {
   const animation = Platform.OS === "ios" ? "default" : "slide_from_right";
 
   return (

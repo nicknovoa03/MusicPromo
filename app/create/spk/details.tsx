@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -24,6 +24,7 @@ import type { Doc } from "../../../convex/_generated/dataModel";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
 import { encodeUriParam } from "@/lib/uri";
 import { normalizeMediaUri } from "@/lib/mediaUri";
+import * as FileSystem from "expo-file-system/legacy";
 import { getTemplateDefinition, resolveTemplateId } from "@/lib/templates";
 import { useLocalSession } from "@/providers/localSession";
 import { listLocalProjects, type LocalProject } from "@/lib/localProjects";
@@ -48,7 +49,7 @@ function formatDate(ts: number) {
   });
 }
 
-export default function EpkDetailsScreen() {
+export default function SpkDetailsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { isLocalGuest } = useLocalSession();
@@ -67,12 +68,7 @@ export default function EpkDetailsScreen() {
     }, [isLocalGuest]),
   );
 
-  const videoProjects: AnyProject[] = isLocalGuest
-    ? (localProjects ?? [])
-    : (convexProjects ?? []).filter(
-        (p) => !p.type || p.type === "video",
-      );
-
+  const [artistName, setArtistName] = useState("");
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [photoName, setPhotoName] = useState<string | null>(null);
   const [title, setTitle] = useState("");
@@ -80,7 +76,10 @@ export default function EpkDetailsScreen() {
   const [templateName, setTemplateName] = useState<string | null>(null);
   const [clipDurationSec, setClipDurationSec] = useState<number | null>(null);
   const [showProjectPicker, setShowProjectPicker] = useState(false);
+  const [pickerProjects, setPickerProjects] = useState<AnyProject[]>([]);
+  const [isLoadingPicker, setIsLoadingPicker] = useState(false);
   const [isPickingPhoto, setIsPickingPhoto] = useState(false);
+  const pickerCheckRef = useRef<Promise<void> | null>(null);
 
   const canAdvance = Boolean(photoUri && title.trim());
 
@@ -131,11 +130,42 @@ export default function EpkDetailsScreen() {
     setClipDurationSec(null);
   }, []);
 
+  const openProjectPicker = useCallback(() => {
+    setShowProjectPicker(true);
+    setIsLoadingPicker(true);
+
+    const candidates: AnyProject[] = isLocalGuest
+      ? (localProjects ?? []).filter((p) => Boolean(p.photoUri))
+      : (convexProjects ?? []).filter(
+          (p) => (!p.type || p.type === "video") && Boolean(p.photoUri),
+        );
+
+    const check = (async () => {
+      const flags = await Promise.all(
+        candidates.map(async (p) => {
+          const uri = normalizeMediaUri(p.photoUri);
+          if (!uri || !uri.startsWith("file://")) return true;
+          try {
+            const info = await FileSystem.getInfoAsync(uri);
+            return info.exists;
+          } catch {
+            return false;
+          }
+        }),
+      );
+      setPickerProjects(candidates.filter((_, i) => flags[i]));
+      setIsLoadingPicker(false);
+    })();
+
+    pickerCheckRef.current = check;
+  }, [isLocalGuest, localProjects, convexProjects]);
+
   const handleNext = useCallback(() => {
     if (!canAdvance) return;
     router.push({
-      pathname: "/create/epk/vision" as any,
+      pathname: "/create/spk/vision" as any,
       params: {
+        artistName: artistName.trim(),
         photoUri: encodeUriParam(photoUri ?? ""),
         photoName: photoName ?? "",
         title: title.trim(),
@@ -159,7 +189,7 @@ export default function EpkDetailsScreen() {
         <Pressable style={styles.backButton} onPress={() => router.back()} accessibilityLabel="Back">
           <Ionicons name="chevron-back" size={22} color={text} />
         </Pressable>
-        <Text style={[styles.headerTitle, { color: text }]}>New EPK</Text>
+        <Text style={[styles.headerTitle, { color: text }]}>New Song Press Kit</Text>
         <Text style={[styles.stepLabel, { color: secondary }]}>1 of 3</Text>
       </View>
 
@@ -173,6 +203,20 @@ export default function EpkDetailsScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
+          {/* Artist name */}
+          <Text style={[styles.sectionTitle, { color: text }]}>Artist Name</Text>
+          <View style={[styles.inputWrapper, { backgroundColor: surface, borderColor: border }, { marginBottom: spacing.lg }]}>
+            <TextInput
+              style={[styles.textInput, { color: text }]}
+              placeholder="Your artist name"
+              placeholderTextColor={secondary}
+              value={artistName}
+              onChangeText={setArtistName}
+              returnKeyType="done"
+              maxLength={80}
+            />
+          </View>
+
           <Text style={[styles.sectionTitle, { color: text }]}>Track Artwork</Text>
 
           {/* Photo picker */}
@@ -215,7 +259,7 @@ export default function EpkDetailsScreen() {
                 { backgroundColor: muted, borderColor: border },
                 pressed && styles.pressed,
               ]}
-              onPress={() => setShowProjectPicker(true)}
+              onPress={openProjectPicker}
               accessibilityRole="button"
               accessibilityLabel="Link to existing Music Promo project"
             >
@@ -298,7 +342,11 @@ export default function EpkDetailsScreen() {
             </Pressable>
           </View>
 
-          {videoProjects.length === 0 ? (
+          {isLoadingPicker ? (
+            <View style={styles.modalEmpty}>
+              <ActivityIndicator size="large" color={secondary} />
+            </View>
+          ) : pickerProjects.length === 0 ? (
             <View style={styles.modalEmpty}>
               <Text style={[styles.modalEmptyText, { color: secondary }]}>
                 {isLocalGuest
@@ -308,7 +356,7 @@ export default function EpkDetailsScreen() {
             </View>
           ) : (
             <FlatList
-              data={videoProjects}
+              data={pickerProjects}
               keyExtractor={getProjectId}
               contentContainerStyle={styles.modalList}
               renderItem={({ item }) => {
