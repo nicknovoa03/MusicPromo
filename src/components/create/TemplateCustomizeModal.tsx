@@ -18,11 +18,25 @@ import {
 } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import * as Haptics from "expo-haptics";
-import { Image as ExpoImage } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { toByteArray } from "base64-js";
 import { type AspectRatio } from "@/components/create/AspectRatioToggle";
+import { CustomColorPanel } from "@/components/create/background/CustomColorPanel";
+import {
+  CUSTOM_LIGHTNESS_MAX,
+  CUSTOM_LIGHTNESS_MIN,
+  DEFAULT_CUSTOM_HUE,
+  DEFAULT_CUSTOM_LIGHTNESS,
+  DEFAULT_CUSTOM_SATURATION,
+  parseCustomColorFromHex,
+} from "@/components/create/background/paletteData";
+import type { PaletteSwatch } from "@/components/create/background/PaletteStrip";
+import {
+  buildPhotoMatchedBackgroundOptions,
+  isPresetBackgroundColor,
+} from "@/components/create/background/photoMatchedBackground";
+import type { BackgroundOption } from "@/components/create/background/types";
+import { clamp, hexToHsl, hslToHex } from "@/lib/colorUtils";
 import { TemplateInfoBadge } from "@/components/create/TemplateInfoBadge";
 import {
   TemplateSwitcher,
@@ -61,13 +75,6 @@ interface TemplateCustomizeModalProps {
   }) => void;
 }
 
-interface BackgroundOption {
-  id: string;
-  label: string;
-  color: string | null;
-  swatch: string;
-}
-
 type TemplateControlTab =
   | "layout"
   | "quickTune"
@@ -83,13 +90,6 @@ const TEMPLATE_CONTROL_TABS: Array<{ id: TemplateControlTab; label: string }> = 
   { id: "media", label: "Media" },
 ];
 const ASPECT_OPTIONS: AspectRatio[] = ["1:1", "4:5", "9:16"];
-
-function isPresetBackgroundColor(
-  color: string | null | undefined,
-  options: BackgroundOption[],
-): boolean {
-  return options.some((option) => option.color === (color ?? null));
-}
 
 const SPIN_SPEED_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5];
 const RECORD_SIZE_OPTIONS = [0.8, 1, 1.2];
@@ -108,16 +108,8 @@ const ROTATION_DIRECTION_OPTIONS: Array<{
   { label: "CW", value: "cw" },
   { label: "CCW", value: "ccw" },
 ];
-const DEFAULT_CUSTOM_SATURATION = 68;
-const CUSTOM_LIGHTNESS_MIN = 8;
-const CUSTOM_LIGHTNESS_MAX = 94;
-const DEFAULT_CUSTOM_HUE = 252;
-const DEFAULT_CUSTOM_LIGHTNESS = 34;
-const CUSTOM_TONE_OPTIONS = [14, 32, 50, 68, 86];
-const CUSTOM_TONE_LABELS = ["Deep", "Dark", "Base", "Soft", "Glow"] as const;
 const STAGE_HORIZONTAL_PADDING = spacing.sm * 2;
 const SHEET_RESTING_OFFSET = 14;
-const PHOTO_BACKGROUND_SWATCH_COUNT = 5;
 const CORE_BACKGROUND_OPTIONS: BackgroundOption[] = [
   { id: "default", label: "Default", color: null, swatch: "#000000" },
 ];
@@ -183,10 +175,6 @@ function formatRotationStart(value: number): string {
   return `${displayValue}°`;
 }
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(value, max));
-}
-
 function findClosestOptionIndex(options: number[], value: number): number {
   const exactIndex = options.indexOf(value);
   if (exactIndex >= 0) return exactIndex;
@@ -203,592 +191,6 @@ function findClosestOptionIndex(options: number[], value: number): number {
     }
   }
   return closestIndex;
-}
-
-function hslToHex(h: number, s: number, l: number): string {
-  const hue = ((h % 360) + 360) % 360;
-  const sat = clamp(s, 0, 100) / 100;
-  const light = clamp(l, 0, 100) / 100;
-  const chroma = (1 - Math.abs(2 * light - 1)) * sat;
-  const x = chroma * (1 - Math.abs(((hue / 60) % 2) - 1));
-  const match = light - chroma / 2;
-
-  let red = 0;
-  let green = 0;
-  let blue = 0;
-  if (hue < 60) {
-    red = chroma;
-    green = x;
-  } else if (hue < 120) {
-    red = x;
-    green = chroma;
-  } else if (hue < 180) {
-    green = chroma;
-    blue = x;
-  } else if (hue < 240) {
-    green = x;
-    blue = chroma;
-  } else if (hue < 300) {
-    red = x;
-    blue = chroma;
-  } else {
-    red = chroma;
-    blue = x;
-  }
-
-  const toHex = (value: number) =>
-    Math.round((value + match) * 255)
-      .toString(16)
-      .padStart(2, "0");
-
-  return `#${toHex(red)}${toHex(green)}${toHex(blue)}`;
-}
-
-interface PaletteSwatch {
-  id: string;
-  label: string;
-  h: number;
-  s: number;
-  l: number;
-  hex: string;
-}
-
-interface PaletteSection {
-  id: string;
-  label: string;
-  swatches: PaletteSwatch[];
-}
-
-function buildPaletteSwatches(
-  prefix: string,
-  hues: number[],
-  saturation: number,
-  lightness: number,
-): PaletteSwatch[] {
-  return hues.map((hue) => ({
-    id: `${prefix}-${hue}`,
-    label: `${Math.round(hue)}deg`,
-    h: hue,
-    s: saturation,
-    l: lightness,
-    hex: hslToHex(hue, saturation, lightness),
-  }));
-}
-
-const PRIMARY_PALETTE_HUES = [0, 22, 42, 62, 90, 118, 145, 176, 205, 232, 262, 292, 322];
-const SECONDARY_PALETTE_HUES = [8, 30, 52, 74, 102, 130, 158, 186, 214, 242, 272, 302, 332];
-const GRAYSCALE_LIGHTNESS_STOPS = [8, 14, 22, 30, 38, 46, 56, 66, 76, 84, 90, 96];
-const SOFT_PALETTE_SATURATION_STOPS = [34, 30, 28, 32, 30, 28, 30, 32, 30, 28, 30, 32, 34];
-const SOFT_PALETTE_LIGHTNESS_STOPS = [72, 74, 76, 73, 75, 77, 74, 72, 73, 75, 74, 72, 71];
-
-const PALETTE_SECTIONS: PaletteSection[] = [
-  {
-    id: "core",
-    label: "Palette A",
-    swatches: buildPaletteSwatches("core", PRIMARY_PALETTE_HUES, 86, 52),
-  },
-  {
-    id: "studio",
-    label: "Palette B",
-    swatches: SECONDARY_PALETTE_HUES.map((hue, index) => {
-      const saturation = SOFT_PALETTE_SATURATION_STOPS[index] ?? 30;
-      const lightness = SOFT_PALETTE_LIGHTNESS_STOPS[index] ?? 74;
-      return {
-        id: `studio-${hue}`,
-        label: `${Math.round(hue)}deg`,
-        h: hue,
-        s: saturation,
-        l: lightness,
-        hex: hslToHex(hue, saturation, lightness),
-      };
-    }),
-  },
-  {
-    id: "gray",
-    label: "Grayscale",
-    swatches: GRAYSCALE_LIGHTNESS_STOPS.map((lightness) => ({
-      id: `gray-${lightness}`,
-      label: `Gray ${lightness}`,
-      h: 0,
-      s: 0,
-      l: lightness,
-      hex: hslToHex(0, 0, lightness),
-    })),
-  },
-];
-
-function hexToHsl(hex: string): { h: number; s: number; l: number } | null {
-  const normalized = hex.trim().replace("#", "");
-  if (!/^[0-9a-fA-F]{6}$/.test(normalized)) return null;
-  const r = Number.parseInt(normalized.slice(0, 2), 16) / 255;
-  const g = Number.parseInt(normalized.slice(2, 4), 16) / 255;
-  const b = Number.parseInt(normalized.slice(4, 6), 16) / 255;
-
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  const delta = max - min;
-  const lightness = (max + min) / 2;
-  const saturation =
-    delta === 0 ? 0 : delta / (1 - Math.abs(2 * lightness - 1));
-
-  let hue = 0;
-  if (delta !== 0) {
-    if (max === r) hue = ((g - b) / delta) % 6;
-    else if (max === g) hue = (b - r) / delta + 2;
-    else hue = (r - g) / delta + 4;
-    hue *= 60;
-    if (hue < 0) hue += 360;
-  }
-
-  return {
-    h: hue,
-    s: saturation * 100,
-    l: lightness * 100,
-  };
-}
-
-function hueDistance(a: number, b: number): number {
-  const delta = Math.abs(a - b) % 360;
-  return Math.min(delta, 360 - delta);
-}
-
-function rgbToHsl(r: number, g: number, b: number): { h: number; s: number; l: number } {
-  const red = clamp(r, 0, 255) / 255;
-  const green = clamp(g, 0, 255) / 255;
-  const blue = clamp(b, 0, 255) / 255;
-
-  const max = Math.max(red, green, blue);
-  const min = Math.min(red, green, blue);
-  const delta = max - min;
-  const lightness = (max + min) / 2;
-  const saturation =
-    delta === 0 ? 0 : delta / (1 - Math.abs(2 * lightness - 1));
-
-  let hue = 0;
-  if (delta !== 0) {
-    if (max === red) hue = ((green - blue) / delta) % 6;
-    else if (max === green) hue = (blue - red) / delta + 2;
-    else hue = (red - green) / delta + 4;
-    hue *= 60;
-    if (hue < 0) hue += 360;
-  }
-
-  return {
-    h: hue,
-    s: saturation * 100,
-    l: lightness * 100,
-  };
-}
-
-function rgbToHex(r: number, g: number, b: number): string {
-  const toHex = (value: number) =>
-    Math.round(clamp(value, 0, 255))
-      .toString(16)
-      .padStart(2, "0");
-  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
-}
-
-function thumbHashToApproximateAspectRatio(hash: Uint8Array): number {
-  const header = hash[3];
-  const hasAlpha = hash[2] & 0x80;
-  const isLandscape = hash[4] & 0x80;
-  const lx = isLandscape ? (hasAlpha ? 5 : 7) : header & 7;
-  const ly = isLandscape ? header & 7 : hasAlpha ? 5 : 7;
-  return lx / ly;
-}
-
-// Adapted from the ThumbHash reference decoder (MIT) to derive color clusters.
-function decodeThumbHashToRGBA(hash: Uint8Array) {
-  const { PI, min, max, cos, round } = Math;
-  const header24 = hash[0] | (hash[1] << 8) | (hash[2] << 16);
-  const header16 = hash[3] | (hash[4] << 8);
-  const lDc = (header24 & 63) / 63;
-  const pDc = ((header24 >> 6) & 63) / 31.5 - 1;
-  const qDc = ((header24 >> 12) & 63) / 31.5 - 1;
-  const lScale = ((header24 >> 18) & 31) / 31;
-  const hasAlpha = header24 >> 23;
-  const pScale = ((header16 >> 3) & 63) / 63;
-  const qScale = ((header16 >> 9) & 63) / 63;
-  const isLandscape = header16 >> 15;
-  const lx = max(3, isLandscape ? (hasAlpha ? 5 : 7) : header16 & 7);
-  const ly = max(3, isLandscape ? header16 & 7 : hasAlpha ? 5 : 7);
-  const aDc = hasAlpha ? (hash[5] & 15) / 15 : 1;
-  const aScale = (hash[5] >> 4) / 15;
-
-  const acStart = hasAlpha ? 6 : 5;
-  let acIndex = 0;
-  const decodeChannel = (nx: number, ny: number, scale: number) => {
-    const ac: number[] = [];
-    for (let cy = 0; cy < ny; cy += 1) {
-      for (let cx = cy ? 0 : 1; cx * ny < nx * (ny - cy); cx += 1) {
-        const hashByte = hash[acStart + (acIndex >> 1)] ?? 0;
-        const value = (hashByte >> ((acIndex++ & 1) << 2)) & 15;
-        ac.push((value / 7.5 - 1) * scale);
-      }
-    }
-    return ac;
-  };
-
-  const lAc = decodeChannel(lx, ly, lScale);
-  const pAc = decodeChannel(3, 3, pScale * 1.25);
-  const qAc = decodeChannel(3, 3, qScale * 1.25);
-  const aAc = hasAlpha ? decodeChannel(5, 5, aScale) : null;
-
-  const ratio = thumbHashToApproximateAspectRatio(hash);
-  const w = round(ratio > 1 ? 32 : 32 * ratio);
-  const h = round(ratio > 1 ? 32 / ratio : 32);
-  const rgba = new Uint8Array(w * h * 4);
-  const fx: number[] = [];
-  const fy: number[] = [];
-
-  for (let y = 0, i = 0; y < h; y += 1) {
-    for (let x = 0; x < w; x += 1, i += 4) {
-      let l = lDc;
-      let p = pDc;
-      let q = qDc;
-      let a = aDc;
-
-      for (let cx = 0, n = max(lx, hasAlpha ? 5 : 3); cx < n; cx += 1) {
-        fx[cx] = cos((PI / w) * (x + 0.5) * cx);
-      }
-      for (let cy = 0, n = max(ly, hasAlpha ? 5 : 3); cy < n; cy += 1) {
-        fy[cy] = cos((PI / h) * (y + 0.5) * cy);
-      }
-
-      for (let cy = 0, j = 0; cy < ly; cy += 1) {
-        for (
-          let cx = cy ? 0 : 1, fy2 = fy[cy] * 2;
-          cx * ly < lx * (ly - cy);
-          cx += 1, j += 1
-        ) {
-          l += lAc[j] * fx[cx] * fy2;
-        }
-      }
-
-      for (let cy = 0, j = 0; cy < 3; cy += 1) {
-        for (let cx = cy ? 0 : 1, fy2 = fy[cy] * 2; cx < 3 - cy; cx += 1, j += 1) {
-          const f = fx[cx] * fy2;
-          p += pAc[j] * f;
-          q += qAc[j] * f;
-        }
-      }
-
-      if (hasAlpha && aAc) {
-        for (let cy = 0, j = 0; cy < 5; cy += 1) {
-          for (let cx = cy ? 0 : 1, fy2 = fy[cy] * 2; cx < 5 - cy; cx += 1, j += 1) {
-            a += aAc[j] * fx[cx] * fy2;
-          }
-        }
-      }
-
-      const blue = l - (2 / 3) * p;
-      const red = (3 * l - blue + q) / 2;
-      const green = red - q;
-      rgba[i] = max(0, 255 * min(1, red));
-      rgba[i + 1] = max(0, 255 * min(1, green));
-      rgba[i + 2] = max(0, 255 * min(1, blue));
-      rgba[i + 3] = max(0, 255 * min(1, a));
-    }
-  }
-
-  return { rgba };
-}
-
-function colorDistanceSquared(
-  a: { r: number; g: number; b: number },
-  b: { r: number; g: number; b: number },
-): number {
-  const dr = a.r - b.r;
-  const dg = a.g - b.g;
-  const db = a.b - b.b;
-  return dr * dr + dg * dg + db * db;
-}
-
-function extractProminentPhotoHexes(hashBytes: Uint8Array, count: number): string[] {
-  const { rgba } = decodeThumbHashToRGBA(hashBytes);
-  const bins = new Map<
-    string,
-    { rSum: number; gSum: number; bSum: number; weight: number }
-  >();
-
-  for (let index = 0; index < rgba.length; index += 4) {
-    const alpha = rgba[index + 3] / 255;
-    if (alpha < 0.08) continue;
-
-    const r = rgba[index];
-    const g = rgba[index + 1];
-    const b = rgba[index + 2];
-    const maxChannel = Math.max(r, g, b);
-    const minChannel = Math.min(r, g, b);
-    const saturation = maxChannel <= 0 ? 0 : (maxChannel - minChannel) / maxChannel;
-    const weight = alpha * (0.55 + saturation * 0.8);
-    const key = `${r >> 4}-${g >> 4}-${b >> 4}`;
-    const existing = bins.get(key);
-    if (existing) {
-      existing.rSum += r * weight;
-      existing.gSum += g * weight;
-      existing.bSum += b * weight;
-      existing.weight += weight;
-    } else {
-      bins.set(key, {
-        rSum: r * weight,
-        gSum: g * weight,
-        bSum: b * weight,
-        weight,
-      });
-    }
-  }
-
-  const sortedBins = Array.from(bins.values())
-    .filter((bin) => bin.weight > 0)
-    .map((bin) => ({
-      r: Math.round(bin.rSum / bin.weight),
-      g: Math.round(bin.gSum / bin.weight),
-      b: Math.round(bin.bSum / bin.weight),
-      weight: bin.weight,
-    }))
-    .sort((a, b) => b.weight - a.weight);
-
-  const prominent: Array<{ r: number; g: number; b: number }> = [];
-  const MIN_DISTANCE = 40 * 40;
-  for (const candidate of sortedBins) {
-    const isDistinct = prominent.every(
-      (entry) => colorDistanceSquared(entry, candidate) >= MIN_DISTANCE,
-    );
-    if (!isDistinct) continue;
-    prominent.push(candidate);
-    if (prominent.length >= count) break;
-  }
-
-  for (const candidate of sortedBins) {
-    if (prominent.length >= count) break;
-    const alreadyPresent = prominent.some(
-      (entry) => colorDistanceSquared(entry, candidate) < 16 * 16,
-    );
-    if (alreadyPresent) continue;
-    prominent.push(candidate);
-  }
-
-  const result = prominent.slice(0, count).map((entry) => rgbToHex(entry.r, entry.g, entry.b));
-  if (result.length === 0) return result;
-
-  const fallbackBase = hexToHsl(result[0]) ?? { h: 220, s: 40, l: 50 };
-  while (result.length < count) {
-    const index = result.length;
-    const hue = (fallbackBase.h + index * 47) % 360;
-    const saturation = clamp(
-      fallbackBase.s + (index % 2 === 0 ? 10 : -6),
-      24,
-      88,
-    );
-    const lightness = clamp(
-      fallbackBase.l + (index % 2 === 0 ? 12 : -10),
-      22,
-      74,
-    );
-    result.push(hslToHex(hue, saturation, lightness));
-  }
-
-  return result.slice(0, count);
-}
-
-async function buildPhotoMatchedBackgroundOptions(photoUri: string) {
-  try {
-    const thumbhash = await ExpoImage.generateThumbhashAsync(photoUri);
-    if (!thumbhash) return null;
-
-    const normalizedThumbhash = thumbhash.replace(/\\/g, "/");
-    const thumbhashRemainder = normalizedThumbhash.length % 4;
-    const paddedThumbhash =
-      thumbhashRemainder === 0
-        ? normalizedThumbhash
-        : normalizedThumbhash.padEnd(
-            normalizedThumbhash.length + (4 - thumbhashRemainder),
-            "=",
-          );
-    const hashBytes = toByteArray(paddedThumbhash);
-    if (hashBytes.length < 5) return null;
-
-    const prominentHexes = extractProminentPhotoHexes(
-      hashBytes,
-      PHOTO_BACKGROUND_SWATCH_COUNT,
-    );
-    if (prominentHexes.length === 0) return null;
-
-    return prominentHexes.map((hex, index) => {
-      const parsed = hexToHsl(hex) ?? { h: (index * 72) % 360, s: 56, l: 48 };
-      const backgroundSaturation = clamp(parsed.s * 0.9 + 20, 30, 96);
-      const backgroundLightness = clamp(14 + parsed.l * 0.32, 10, 48);
-      const swatchSaturation = clamp(parsed.s * 1.08 + 14, 40, 100);
-      const swatchLightness = clamp(30 + parsed.l * 0.66, 30, 88);
-
-      return {
-        id: `photo-${index}`,
-        label: `Photo ${index + 1}`,
-        color: hslToHex(parsed.h, backgroundSaturation, backgroundLightness),
-        swatch: hslToHex(parsed.h, swatchSaturation, swatchLightness),
-      };
-    });
-  } catch {
-    return null;
-  }
-}
-
-interface PaletteStripProps {
-  hue: number;
-  saturation: number;
-  lightness: number;
-  disabled?: boolean;
-  onSelect: (swatch: PaletteSwatch) => void;
-}
-
-function PaletteStrip({
-  hue,
-  saturation,
-  lightness,
-  disabled = false,
-  onSelect,
-}: PaletteStripProps) {
-  const normalizedHue = ((hue % 360) + 360) % 360;
-  const [paletteViewportWidth, setPaletteViewportWidth] = useState(0);
-  const [paletteScrollX, setPaletteScrollX] = useState(0);
-  const [sectionLayouts, setSectionLayouts] = useState<
-    Record<string, { x: number; width: number }>
-  >({});
-  const selectedGrayscaleSwatchId = useMemo(() => {
-    if (saturation > 8) return null;
-    const grayscaleSection = PALETTE_SECTIONS.find((section) => section.id === "gray");
-    if (!grayscaleSection) return null;
-
-    const closest = grayscaleSection.swatches.reduce(
-      (best, swatch) => {
-        const swatchLightness = clamp(
-          swatch.l,
-          CUSTOM_LIGHTNESS_MIN,
-          CUSTOM_LIGHTNESS_MAX,
-        );
-        const distance = Math.abs(lightness - swatchLightness);
-        if (!best || distance < best.distance) {
-          return { id: swatch.id, distance };
-        }
-        return best;
-      },
-      null as { id: string; distance: number } | null,
-    );
-    return closest?.id ?? null;
-  }, [lightness, saturation]);
-
-  const isSelected = useCallback(
-    (swatch: PaletteSwatch) => {
-      if (swatch.s <= 2) {
-        return saturation <= 8 && swatch.id === selectedGrayscaleSwatchId;
-      }
-      return (
-        hueDistance(normalizedHue, swatch.h) <= 10 &&
-        Math.abs(saturation - swatch.s) <= 16
-      );
-    },
-    [normalizedHue, saturation, selectedGrayscaleSwatchId],
-  );
-  const activePalettePageIndex = useMemo(() => {
-    if (paletteViewportWidth <= 0) return 0;
-    const viewportCenter = paletteScrollX + paletteViewportWidth / 2;
-    let closestIndex = 0;
-    let closestDistance = Number.POSITIVE_INFINITY;
-
-    PALETTE_SECTIONS.forEach((section, index) => {
-      const layout = sectionLayouts[section.id];
-      if (!layout) return;
-      const sectionCenter = layout.x + layout.width / 2;
-      const distance = Math.abs(sectionCenter - viewportCenter);
-      if (distance < closestDistance) {
-        closestDistance = distance;
-        closestIndex = index;
-      }
-    });
-
-    return closestIndex;
-  }, [paletteScrollX, paletteViewportWidth, sectionLayouts]);
-
-  return (
-    <View style={styles.paletteStripWrap}>
-      <ScrollView
-        horizontal
-        nestedScrollEnabled
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.paletteStripRow}
-        style={styles.paletteStripScroll}
-        onLayout={(event) => {
-          setPaletteViewportWidth(event.nativeEvent.layout.width);
-        }}
-        onScroll={(event) => {
-          setPaletteScrollX(event.nativeEvent.contentOffset.x);
-        }}
-        scrollEventThrottle={16}
-      >
-        {PALETTE_SECTIONS.map((section, sectionIndex) => (
-          <View
-            key={section.id}
-            style={styles.paletteSection}
-            onLayout={(event) => {
-              const { x, width } = event.nativeEvent.layout;
-              setSectionLayouts((previous) => {
-                const existing = previous[section.id];
-                if (
-                  existing &&
-                  Math.abs(existing.x - x) < 1 &&
-                  Math.abs(existing.width - width) < 1
-                ) {
-                  return previous;
-                }
-                return { ...previous, [section.id]: { x, width } };
-              });
-            }}
-          >
-            <Text style={styles.paletteSectionLabel}>{section.label}</Text>
-            <View style={styles.paletteSectionSwatches}>
-              {section.swatches.map((swatch) => {
-                const selected = isSelected(swatch);
-                return (
-                  <Pressable
-                    key={swatch.id}
-                    onPress={() => onSelect(swatch)}
-                    disabled={disabled}
-                    style={[
-                      styles.paletteDotWrap,
-                      selected && styles.paletteDotWrapSelected,
-                      disabled && styles.paletteDotWrapDisabled,
-                      { backgroundColor: swatch.hex },
-                    ]}
-                    accessibilityLabel={`${section.label} ${swatch.label}`}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected, disabled }}
-                  />
-                );
-              })}
-            </View>
-            {sectionIndex < PALETTE_SECTIONS.length - 1 ? (
-              <View style={styles.paletteSectionDivider} />
-            ) : null}
-          </View>
-        ))}
-      </ScrollView>
-      <View style={styles.palettePager}>
-        {PALETTE_SECTIONS.map((section, index) => {
-          const isActive = index === activePalettePageIndex;
-          return (
-            <View
-              key={`pager-${section.id}`}
-              style={[
-                styles.palettePagerDot,
-                isActive && styles.palettePagerDotActive,
-              ]}
-            />
-          );
-        })}
-      </View>
-    </View>
-  );
 }
 
 async function triggerSelectionHaptic() {
@@ -938,20 +340,10 @@ export function TemplateCustomizeModal({
     );
     setLastPresetBackgroundColor(isPreset ? value.stageBackgroundColor ?? null : null);
 
-    const parsed = value.stageBackgroundColor
-      ? hexToHsl(value.stageBackgroundColor)
-      : null;
-    if (parsed) {
-      setCustomHue(parsed.h);
-      setCustomSaturation(clamp(parsed.s, 0, 100));
-      setCustomLightness(
-        clamp(parsed.l, CUSTOM_LIGHTNESS_MIN, CUSTOM_LIGHTNESS_MAX),
-      );
-      return;
-    }
-    setCustomHue(DEFAULT_CUSTOM_HUE);
-    setCustomSaturation(DEFAULT_CUSTOM_SATURATION);
-    setCustomLightness(DEFAULT_CUSTOM_LIGHTNESS);
+    const parsed = parseCustomColorFromHex(value.stageBackgroundColor ?? null);
+    setCustomHue(parsed.hue);
+    setCustomSaturation(parsed.saturation);
+    setCustomLightness(parsed.lightness);
   }, [aspectRatio, backgroundOptions, templateId, value, visible]);
 
   const isBackgroundPhotoSelected = Boolean(draft.stageBackgroundImageUri);
@@ -1935,62 +1327,15 @@ export function TemplateCustomizeModal({
                       })}
                     </ScrollView>
                     {isCustomColorEnabled ? (
-                      <View style={styles.customColorCard}>
-                        <View style={styles.customColorHeader}>
-                          <Text style={styles.customColorTitle}>Custom Color</Text>
-                          <View
-                            style={[
-                              styles.customColorSwatch,
-                              { backgroundColor: customColor },
-                            ]}
-                          />
-                        </View>
-
-                        <View style={styles.customHueHeader}>
-                          <Text style={styles.customHueLabel}>Palette</Text>
-                        </View>
-                        <PaletteStrip
-                          hue={customHue}
-                          saturation={customSaturation}
-                          lightness={customLightness}
-                          disabled={!isCustomColorEnabled}
-                          onSelect={handleCustomPaletteSelect}
-                        />
-
-                        {showToneOptions ? (
-                          <>
-                            <View style={styles.customHueHeader}>
-                              <Text style={styles.customHueLabel}>Tone</Text>
-                            </View>
-                            <ScrollView
-                              horizontal
-                              nestedScrollEnabled
-                              showsHorizontalScrollIndicator={false}
-                              contentContainerStyle={styles.customToneRow}
-                            >
-                              {CUSTOM_TONE_OPTIONS.map((tone, toneIndex) => {
-                                const selected = tone === customLightness;
-                                const toneColor = hslToHex(customHue, customSaturation, tone);
-                                const toneLabel = CUSTOM_TONE_LABELS[toneIndex] ?? "Tone";
-                                return (
-                                  <Pressable
-                                    key={`tone-${tone}`}
-                                    onPress={() => handleCustomToneSelect(tone)}
-                                    style={[
-                                      styles.customToneSwatchWrap,
-                                      selected && styles.customToneSwatchWrapSelected,
-                                      { backgroundColor: toneColor },
-                                    ]}
-                                    accessibilityLabel={`Color tone ${toneLabel}`}
-                                    accessibilityRole="button"
-                                    accessibilityState={{ selected }}
-                                  />
-                                );
-                              })}
-                            </ScrollView>
-                          </>
-                        ) : null}
-                      </View>
+                      <CustomColorPanel
+                        hue={customHue}
+                        saturation={customSaturation}
+                        lightness={customLightness}
+                        enabled={isCustomColorEnabled}
+                        showToneOptions={showToneOptions}
+                        onPaletteSelect={handleCustomPaletteSelect}
+                        onToneSelect={handleCustomToneSelect}
+                      />
                     ) : null}
                   </View>
 

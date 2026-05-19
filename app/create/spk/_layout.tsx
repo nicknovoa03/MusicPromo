@@ -1,24 +1,37 @@
 import { Stack } from "expo-router";
 import { Platform } from "react-native";
 import { colors } from "@/constants/tokens";
+import { SpkDraftProvider } from "@/providers/SpkDraftContext";
+
+/** Forward: new screen enters from the right. Back uses `animationTypeForReplace: "pop"`. */
+const forwardAnimation = Platform.OS === "ios" ? "default" : "slide_from_right";
+
+const backReplaceOptions = {
+  animationTypeForReplace: "pop" as const,
+};
 
 export default function SpkLayout() {
-  const animation = Platform.OS === "ios" ? "default" : "slide_from_right";
-
   return (
+    <SpkDraftProvider>
     <Stack
       screenOptions={{
         headerShown: false,
-        animation,
+        animation: forwardAnimation,
         contentStyle: { backgroundColor: colors.dark.background },
       }}
     >
       <Stack.Screen name="details" />
-      <Stack.Screen name="vision" />
+      <Stack.Screen name="vision" options={backReplaceOptions} />
+      <Stack.Screen name="metadata" options={backReplaceOptions} />
       <Stack.Screen
         name="preview"
-        options={{ gestureEnabled: false, animation: "fade" }}
+        options={{
+          ...backReplaceOptions,
+          gestureEnabled: false,
+          animation: forwardAnimation,
+        }}
       />
     </Stack>
+    </SpkDraftProvider>
   );
 }

@@ -1,10 +1,12 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { normalizeOptionalMediaUri } from "@/lib/mediaUri";
+import type { SpkStep } from "@/lib/spkDraft";
 
 const LOCAL_PROJECTS_KEY = "musicpromo:local-projects";
 
 type LocalProjectStatus = "draft" | "exported";
 type LocalProjectAspectRatio = "9:16" | "4:5" | "1:1";
+type LocalProjectType = "video" | "spk";
 
 export function isLocalProject(project: object): project is LocalProject {
   return typeof (project as LocalProject).id === "string";
@@ -12,6 +14,7 @@ export function isLocalProject(project: object): project is LocalProject {
 
 export type LocalProject = {
   id: string;
+  type?: LocalProjectType;
   title?: string;
   templateId?: string;
   templateTweaks?: string;
@@ -23,13 +26,28 @@ export type LocalProject = {
   exportedVideoUri?: string;
   trimStart?: number;
   trimEnd?: number;
+  vision?: string;
+  genre?: string;
+  bpm?: string;
+  releaseDate?: string;
+  label?: string;
+  collaborators?: string;
+  themeColor?: string;
+  customCoverUri?: string;
+  innerBackgroundUri?: string;
+  artistName?: string;
+  linkedProjectId?: string;
+  templateName?: string;
+  clipDurationSec?: number;
+  spkStep?: SpkStep;
   status: LocalProjectStatus;
   createdAt: number;
   updatedAt: number;
 };
 
-type UpsertLocalProjectInput = {
+export type UpsertLocalProjectInput = {
   id?: string;
+  type?: LocalProjectType;
   title?: string;
   templateId?: string;
   templateTweaks?: string;
@@ -41,6 +59,20 @@ type UpsertLocalProjectInput = {
   exportedVideoUri?: string;
   trimStart?: number;
   trimEnd?: number;
+  vision?: string;
+  genre?: string;
+  bpm?: string;
+  releaseDate?: string;
+  label?: string;
+  collaborators?: string;
+  themeColor?: string;
+  customCoverUri?: string;
+  innerBackgroundUri?: string;
+  artistName?: string;
+  linkedProjectId?: string;
+  templateName?: string;
+  clipDurationSec?: number;
+  spkStep?: SpkStep;
   status?: LocalProjectStatus;
 };
 
@@ -73,8 +105,12 @@ function normalizeProject(value: unknown): LocalProject | null {
   const updatedAt = normalizeNumber(input.updatedAt);
   if (!id || !createdAt || !updatedAt) return null;
 
+  const type =
+    input.type === "spk" || input.type === "video" ? input.type : undefined;
+
   return {
     id,
+    type,
     title: asTrimmedString(input.title),
     templateId: asTrimmedString(input.templateId),
     templateTweaks: asTrimmedString(input.templateTweaks),
@@ -88,6 +124,28 @@ function normalizeProject(value: unknown): LocalProject | null {
     ),
     trimStart: normalizeNumber(input.trimStart),
     trimEnd: normalizeNumber(input.trimEnd),
+    vision: asTrimmedString(input.vision),
+    genre: asTrimmedString(input.genre),
+    bpm: asTrimmedString(input.bpm),
+    releaseDate: asTrimmedString(input.releaseDate),
+    label: asTrimmedString(input.label),
+    collaborators: asTrimmedString(input.collaborators),
+    themeColor: asTrimmedString(input.themeColor),
+    customCoverUri: normalizeOptionalMediaUri(asTrimmedString(input.customCoverUri)),
+    innerBackgroundUri: normalizeOptionalMediaUri(
+      asTrimmedString(input.innerBackgroundUri),
+    ),
+    artistName: asTrimmedString(input.artistName),
+    linkedProjectId: asTrimmedString(input.linkedProjectId),
+    templateName: asTrimmedString(input.templateName),
+    clipDurationSec: normalizeNumber(input.clipDurationSec),
+    spkStep:
+      input.spkStep === "details" ||
+      input.spkStep === "vision" ||
+      input.spkStep === "metadata" ||
+      input.spkStep === "preview"
+        ? input.spkStep
+        : undefined,
     status: normalizeStatus(input.status),
     createdAt,
     updatedAt,
@@ -150,6 +208,7 @@ export async function upsertLocalProject(
 
   const next: LocalProject = {
     id,
+    type: input.type ?? existing?.type,
     title: input.title?.trim() || existing?.title,
     templateId: input.templateId?.trim() || existing?.templateId,
     templateTweaks:
@@ -163,6 +222,25 @@ export async function upsertLocalProject(
       existing?.exportedVideoUri,
     trimStart: Number.isFinite(input.trimStart) ? input.trimStart : existing?.trimStart,
     trimEnd: Number.isFinite(input.trimEnd) ? input.trimEnd : existing?.trimEnd,
+    vision: input.vision?.trim() || existing?.vision,
+    genre: input.genre?.trim() || existing?.genre,
+    bpm: input.bpm?.trim() || existing?.bpm,
+    releaseDate: input.releaseDate?.trim() || existing?.releaseDate,
+    label: input.label?.trim() || existing?.label,
+    collaborators: input.collaborators?.trim() || existing?.collaborators,
+    themeColor: input.themeColor?.trim() || existing?.themeColor,
+    customCoverUri:
+      normalizeOptionalMediaUri(input.customCoverUri) || existing?.customCoverUri,
+    innerBackgroundUri:
+      normalizeOptionalMediaUri(input.innerBackgroundUri) ||
+      existing?.innerBackgroundUri,
+    artistName: input.artistName?.trim() || existing?.artistName,
+    linkedProjectId: input.linkedProjectId?.trim() || existing?.linkedProjectId,
+    templateName: input.templateName?.trim() || existing?.templateName,
+    clipDurationSec: Number.isFinite(input.clipDurationSec)
+      ? input.clipDurationSec
+      : existing?.clipDurationSec,
+    spkStep: input.spkStep ?? existing?.spkStep,
     status: input.status ?? existing?.status ?? "draft",
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,

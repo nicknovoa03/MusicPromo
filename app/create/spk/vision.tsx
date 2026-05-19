@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useCallback } from "react";
 import {
   View,
   Text,
@@ -11,60 +11,45 @@ import {
   ScrollView,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { useRouter, useLocalSearchParams } from "expo-router";
+import { useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
-import { decodeUriParam, encodeUriParam } from "@/lib/uri";
-import { normalizeMediaUri } from "@/lib/mediaUri";
+import { SpkFlowHeader } from "@/components/spk/SpkFlowHeader";
+import { useSpkClose } from "@/hooks/useSpkClose";
+import { useSpkWizardBack } from "@/hooks/useSpkWizardBack";
+import { useSpkScreenParams } from "@/hooks/useSpkScreenParams";
+import { useSpkDraft } from "@/providers/SpkDraftContext";
 
 const MAX_VISION_CHARS = 280;
-
-function firstParam(p: string | string[] | undefined): string {
-  return Array.isArray(p) ? (p[0] ?? "") : (p ?? "");
-}
 
 export default function SpkVisionScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  const params = useLocalSearchParams<{
-    artistName: string;
-    photoUri: string;
-    photoName: string;
-    title: string;
-    linkedProjectId: string;
-    templateName: string;
-    clipDurationSec: string;
-  }>();
+  useSpkScreenParams("vision");
+  const { draft, mergeDraft, isExistingProject, getNavigationParams } = useSpkDraft();
 
-  const artistName = firstParam(params.artistName);
-  const photoUri = normalizeMediaUri(decodeUriParam(firstParam(params.photoUri)));
-  const photoName = firstParam(params.photoName);
-  const title = firstParam(params.title);
-  const linkedProjectId = firstParam(params.linkedProjectId) || null;
-  const templateName = firstParam(params.templateName) || null;
-  const clipDurationSec = params.clipDurationSec ? Number(firstParam(params.clipDurationSec)) || null : null;
-
-  const [vision, setVision] = useState("");
+  const artistName = draft.artistName ?? "";
+  const photoUri = draft.photoUri ?? null;
+  const title = draft.title ?? "";
+  const vision = draft.vision ?? "";
   const remaining = MAX_VISION_CHARS - vision.length;
   const canAdvance = vision.trim().length > 0;
 
+  const { goBackOneStep, canStepBack } = useSpkWizardBack("vision");
+  const { handleClose, isSaving } = useSpkClose({
+    step: "vision",
+    persistStatus: isExistingProject ? "exported" : "draft",
+  });
+
   const handleNext = useCallback(() => {
     if (!canAdvance) return;
+    mergeDraft({ step: "metadata", vision: vision.trim() });
     router.push({
-      pathname: "/create/spk/preview" as any,
-      params: {
-        artistName,
-        photoUri: encodeUriParam(photoUri ?? ""),
-        photoName,
-        title,
-        linkedProjectId: linkedProjectId ?? "",
-        templateName: templateName ?? "",
-        clipDurationSec: clipDurationSec != null ? String(clipDurationSec) : "",
-        vision: vision.trim(),
-      },
+      pathname: "/create/spk/metadata" as any,
+      params: getNavigationParams("metadata"),
     });
-  }, [canAdvance, router, photoUri, photoName, title, linkedProjectId, templateName, clipDurationSec, vision]);
+  }, [canAdvance, router, vision, mergeDraft, getNavigationParams]);
 
   const text = colors.dark.text;
   const secondary = colors.dark.textSecondary;
@@ -73,13 +58,14 @@ export default function SpkVisionScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
-      <View style={styles.header}>
-        <Pressable style={styles.backButton} onPress={() => router.back()} accessibilityLabel="Back">
-          <Ionicons name="chevron-back" size={22} color={text} />
-        </Pressable>
-        <Text style={[styles.headerTitle, { color: text }]}>Vision</Text>
-        <Text style={[styles.stepLabel, { color: secondary }]}>2 of 3</Text>
-      </View>
+      <SpkFlowHeader
+        title="Vision"
+        stepLabel="2 of 4"
+        showBackButton={canStepBack}
+        onBack={goBackOneStep}
+        onExit={handleClose}
+        isSaving={isSaving}
+      />
 
       <KeyboardAvoidingView
         style={styles.flex}
@@ -130,7 +116,7 @@ export default function SpkVisionScreen() {
               placeholderTextColor={colors.dark.textSecondary}
               value={vision}
               onChangeText={(v) => {
-                if (v.length <= MAX_VISION_CHARS) setVision(v);
+                if (v.length <= MAX_VISION_CHARS) mergeDraft({ vision: v });
               }}
               multiline
               autoFocus
@@ -183,29 +169,6 @@ const styles = StyleSheet.create({
   },
   flex: {
     flex: 1,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    gap: spacing.sm,
-  },
-  backButton: {
-    width: 36,
-    height: 36,
-    alignItems: "center",
-    justifyContent: "center",
-    marginLeft: -spacing.xs,
-  },
-  headerTitle: {
-    ...typography.body,
-    fontWeight: "600",
-    flex: 1,
-  },
-  stepLabel: {
-    fontSize: 13,
-    fontWeight: "500",
   },
   scrollContent: {
     paddingHorizontal: spacing.lg,

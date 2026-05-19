@@ -1,10 +1,13 @@
 import { View, Text, StyleSheet } from "react-native";
+import { SpkSlidePhotoBackground } from "./SpkSlidePhotoBackground";
 
 export interface SpkVisionSlideProps {
   width: number;
   height: number;
   vision?: string | null;
   artistName?: string | null;
+  themeColor?: string;
+  backgroundImageUri?: string | null;
 }
 
 const OPEN_QUOTE = "“";
@@ -15,13 +18,22 @@ export function SpkVisionSlide({
   height,
   vision,
   artistName,
+  themeColor = "#0E1014",
+  backgroundImageUri,
 }: SpkVisionSlideProps) {
   const pad = Math.round(width * 0.072);
   const quoteFontSize = Math.round(width * 0.18);
   const visionFontSize = Math.min(Math.round(width * 0.058), 24);
 
   return (
-    <View style={[styles.container, { width, height, padding: pad }]}>
+    <SpkSlidePhotoBackground
+      width={width}
+      height={height}
+      imageUri={backgroundImageUri}
+      fallbackColor={themeColor}
+      padding={pad}
+      style={styles.container}
+    >
       <Text style={styles.sectionLabel}>VISION</Text>
 
       <View style={styles.body}>
@@ -44,13 +56,12 @@ export function SpkVisionSlide({
       <Text style={styles.attribution}>
         {"— "}{(artistName || "Artist").toUpperCase()}
       </Text>
-    </View>
+    </SpkSlidePhotoBackground>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: "#0E1014",
     overflow: "hidden",
   },
   sectionLabel: {

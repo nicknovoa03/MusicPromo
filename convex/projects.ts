@@ -28,6 +28,27 @@ export const create = mutation({
     trimEnd: v.optional(v.number()),
     type: v.optional(v.union(v.literal("video"), v.literal("spk"))),
     vision: v.optional(v.string()),
+    genre: v.optional(v.string()),
+    bpm: v.optional(v.string()),
+    releaseDate: v.optional(v.string()),
+    label: v.optional(v.string()),
+    collaborators: v.optional(v.string()),
+    themeColor: v.optional(v.string()),
+    customCoverUri: v.optional(v.string()),
+    innerBackgroundUri: v.optional(v.string()),
+    artistName: v.optional(v.string()),
+    linkedProjectId: v.optional(v.string()),
+    templateName: v.optional(v.string()),
+    clipDurationSec: v.optional(v.number()),
+    spkStep: v.optional(
+      v.union(
+        v.literal("details"),
+        v.literal("vision"),
+        v.literal("metadata"),
+        v.literal("preview"),
+      ),
+    ),
+    status: v.optional(v.union(v.literal("draft"), v.literal("exported"))),
   },
   handler: async (ctx, args) => {
     const user = await getActiveUserByIdentity(ctx);
@@ -45,7 +66,7 @@ export const create = mutation({
       createdByName?: string;
       createdByEmail?: string;
       aspectRatio: "9:16" | "4:5" | "1:1";
-      status: "draft";
+      status: "draft" | "exported";
       createdAt: number;
       updatedAt: number;
       title?: string;
@@ -59,12 +80,25 @@ export const create = mutation({
       trimEnd?: number;
       type?: "video" | "spk";
       vision?: string;
+      genre?: string;
+      bpm?: string;
+      releaseDate?: string;
+      label?: string;
+      collaborators?: string;
+      themeColor?: string;
+      customCoverUri?: string;
+      innerBackgroundUri?: string;
+      artistName?: string;
+      linkedProjectId?: string;
+      templateName?: string;
+      clipDurationSec?: number;
+      spkStep?: "details" | "vision" | "metadata" | "preview";
     } = {
       userId: user._id,
       createdByName: user.artistName ?? user.name,
       createdByEmail: user.email,
       aspectRatio: args.aspectRatio,
-      status: "draft",
+      status: args.status ?? "draft",
       createdAt: now,
       updatedAt: now,
     };
@@ -81,6 +115,25 @@ export const create = mutation({
     if (args.trimEnd !== undefined) projectDoc.trimEnd = args.trimEnd;
     if (args.type !== undefined) projectDoc.type = args.type;
     if (args.vision !== undefined) projectDoc.vision = args.vision;
+    if (args.genre !== undefined) projectDoc.genre = args.genre;
+    if (args.bpm !== undefined) projectDoc.bpm = args.bpm;
+    if (args.releaseDate !== undefined) projectDoc.releaseDate = args.releaseDate;
+    if (args.label !== undefined) projectDoc.label = args.label;
+    if (args.collaborators !== undefined) projectDoc.collaborators = args.collaborators;
+    if (args.themeColor !== undefined) projectDoc.themeColor = args.themeColor;
+    if (args.customCoverUri !== undefined) projectDoc.customCoverUri = args.customCoverUri;
+    if (args.innerBackgroundUri !== undefined) {
+      projectDoc.innerBackgroundUri = args.innerBackgroundUri;
+    }
+    if (args.artistName !== undefined) projectDoc.artistName = args.artistName;
+    if (args.linkedProjectId !== undefined) {
+      projectDoc.linkedProjectId = args.linkedProjectId;
+    }
+    if (args.templateName !== undefined) projectDoc.templateName = args.templateName;
+    if (args.clipDurationSec !== undefined) {
+      projectDoc.clipDurationSec = args.clipDurationSec;
+    }
+    if (args.spkStep !== undefined) projectDoc.spkStep = args.spkStep;
 
     return await ctx.db.insert("projects", projectDoc);
   },
@@ -125,6 +178,27 @@ export const update = mutation({
     exportedVideoUri: v.optional(v.string()),
     status: v.optional(v.union(v.literal("draft"), v.literal("exported"))),
     vision: v.optional(v.string()),
+    type: v.optional(v.union(v.literal("video"), v.literal("spk"))),
+    genre: v.optional(v.string()),
+    bpm: v.optional(v.string()),
+    releaseDate: v.optional(v.string()),
+    label: v.optional(v.string()),
+    collaborators: v.optional(v.string()),
+    themeColor: v.optional(v.string()),
+    customCoverUri: v.optional(v.string()),
+    innerBackgroundUri: v.optional(v.string()),
+    artistName: v.optional(v.string()),
+    linkedProjectId: v.optional(v.string()),
+    templateName: v.optional(v.string()),
+    clipDurationSec: v.optional(v.number()),
+    spkStep: v.optional(
+      v.union(
+        v.literal("details"),
+        v.literal("vision"),
+        v.literal("metadata"),
+        v.literal("preview"),
+      ),
+    ),
   },
   handler: async (ctx, args) => {
     const project = await ctx.db.get(args.projectId);
@@ -154,6 +228,26 @@ export const update = mutation({
     }
     if (args.status !== undefined) updates.status = args.status;
     if (args.vision !== undefined) updates.vision = args.vision;
+    if (args.type !== undefined) updates.type = args.type;
+    if (args.genre !== undefined) updates.genre = args.genre;
+    if (args.bpm !== undefined) updates.bpm = args.bpm;
+    if (args.releaseDate !== undefined) updates.releaseDate = args.releaseDate;
+    if (args.label !== undefined) updates.label = args.label;
+    if (args.collaborators !== undefined) updates.collaborators = args.collaborators;
+    if (args.themeColor !== undefined) updates.themeColor = args.themeColor;
+    if (args.customCoverUri !== undefined) updates.customCoverUri = args.customCoverUri;
+    if (args.innerBackgroundUri !== undefined) {
+      updates.innerBackgroundUri = args.innerBackgroundUri;
+    }
+    if (args.artistName !== undefined) updates.artistName = args.artistName;
+    if (args.linkedProjectId !== undefined) {
+      updates.linkedProjectId = args.linkedProjectId;
+    }
+    if (args.templateName !== undefined) updates.templateName = args.templateName;
+    if (args.clipDurationSec !== undefined) {
+      updates.clipDurationSec = args.clipDurationSec;
+    }
+    if (args.spkStep !== undefined) updates.spkStep = args.spkStep;
 
     await ctx.db.patch(args.projectId, {
       ...updates,

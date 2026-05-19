@@ -45,6 +45,7 @@ import {
   resolveTemplateId,
 } from "@/lib/templates";
 import { ProjectThumbnail } from "@/components/ProjectThumbnail";
+import { getSpkResumeRoute } from "@/lib/spkDraft";
 
 type Project = Doc<"projects"> | LocalProject;
 type ProjectAction = "duplicate" | "delete";
@@ -328,18 +329,16 @@ const longPressProjectIdRef = useRef<string | null>(null);
         void Image.prefetch(stageBackgroundUri).catch(() => {});
       }
 
-      if (!isLocalProject(project) && project.type === "spk") {
-        router.push({
-          pathname: "/create/spk/preview" as any,
-          params: {
-            projectId: String(project._id),
-            photoUri: encodeUriParam(projectPhotoUri ?? ""),
-            photoName: project.photoName ?? "",
-            title: project.title ?? "",
-            vision: project.vision ?? "",
-            isExistingProject: "1",
-          },
-        });
+      if (
+        (!isLocalProject(project) && project.type === "spk") ||
+        (isLocalProject(project) && project.type === "spk")
+      ) {
+        const { pathname, params } = getSpkResumeRoute(
+          project,
+          projectKey,
+          isLocalProject(project),
+        );
+        router.push({ pathname: pathname as any, params });
         return;
       }
 
@@ -630,7 +629,9 @@ const longPressProjectIdRef = useRef<string | null>(null);
       const canRenderNativeProjectGestures =
         canUseNativeProjectGestures && expoSwiftUI && !isSelectionMode && !isDeleting;
       const isRNCardGestureOwner = !canRenderNativeProjectGestures;
-      const isSpkProject = !isLocalProject(item) && item.type === "spk";
+      const isSpkProject =
+        (!isLocalProject(item) && item.type === "spk") ||
+        (isLocalProject(item) && item.type === "spk");
       const cardContent = (
         <View style={styles.cardContent}>
           <ProjectThumbnail
@@ -644,7 +645,11 @@ const longPressProjectIdRef = useRef<string | null>(null);
               {title}
             </Text>
             <Text style={[styles.cardDate, { color: homeTextSecondaryColor }]}>
-              {isSpkProject ? "Song Press Kit" : formatDate(item.createdAt)}
+              {isSpkProject
+                ? item.status === "draft"
+                  ? "Song Press Kit · Draft"
+                  : "Song Press Kit"
+                : formatDate(item.createdAt)}
             </Text>
           </View>
         </View>

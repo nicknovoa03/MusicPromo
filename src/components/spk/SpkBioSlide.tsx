@@ -1,5 +1,6 @@
 import { View, Text, Image, StyleSheet } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import { SpkSlidePhotoBackground } from "./SpkSlidePhotoBackground";
 
 const DEFAULT_AVATAR = require("../../../assets/defaults/MusicPromo-DefaultAvatar.jpg");
 
@@ -19,6 +20,8 @@ export interface SpkBioSlideProps {
   heroImageUrl?: string | null;
   bio?: string | null;
   links?: ProfileLink[];
+  themeColor?: string;
+  backgroundImageUri?: string | null;
 }
 
 function platformIcon(platform: string): IoniconName {
@@ -44,6 +47,8 @@ export function SpkBioSlide({
   avatarImageUrl,
   bio,
   links = [],
+  themeColor = "#0E1014",
+  backgroundImageUri,
 }: SpkBioSlideProps) {
   const pad = Math.round(width * 0.072);
   const avatarSize = Math.round(width * 0.19);
@@ -59,7 +64,14 @@ export function SpkBioSlide({
     : null;
 
   return (
-    <View style={[styles.container, { width, height, padding: pad }]}>
+    <SpkSlidePhotoBackground
+      width={width}
+      height={height}
+      imageUri={backgroundImageUri}
+      fallbackColor={themeColor}
+      padding={pad}
+      style={styles.container}
+    >
       {/* Top: avatar + artist name inline */}
       <View style={[styles.header, { marginBottom: pad * 0.75 }]}>
         <Image
@@ -97,13 +109,12 @@ export function SpkBioSlide({
           ))}
         </View>
       ) : null}
-    </View>
+    </SpkSlidePhotoBackground>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: "#0E1014",
     overflow: "hidden",
     flexDirection: "column",
   },

@@ -1,27 +1,26 @@
-import { useState, useRef, useCallback, useMemo } from "react";
+import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import {
   View,
   Text,
   StyleSheet,
   Pressable,
   ScrollView,
-  Dimensions,
   Alert,
   ActivityIndicator,
   NativeSyntheticEvent,
   NativeScrollEvent,
 } from "react-native";
+import * as ImagePicker from "expo-image-picker";
 import * as Sharing from "expo-sharing";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { useRouter, useLocalSearchParams, useFocusEffect } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { captureRef } from "react-native-view-shot";
+import { type ViewShotRef } from "react-native-view-shot";
 import * as MediaLibrary from "expo-media-library";
 import { useQuery, useMutation, useConvexAuth } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
-import { decodeUriParam, encodeUriParam } from "@/lib/uri";
 import { normalizeMediaUri } from "@/lib/mediaUri";
 import { useLocalSession } from "@/providers/localSession";
 import { getLocalArtistProfile, type LocalArtistProfile } from "@/lib/localProfile";
@@ -29,16 +28,38 @@ import { SpkCoverSlide } from "@/components/spk/SpkCoverSlide";
 import { SpkTrackDetailsSlide } from "@/components/spk/SpkTrackDetailsSlide";
 import { SpkVisionSlide } from "@/components/spk/SpkVisionSlide";
 import { SpkBioSlide } from "@/components/spk/SpkBioSlide";
+import { SpkExportCapture } from "@/components/spk/SpkExportCapture";
+import { SpkFlowHeader } from "@/components/spk/SpkFlowHeader";
+import {
+  SpkBackgroundStudio,
+  SPK_EDITORIAL_PRESETS,
+} from "@/components/spk/SpkBackgroundStudio";
+import type { BackgroundOption } from "@/components/create/background/types";
+import {
+  buildPhotoMatchedBackgroundOptions,
+  mergeBackgroundPresets,
+} from "@/components/create/background/photoMatchedBackground";
+import { useSpkClose } from "@/hooks/useSpkClose";
+import { useSpkWizardBack } from "@/hooks/useSpkWizardBack";
+import { useSpkScreenParams } from "@/hooks/useSpkScreenParams";
+import { useSpkDraft } from "@/providers/SpkDraftContext";
+import { saveSpkDraftLocally } from "@/lib/spkDraft";
+import {
+  formatSpkReleaseDateLabel,
+  normalizeSpkReleaseDateStored,
+} from "@/lib/spkReleaseDate";
+import { upsertLocalProject } from "@/lib/localProjects";
+import {
+  copyCaptureToNamedSpkExport,
+  SPK_EXPORT_SLIDE_IDENTIFIERS,
+} from "@/lib/spkExportFileName";
+import { SPK_SLIDE_HEIGHT, SPK_SLIDE_WIDTH } from "@/lib/spkSlideDimensions";
 
 const SLIDE_COUNT = 4;
-const SLIDE_WIDTH = Dimensions.get("window").width;
-const SLIDE_HEIGHT = Math.round(SLIDE_WIDTH * (5 / 4));
-
-function firstParam(p: string | string[] | undefined): string {
-  return Array.isArray(p) ? (p[0] ?? "") : (p ?? "");
-}
 
 const SLIDE_LABELS = ["Cover", "Track Details", "Vision", "Bio"];
+
+const DEFAULT_THEME_COLOR = "#0E1014";
 
 export default function SpkPreviewScreen() {
   const router = useRouter();
@@ -46,28 +67,40 @@ export default function SpkPreviewScreen() {
   const { isLocalGuest } = useLocalSession();
   const { isAuthenticated } = useConvexAuth();
 
-  const params = useLocalSearchParams<{
-    artistName: string;
-    photoUri: string;
-    photoName: string;
-    title: string;
-    linkedProjectId: string;
-    templateName: string;
-    clipDurationSec: string;
-    vision: string;
-    projectId: string;
-    isExistingProject: string;
-  }>();
+  useSpkScreenParams("preview");
+  const {
+    draft,
+    mergeDraft,
+    projectId: activeProjectId,
+    localProjectId: activeLocalProjectId,
+    setProjectId: setActiveProjectId,
+    setLocalProjectId: setActiveLocalProjectId,
+    isExistingProject,
+    getDraftSnapshot,
+  } = useSpkDraft();
 
-  const customArtistName = firstParam(params.artistName) || null;
-  const photoUri = normalizeMediaUri(decodeUriParam(firstParam(params.photoUri)));
-  const photoName = firstParam(params.photoName);
-  const title = firstParam(params.title);
-  const vision = firstParam(params.vision);
-  const templateName = firstParam(params.templateName) || null;
-  const clipDurationSec = params.clipDurationSec ? Number(firstParam(params.clipDurationSec)) || null : null;
-  const existingProjectId = firstParam(params.projectId) || null;
-  const isExisting = firstParam(params.isExistingProject) === "1";
+  const customArtistName = draft.artistName?.trim() || null;
+  const photoUri = draft.photoUri ?? null;
+  const photoName = draft.photoName ?? null;
+  const title = draft.title ?? "";
+  const vision = draft.vision ?? "";
+  const genre = draft.genre?.trim() || null;
+  const bpm = draft.bpm?.trim() || null;
+  const releaseDateStored = draft.releaseDate?.trim() || null;
+  const releaseDate = releaseDateStored
+    ? formatSpkReleaseDateLabel(releaseDateStored)
+    : null;
+  const trackLabel = draft.label?.trim() || null;
+  const collaborators = draft.collaborators?.trim() || null;
+  const templateName = draft.templateName ?? null;
+  const clipDurationSec = draft.clipDurationSec ?? null;
+  const linkedProjectId = draft.linkedProjectId ?? null;
+  const themeColor =
+    draft.themeColor?.trim() && draft.themeColor.startsWith("#")
+      ? draft.themeColor
+      : DEFAULT_THEME_COLOR;
+  const customCoverUri = draft.customCoverUri ?? null;
+  const innerBackgroundUri = draft.innerBackgroundUri ?? null;
 
   const convexUser = useQuery(api.users.current);
   const createProject = useMutation(api.projects.create);
@@ -76,8 +109,36 @@ export default function SpkPreviewScreen() {
   const [localProfile, setLocalProfile] = useState<LocalArtistProfile | null>(null);
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isExporting, setIsExporting] = useState(false);
-  const [isExported, setIsExported] = useState(false);
+  /** True only after exporting in this session (not when reopening an exported project). */
+  const [sessionExported, setSessionExported] = useState(false);
   const [firstSlideUri, setFirstSlideUri] = useState<string | null>(null);
+  const [backgroundOptions, setBackgroundOptions] = useState<BackgroundOption[]>(
+    SPK_EDITORIAL_PRESETS,
+  );
+  const [isPickingCover, setIsPickingCover] = useState(false);
+  const [isPickingInner, setIsPickingInner] = useState(false);
+
+  const coverImageUri = customCoverUri ?? photoUri;
+  const artworkUriForColors = photoUri ?? coverImageUri;
+
+  useEffect(() => {
+    const sourceUri = artworkUriForColors?.trim();
+    if (!sourceUri) {
+      setBackgroundOptions(SPK_EDITORIAL_PRESETS);
+      return;
+    }
+
+    let active = true;
+    void buildPhotoMatchedBackgroundOptions(sourceUri).then((matched) => {
+      if (!active) return;
+      setBackgroundOptions(
+        mergeBackgroundPresets(matched ?? [], SPK_EDITORIAL_PRESETS),
+      );
+    });
+    return () => {
+      active = false;
+    };
+  }, [artworkUriForColors]);
 
   useFocusEffect(
     useCallback(() => {
@@ -95,9 +156,7 @@ export default function SpkPreviewScreen() {
     : (convexUser?.artistName ?? convexUser?.name ?? "");
   const artistName = customArtistName ?? profileArtistName;
 
-  const bio = isLocalGuest
-    ? ""
-    : (convexUser?.bio ?? "");
+  const bio = isLocalGuest ? "" : (convexUser?.bio ?? "");
 
   const avatarImageUrl = isLocalGuest
     ? (localProfile?.avatarImageUrl ?? null)
@@ -108,28 +167,94 @@ export default function SpkPreviewScreen() {
     : (convexUser?.heroImageUrl ?? null);
 
   const links = useMemo(
-    () =>
-      (isLocalGuest ? localProfile?.links : convexUser?.links) ?? [],
+    () => (isLocalGuest ? localProfile?.links : convexUser?.links) ?? [],
     [isLocalGuest, localProfile?.links, convexUser?.links],
   );
 
   const profileIncomplete = !bio && links.length === 0;
 
-  // Refs for capture — one per slide
-  const slideRefs = [
-    useRef<View>(null),
-    useRef<View>(null),
-    useRef<View>(null),
-    useRef<View>(null),
-  ];
+  const { goBackOneStep, canStepBack } = useSpkWizardBack("preview");
+  const { handleClose, isSaving } = useSpkClose({
+    step: "preview",
+    skipPersist: sessionExported,
+    persistStatus: isExistingProject ? "exported" : "draft",
+  });
+
+  const exportRefs = [
+    useRef<ViewShotRef>(null),
+    useRef<ViewShotRef>(null),
+    useRef<ViewShotRef>(null),
+    useRef<ViewShotRef>(null),
+  ] as const;
 
   const scrollRef = useRef<ScrollView>(null);
 
   const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const offsetX = e.nativeEvent.contentOffset.x;
-    const index = Math.round(offsetX / SLIDE_WIDTH);
+    const index = Math.round(offsetX / SPK_SLIDE_WIDTH);
     setCurrentSlide(Math.max(0, Math.min(SLIDE_COUNT - 1, index)));
   }, []);
+
+  const pickBackgroundImage = useCallback(async (): Promise<string | null> => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert(
+        "Permission needed",
+        "Allow access to your photo library to choose a background image.",
+      );
+      return null;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsEditing: false,
+      quality: 1,
+    });
+
+    if (result.canceled || !result.assets[0]) return null;
+    return normalizeMediaUri(result.assets[0].uri);
+  }, []);
+
+  const handlePickCoverImage = useCallback(async () => {
+    if (isPickingCover) return;
+    setIsPickingCover(true);
+    try {
+      const uri = await pickBackgroundImage();
+      if (uri) mergeDraft({ customCoverUri: uri });
+    } catch {
+      Alert.alert("Could not open photo library", "Please try again.");
+    } finally {
+      setIsPickingCover(false);
+    }
+  }, [isPickingCover, pickBackgroundImage, mergeDraft]);
+
+  const handlePickInnerBackground = useCallback(async () => {
+    if (isPickingInner) return;
+    setIsPickingInner(true);
+    try {
+      const uri = await pickBackgroundImage();
+      if (uri) mergeDraft({ innerBackgroundUri: uri });
+    } catch {
+      Alert.alert("Could not open photo library", "Please try again.");
+    } finally {
+      setIsPickingInner(false);
+    }
+  }, [isPickingInner, pickBackgroundImage, mergeDraft]);
+
+  const handleUseCoverForInnerSlides = useCallback(() => {
+    if (!coverImageUri) {
+      Alert.alert("No cover image", "Add a cover image first, or pick one for slides 2–4.");
+      return;
+    }
+    mergeDraft({ innerBackgroundUri: coverImageUri });
+  }, [coverImageUri, mergeDraft]);
+
+  const handleSelectThemeColor = useCallback(
+    (color: string) => {
+      mergeDraft({ themeColor: color });
+    },
+    [mergeDraft],
+  );
 
   const handleExport = useCallback(async () => {
     if (isExporting) return;
@@ -145,10 +270,83 @@ export default function SpkPreviewScreen() {
         return;
       }
 
+      const exportDraft = getDraftSnapshot("preview");
+
+      let exportProjectId =
+        activeProjectId?.trim() || activeLocalProjectId?.trim() || "";
+
+      if (!exportProjectId && isLocalGuest) {
+        try {
+          const savedId = await saveSpkDraftLocally({
+            localProjectId: activeLocalProjectId,
+            input: exportDraft,
+            status: "draft",
+            upsertLocalProject,
+          });
+          if (savedId) {
+            exportProjectId = savedId;
+            setActiveLocalProjectId(savedId);
+          }
+        } catch {
+          // Non-fatal — fall back to session id below
+        }
+      } else if (!exportProjectId && isAuthenticated) {
+        try {
+          const createdId = await createProject({
+            type: "spk",
+            status: "draft",
+            spkStep: "preview",
+            title: title || undefined,
+            vision: vision || undefined,
+            photoUri: photoUri || undefined,
+            photoName: photoName || undefined,
+            genre: genre || undefined,
+            bpm: bpm || undefined,
+            releaseDate: releaseDateStored
+              ? normalizeSpkReleaseDateStored(releaseDateStored)
+              : undefined,
+            label: trackLabel || undefined,
+            collaborators: collaborators || undefined,
+            themeColor,
+            customCoverUri: customCoverUri || undefined,
+            innerBackgroundUri: innerBackgroundUri || undefined,
+            artistName: customArtistName || undefined,
+            aspectRatio: "4:5",
+          });
+          exportProjectId = String(createdId);
+          setActiveProjectId(exportProjectId);
+        } catch {
+          // Non-fatal — fall back to session id below
+        }
+      }
+
+      if (!exportProjectId) {
+        exportProjectId = `export-${Date.now()}`;
+      }
+
+      // Let off-screen export slides finish layout before capture.
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      });
+
+      const projectName = title.trim() || "untitled";
       const uris: string[] = [];
-      for (const ref of slideRefs) {
-        const uri = await captureRef(ref, { format: "jpg", quality: 0.93 });
-        uris.push(uri);
+      for (let index = 0; index < exportRefs.length; index += 1) {
+        const shot = exportRefs[index]?.current;
+        if (!shot) {
+          throw new Error("SPK export slide not ready");
+        }
+        const capturedUri = await shot.capture();
+        const slideId =
+          SPK_EXPORT_SLIDE_IDENTIFIERS[index] ?? `slide-${index + 1}`;
+        uris.push(
+          await copyCaptureToNamedSpkExport(
+            capturedUri,
+            projectName,
+            slideId,
+            exportProjectId,
+          ),
+        );
       }
 
       for (const uri of uris) {
@@ -156,29 +354,71 @@ export default function SpkPreviewScreen() {
       }
       setFirstSlideUri(uris[0] ?? null);
 
-      if (isAuthenticated) {
+      if (isLocalGuest) {
         try {
-          if (isExisting && existingProjectId) {
+          const savedId = await saveSpkDraftLocally({
+            localProjectId: activeLocalProjectId,
+            input: exportDraft,
+            status: "exported",
+            upsertLocalProject,
+          });
+          if (savedId) setActiveLocalProjectId(savedId);
+        } catch {
+          // Non-fatal — slides are saved locally
+        }
+      } else if (isAuthenticated) {
+        try {
+          if (activeProjectId) {
             await updateProject({
-              projectId: existingProjectId as Id<"projects">,
+              projectId: activeProjectId as Id<"projects">,
               status: "exported",
-            });
-          } else {
-            await createProject({
-              type: "spk",
+              spkStep: "preview",
               title: title || undefined,
               vision: vision || undefined,
               photoUri: photoUri || undefined,
               photoName: photoName || undefined,
-              aspectRatio: "1:1",
+              genre: genre || undefined,
+              bpm: bpm || undefined,
+              releaseDate: releaseDateStored
+                ? normalizeSpkReleaseDateStored(releaseDateStored)
+                : undefined,
+              label: trackLabel || undefined,
+              collaborators: collaborators || undefined,
+              themeColor,
+              customCoverUri: customCoverUri || undefined,
+              innerBackgroundUri: innerBackgroundUri || undefined,
+              artistName: customArtistName || undefined,
             });
+          } else {
+            const createdId = await createProject({
+              type: "spk",
+              status: "exported",
+              spkStep: "preview",
+              title: title || undefined,
+              vision: vision || undefined,
+              photoUri: photoUri || undefined,
+              photoName: photoName || undefined,
+              genre: genre || undefined,
+              bpm: bpm || undefined,
+              releaseDate: releaseDateStored
+                ? normalizeSpkReleaseDateStored(releaseDateStored)
+                : undefined,
+              label: trackLabel || undefined,
+              collaborators: collaborators || undefined,
+              themeColor,
+              customCoverUri: customCoverUri || undefined,
+              innerBackgroundUri: innerBackgroundUri || undefined,
+              artistName: customArtistName || undefined,
+              aspectRatio: "4:5",
+            });
+            setActiveProjectId(String(createdId));
           }
         } catch {
           // Non-fatal — slides are saved, Convex write failure is secondary
         }
       }
 
-      setIsExported(true);
+      setSessionExported(true);
     } catch (err) {
       Alert.alert("Export failed", "Something went wrong. Please try again.");
       console.warn("SPK export error:", err);
@@ -187,17 +427,32 @@ export default function SpkPreviewScreen() {
     }
   }, [
     isExporting,
-    slideRefs,
+    exportRefs,
+    isLocalGuest,
     isAuthenticated,
-    isExisting,
-    existingProjectId,
+    activeLocalProjectId,
+    activeProjectId,
     createProject,
     updateProject,
     title,
     vision,
     photoUri,
     photoName,
-    router,
+    genre,
+    bpm,
+    releaseDateStored,
+    trackLabel,
+    collaborators,
+    themeColor,
+    customArtistName,
+    customCoverUri,
+    innerBackgroundUri,
+    linkedProjectId,
+    templateName,
+    clipDurationSec,
+    getDraftSnapshot,
+    setActiveProjectId,
+    setActiveLocalProjectId,
   ]);
 
   const handleShare = useCallback(async () => {
@@ -223,151 +478,234 @@ export default function SpkPreviewScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Pressable style={styles.backButton} onPress={() => router.back()} accessibilityLabel="Back">
-          <Ionicons name="chevron-back" size={22} color={text} />
-        </Pressable>
-        <Text style={[styles.headerTitle, { color: text }]}>Preview</Text>
-        <Text style={[styles.slideLabel, { color: secondary }]}>
-          {SLIDE_LABELS[currentSlide]}
-        </Text>
-      </View>
+      <SpkFlowHeader
+        title="Preview"
+        stepLabel={sessionExported ? "Exported" : SLIDE_LABELS[currentSlide]}
+        showBackButton={canStepBack}
+        onBack={goBackOneStep}
+        onExit={handleClose}
+        exitAccessibilityLabel={sessionExported ? "Exit" : "Save and exit"}
+        isSaving={isSaving}
+      />
 
-      {/* Slide swiper */}
-      <ScrollView
-        ref={scrollRef}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        onMomentumScrollEnd={handleScroll}
-        scrollEventThrottle={16}
-        style={styles.swiper}
-        contentContainerStyle={styles.swiperContent}
-      >
-        <View ref={slideRefs[0]} style={styles.slide} collapsable={false}>
+      <View style={styles.body}>
+        <ScrollView
+          style={styles.mainScroll}
+          contentContainerStyle={[
+            styles.mainScrollContent,
+            sessionExported && styles.mainScrollContentExported,
+          ]}
+          showsVerticalScrollIndicator={false}
+          scrollEnabled={!sessionExported}
+          keyboardShouldPersistTaps="handled"
+        >
+          <ScrollView
+            ref={scrollRef}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            onMomentumScrollEnd={handleScroll}
+            scrollEventThrottle={16}
+            style={[styles.swiper, { height: SPK_SLIDE_HEIGHT }]}
+            contentContainerStyle={styles.swiperContent}
+          >
+        <View style={styles.slide}>
           <SpkCoverSlide
-            width={SLIDE_WIDTH}
-            height={SLIDE_HEIGHT}
-            photoUri={photoUri}
-            artistName={artistName}
+            width={SPK_SLIDE_WIDTH}
+            height={SPK_SLIDE_HEIGHT}
+            photoUri={coverImageUri}
             trackTitle={title}
-            links={links}
           />
         </View>
-        <View ref={slideRefs[1]} style={styles.slide} collapsable={false}>
+        <View style={styles.slide}>
           <SpkTrackDetailsSlide
-            width={SLIDE_WIDTH}
-            height={SLIDE_HEIGHT}
+            width={SPK_SLIDE_WIDTH}
+            height={SPK_SLIDE_HEIGHT}
             trackTitle={title}
-            templateName={templateName}
-            clipDurationSec={clipDurationSec}
+            genre={genre}
+            bpm={bpm}
+            releaseDate={releaseDate}
+            label={trackLabel}
+            collaborators={collaborators}
+            themeColor={themeColor}
+            backgroundImageUri={innerBackgroundUri}
           />
         </View>
-        <View ref={slideRefs[2]} style={styles.slide} collapsable={false}>
+        <View style={styles.slide}>
           <SpkVisionSlide
-            width={SLIDE_WIDTH}
-            height={SLIDE_HEIGHT}
+            width={SPK_SLIDE_WIDTH}
+            height={SPK_SLIDE_HEIGHT}
             vision={vision}
             artistName={artistName}
+            themeColor={themeColor}
+            backgroundImageUri={innerBackgroundUri}
           />
         </View>
-        <View ref={slideRefs[3]} style={styles.slide} collapsable={false}>
+        <View style={styles.slide}>
           <SpkBioSlide
-            width={SLIDE_WIDTH}
-            height={SLIDE_HEIGHT}
+            width={SPK_SLIDE_WIDTH}
+            height={SPK_SLIDE_HEIGHT}
             artistName={artistName}
             avatarImageUrl={avatarImageUrl}
             heroImageUrl={heroImageUrl}
             bio={bio}
             links={links}
+            themeColor={themeColor}
+            backgroundImageUri={innerBackgroundUri}
           />
         </View>
-      </ScrollView>
+          </ScrollView>
 
-      {/* Dot pagination */}
-      <View style={styles.dots}>
-        {Array.from({ length: SLIDE_COUNT }).map((_, i) => (
-          <View
-            key={i}
-            style={[
-              styles.dot,
-              i === currentSlide
-                ? styles.dotActive
-                : [styles.dotInactive, { backgroundColor: secondary }],
-            ]}
-          />
-        ))}
-      </View>
+          <View style={styles.dots}>
+            {Array.from({ length: SLIDE_COUNT }).map((_, i) => (
+              <View
+                key={i}
+                style={[
+                  styles.dot,
+                  i === currentSlide
+                    ? styles.dotActive
+                    : [styles.dotInactive, { backgroundColor: secondary }],
+                ]}
+              />
+            ))}
+          </View>
 
-      {/* Profile nudge */}
-      {profileIncomplete ? (
-        <Pressable
-          style={[styles.nudge, { backgroundColor: surface }]}
-          onPress={() => router.push("/profile")}
-          accessibilityRole="button"
-          accessibilityLabel="Edit profile to add bio and links"
-        >
-          <Ionicons name="person-circle-outline" size={16} color={secondary} />
-          <Text style={[styles.nudgeText, { color: secondary }]}>
-            Add a bio and social links to complete your press kit
-          </Text>
-          <Text style={[styles.nudgeAction, { color: text }]}>Edit</Text>
-        </Pressable>
-      ) : null}
+          {!sessionExported ? (
+            <SpkBackgroundStudio
+              coverImageUri={coverImageUri}
+              innerBackgroundUri={innerBackgroundUri}
+              themeColor={themeColor}
+              backgroundOptions={backgroundOptions}
+              hasCustomCover={Boolean(customCoverUri)}
+              isPickingCover={isPickingCover}
+              isPickingInner={isPickingInner}
+              onPickCover={() => void handlePickCoverImage()}
+              onPickInner={() => void handlePickInnerBackground()}
+              onUseCoverForInner={handleUseCoverForInnerSlides}
+              onClearInnerPhoto={() => mergeDraft({ innerBackgroundUri: null })}
+              onResetCoverToArtwork={() => mergeDraft({ customCoverUri: null })}
+              onSelectColor={handleSelectThemeColor}
+            />
+          ) : null}
 
-      {/* Footer: export or post-export share */}
-      <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.sm }]}>
-        {isExported ? (
-          <>
-            <View style={styles.savedConfirm}>
-              <Ionicons name="checkmark-circle" size={16} color={colors.accent.primary} />
-              <Text style={[styles.savedConfirmText, { color: secondary }]}>
-                4 slides saved to Camera Roll
+          {!sessionExported && profileIncomplete ? (
+            <Pressable
+              style={[styles.nudge, { backgroundColor: surface }]}
+              onPress={() => router.push("/profile")}
+              accessibilityRole="button"
+              accessibilityLabel="Edit profile to add bio and links"
+            >
+              <Ionicons name="person-circle-outline" size={16} color={secondary} />
+              <Text style={[styles.nudgeText, { color: secondary }]}>
+                Add a bio and social links to complete your press kit
               </Text>
+              <Text style={[styles.nudgeAction, { color: text }]}>Edit</Text>
+            </Pressable>
+          ) : null}
+        </ScrollView>
+
+        <View
+          style={[
+            styles.footer,
+            sessionExported && styles.footerExported,
+            { paddingBottom: insets.bottom + spacing.sm },
+          ]}
+        >
+          {sessionExported ? (
+            <View style={styles.exportedPanel}>
+              <View style={styles.exportSuccess}>
+                <Ionicons name="checkmark-circle" size={22} color={colors.accent.primary} />
+                <View style={styles.exportSuccessCopy}>
+                  <Text style={styles.exportSuccessTitle}>Saved to Camera Roll</Text>
+                  <Text style={[styles.exportSuccessSubtitle, { color: secondary }]}>
+                    4 slides ready to share
+                  </Text>
+                </View>
+              </View>
+              <Pressable
+                style={({ pressed }) => [styles.instagramButton, pressed && styles.pressed]}
+                onPress={() => void handleShare()}
+                accessibilityRole="button"
+                accessibilityLabel="Share"
+              >
+                <Ionicons name="share-outline" size={20} color="#000000" />
+                <Text style={styles.instagramButtonText}>Share</Text>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [styles.doneButton, pressed && styles.pressed]}
+                onPress={() => router.replace("/")}
+                accessibilityRole="button"
+                accessibilityLabel="Done"
+              >
+                <Text style={[styles.doneButtonText, { color: secondary }]}>Done</Text>
+              </Pressable>
             </View>
+          ) : (
             <Pressable
-              style={({ pressed }) => [styles.instagramButton, pressed && styles.pressed]}
-              onPress={() => void handleShare()}
+              style={({ pressed }) => [
+                styles.exportButton,
+                isExporting && styles.exportButtonDisabled,
+                pressed && !isExporting && styles.pressed,
+              ]}
+              onPress={() => void handleExport()}
+              disabled={isExporting}
               accessibilityRole="button"
-              accessibilityLabel="Share to Instagram"
+              accessibilityLabel="Export carousel"
+              accessibilityState={{ disabled: isExporting }}
             >
-              <Ionicons name="logo-instagram" size={20} color="#000000" />
-              <Text style={styles.instagramButtonText}>Share to Instagram</Text>
+              {isExporting ? (
+                <ActivityIndicator size="small" color={colors.accent.onPrimary} />
+              ) : (
+                <Ionicons name="share-outline" size={20} color={colors.accent.onPrimary} />
+              )}
+              <Text style={styles.exportButtonText}>
+                {isExporting ? "Exporting…" : "Export Carousel"}
+              </Text>
             </Pressable>
-            <Pressable
-              style={({ pressed }) => [styles.doneButton, pressed && styles.pressed]}
-              onPress={() => router.replace("/")}
-              accessibilityRole="button"
-              accessibilityLabel="Done"
-            >
-              <Text style={[styles.doneButtonText, { color: secondary }]}>Done</Text>
-            </Pressable>
-          </>
-        ) : (
-          <Pressable
-            style={({ pressed }) => [
-              styles.exportButton,
-              isExporting && styles.exportButtonDisabled,
-              pressed && !isExporting && styles.pressed,
-            ]}
-            onPress={handleExport}
-            disabled={isExporting}
-            accessibilityRole="button"
-            accessibilityLabel="Export carousel"
-            accessibilityState={{ disabled: isExporting }}
-          >
-            {isExporting ? (
-              <ActivityIndicator size="small" color={colors.accent.onPrimary} />
-            ) : (
-              <Ionicons name="share-outline" size={20} color={colors.accent.onPrimary} />
-            )}
-            <Text style={styles.exportButtonText}>
-              {isExporting ? "Exporting…" : "Export Carousel"}
-            </Text>
-          </Pressable>
-        )}
+          )}
+        </View>
       </View>
+
+      <SpkExportCapture
+        exportRefs={[exportRefs[0], exportRefs[1], exportRefs[2], exportRefs[3]]}
+        cover={{
+          width: SPK_SLIDE_WIDTH,
+          height: SPK_SLIDE_HEIGHT,
+          photoUri: coverImageUri,
+          trackTitle: title,
+        }}
+        track={{
+          width: SPK_SLIDE_WIDTH,
+          height: SPK_SLIDE_HEIGHT,
+          trackTitle: title,
+          genre,
+          bpm,
+          releaseDate,
+          label: trackLabel,
+          collaborators,
+          themeColor,
+          backgroundImageUri: innerBackgroundUri,
+        }}
+        vision={{
+          width: SPK_SLIDE_WIDTH,
+          height: SPK_SLIDE_HEIGHT,
+          vision,
+          artistName,
+          themeColor,
+          backgroundImageUri: innerBackgroundUri,
+        }}
+        bio={{
+          width: SPK_SLIDE_WIDTH,
+          height: SPK_SLIDE_HEIGHT,
+          artistName,
+          avatarImageUrl,
+          heroImageUrl,
+          bio,
+          links,
+          themeColor,
+          backgroundImageUri: innerBackgroundUri,
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -377,31 +715,21 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#000000",
   },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    gap: spacing.sm,
+  body: {
+    flex: 1,
+    minHeight: 0,
   },
-  backButton: {
-    width: 36,
-    height: 36,
-    alignItems: "center",
-    justifyContent: "center",
-    marginLeft: -spacing.xs,
-  },
-  headerTitle: {
-    ...typography.body,
-    fontWeight: "600",
+  mainScroll: {
     flex: 1,
   },
-  slideLabel: {
-    fontSize: 13,
-    fontWeight: "500",
+  mainScrollContent: {
+    paddingBottom: spacing.sm,
+  },
+  mainScrollContentExported: {
+    flexGrow: 1,
+    justifyContent: "flex-start",
   },
   swiper: {
-    height: SLIDE_HEIGHT,
     flexShrink: 0,
   },
   swiperContent: {
@@ -409,15 +737,42 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
   },
   slide: {
-    width: SLIDE_WIDTH,
-    height: SLIDE_HEIGHT,
+    width: SPK_SLIDE_WIDTH,
+    height: SPK_SLIDE_HEIGHT,
   },
   dots: {
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
     gap: 6,
-    paddingVertical: 14,
+    paddingVertical: spacing.sm,
+  },
+  footerExported: {
+    borderTopWidth: 0,
+    paddingTop: 0,
+  },
+  exportedPanel: {
+    gap: spacing.md,
+  },
+  exportSuccess: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  exportSuccessCopy: {
+    gap: 2,
+  },
+  exportSuccessTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: colors.dark.text,
+    letterSpacing: -0.2,
+  },
+  exportSuccessSubtitle: {
+    fontSize: 13,
+    lineHeight: 18,
   },
   dot: {
     borderRadius: 100,
@@ -437,6 +792,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.xs,
     marginHorizontal: spacing.lg,
+    marginTop: spacing.xs,
     marginBottom: spacing.sm,
     padding: spacing.sm,
     borderRadius: radius.md,
@@ -453,6 +809,9 @@ const styles = StyleSheet.create({
   footer: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.dark.border,
+    backgroundColor: "#000000",
   },
   exportButton: {
     flexDirection: "row",
@@ -470,17 +829,6 @@ const styles = StyleSheet.create({
     ...typography.button,
     color: colors.accent.onPrimary,
   },
-  savedConfirm: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.xs,
-    marginBottom: spacing.sm,
-  },
-  savedConfirmText: {
-    fontSize: 13,
-    fontWeight: "500",
-  },
   instagramButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -489,7 +837,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accent.primary,
     borderRadius: radius.md,
     paddingVertical: spacing.md,
-    marginBottom: spacing.sm,
   },
   instagramButtonText: {
     ...typography.button,

@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -18,17 +18,29 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useQuery } from "convex/react";
+import type { Id } from "../../../convex/_generated/dataModel";
 import * as ImagePicker from "expo-image-picker";
 import { api } from "../../../convex/_generated/api";
 import type { Doc } from "../../../convex/_generated/dataModel";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
-import { encodeUriParam } from "@/lib/uri";
 import { normalizeMediaUri } from "@/lib/mediaUri";
 import * as FileSystem from "expo-file-system/legacy";
 import { getTemplateDefinition, resolveTemplateId } from "@/lib/templates";
 import { useLocalSession } from "@/providers/localSession";
 import { listLocalProjects, type LocalProject } from "@/lib/localProjects";
+import { getLocalArtistProfile, type LocalArtistProfile } from "@/lib/localProfile";
 import { useFocusEffect } from "@react-navigation/native";
+import { SpkFlowHeader } from "@/components/spk/SpkFlowHeader";
+import { useSpkClose } from "@/hooks/useSpkClose";
+import { useSpkWizardBack } from "@/hooks/useSpkWizardBack";
+import { useSpkScreenParams } from "@/hooks/useSpkScreenParams";
+import { getLocalProject } from "@/lib/localProjects";
+import { useSpkDraft } from "@/providers/SpkDraftContext";
+import { convexProjectToSpkDraft, localProjectToSpkDraft } from "@/lib/spkDraft";
+
+function firstParam(p: string | string[] | undefined): string {
+  return Array.isArray(p) ? (p[0] ?? "") : (p ?? "");
+}
 
 type ConvexProject = Doc<"projects">;
 type AnyProject = ConvexProject | LocalProject;
@@ -53,9 +65,29 @@ export default function SpkDetailsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { isLocalGuest } = useLocalSession();
+  useSpkScreenParams("details");
+  const {
+    draft,
+    mergeDraft,
+    projectId,
+    localProjectId,
+    setProjectId,
+    setLocalProjectId,
+    isExistingProject,
+    getNavigationParams,
+  } = useSpkDraft();
+  const hydratedDraftRef = useRef(false);
 
   const convexProjects = useQuery(api.projects.listByUser);
+  const savedProject = useQuery(
+    api.projects.getById,
+    !isLocalGuest && projectId
+      ? { projectId: projectId as Id<"projects"> }
+      : "skip",
+  );
+  const convexUser = useQuery(api.users.current);
   const [localProjects, setLocalProjects] = useState<LocalProject[] | null>(null);
+  const [localProfile, setLocalProfile] = useState<LocalArtistProfile | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -64,17 +96,63 @@ export default function SpkDetailsScreen() {
       listLocalProjects().then((ps) => {
         if (active) setLocalProjects(ps);
       });
+      getLocalArtistProfile().then((profile) => {
+        if (active) setLocalProfile(profile);
+      });
       return () => { active = false; };
     }, [isLocalGuest]),
   );
 
-  const [artistName, setArtistName] = useState("");
-  const [photoUri, setPhotoUri] = useState<string | null>(null);
-  const [photoName, setPhotoName] = useState<string | null>(null);
-  const [title, setTitle] = useState("");
-  const [linkedProjectId, setLinkedProjectId] = useState<string | null>(null);
-  const [templateName, setTemplateName] = useState<string | null>(null);
-  const [clipDurationSec, setClipDurationSec] = useState<number | null>(null);
+  const profileArtistName = isLocalGuest
+    ? (localProfile?.artistName ?? "")
+    : (convexUser?.artistName ?? convexUser?.name ?? "");
+
+  const hasUserEditedArtistName = useRef(Boolean(draft.artistName?.trim()));
+
+  const artistName = draft.artistName ?? "";
+  const photoUri = draft.photoUri ?? null;
+  const photoName = draft.photoName ?? null;
+  const title = draft.title ?? "";
+  const linkedProjectId = draft.linkedProjectId ?? null;
+  const templateName = draft.templateName ?? null;
+  const clipDurationSec = draft.clipDurationSec ?? null;
+
+  useEffect(() => {
+    if (hasUserEditedArtistName.current || !profileArtistName) return;
+    if (!artistName.trim()) {
+      mergeDraft({ artistName: profileArtistName });
+    }
+  }, [profileArtistName, artistName, mergeDraft]);
+
+  useEffect(() => {
+    if (hydratedDraftRef.current) return;
+
+    const hydrateFromLocal = async () => {
+      if (!localProjectId) return;
+      const project = await getLocalProject(localProjectId);
+      if (!project || project.type !== "spk") return;
+      hydratedDraftRef.current = true;
+      if (project.artistName) hasUserEditedArtistName.current = true;
+      mergeDraft({ ...localProjectToSpkDraft(project), step: "details" });
+    };
+
+    if (isLocalGuest && localProjectId) {
+      void hydrateFromLocal();
+      return;
+    }
+
+    if (!isLocalGuest && savedProject && savedProject.type === "spk") {
+      hydratedDraftRef.current = true;
+      if (savedProject.artistName) hasUserEditedArtistName.current = true;
+      mergeDraft({ ...convexProjectToSpkDraft(savedProject), step: "details" });
+    }
+  }, [isLocalGuest, localProjectId, savedProject, mergeDraft]);
+
+  const { goBackOneStep, canStepBack } = useSpkWizardBack("details");
+  const { handleClose, isSaving } = useSpkClose({
+    step: "details",
+    persistStatus: isExistingProject ? "exported" : "draft",
+  });
   const [showProjectPicker, setShowProjectPicker] = useState(false);
   const [pickerProjects, setPickerProjects] = useState<AnyProject[]>([]);
   const [isLoadingPicker, setIsLoadingPicker] = useState(false);
@@ -94,18 +172,20 @@ export default function SpkDetailsScreen() {
       });
       if (!result.canceled && result.assets[0]) {
         const asset = result.assets[0];
-        setPhotoUri(asset.uri);
-        setPhotoName(asset.fileName ?? null);
-        setLinkedProjectId(null);
-        setTemplateName(null);
-        setClipDurationSec(null);
+        mergeDraft({
+          photoUri: asset.uri,
+          photoName: asset.fileName ?? null,
+          linkedProjectId: null,
+          templateName: null,
+          clipDurationSec: null,
+        });
       }
     } catch {
       Alert.alert("Could not open photo library", "Please try again.");
     } finally {
       setIsPickingPhoto(false);
     }
-  }, [isPickingPhoto]);
+  }, [isPickingPhoto, mergeDraft]);
 
   const linkProject = useCallback((project: AnyProject) => {
     const pid = getProjectId(project);
@@ -115,20 +195,24 @@ export default function SpkDetailsScreen() {
     const pTrimStart = project.trimStart ?? 0;
     const pTrimEnd = project.trimEnd ?? 0;
 
-    setPhotoUri(pPhotoUri);
-    setPhotoName(project.photoName ?? null);
-    setTitle(pTitle);
-    setLinkedProjectId(pid);
-    setTemplateName(getTemplateDefinition(resolveTemplateId(pTemplateId)).name);
-    setClipDurationSec(pTrimEnd > pTrimStart ? pTrimEnd - pTrimStart : null);
+    mergeDraft({
+      photoUri: pPhotoUri,
+      photoName: project.photoName ?? null,
+      title: pTitle,
+      linkedProjectId: pid,
+      templateName: getTemplateDefinition(resolveTemplateId(pTemplateId)).name,
+      clipDurationSec: pTrimEnd > pTrimStart ? pTrimEnd - pTrimStart : null,
+    });
     setShowProjectPicker(false);
-  }, []);
+  }, [mergeDraft]);
 
   const unlink = useCallback(() => {
-    setLinkedProjectId(null);
-    setTemplateName(null);
-    setClipDurationSec(null);
-  }, []);
+    mergeDraft({
+      linkedProjectId: null,
+      templateName: null,
+      clipDurationSec: null,
+    });
+  }, [mergeDraft]);
 
   const openProjectPicker = useCallback(() => {
     setShowProjectPicker(true);
@@ -162,19 +246,23 @@ export default function SpkDetailsScreen() {
 
   const handleNext = useCallback(() => {
     if (!canAdvance) return;
+    mergeDraft({
+      step: "vision",
+      artistName: artistName.trim(),
+      title: title.trim(),
+    });
     router.push({
       pathname: "/create/spk/vision" as any,
-      params: {
-        artistName: artistName.trim(),
-        photoUri: encodeUriParam(photoUri ?? ""),
-        photoName: photoName ?? "",
-        title: title.trim(),
-        linkedProjectId: linkedProjectId ?? "",
-        templateName: templateName ?? "",
-        clipDurationSec: clipDurationSec != null ? String(clipDurationSec) : "",
-      },
+      params: getNavigationParams("vision"),
     });
-  }, [canAdvance, router, photoUri, photoName, title, linkedProjectId, templateName, clipDurationSec]);
+  }, [
+    canAdvance,
+    router,
+    artistName,
+    title,
+    mergeDraft,
+    getNavigationParams,
+  ]);
 
   const surface = colors.dark.surface;
   const text = colors.dark.text;
@@ -184,14 +272,14 @@ export default function SpkDetailsScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Pressable style={styles.backButton} onPress={() => router.back()} accessibilityLabel="Back">
-          <Ionicons name="chevron-back" size={22} color={text} />
-        </Pressable>
-        <Text style={[styles.headerTitle, { color: text }]}>New Song Press Kit</Text>
-        <Text style={[styles.stepLabel, { color: secondary }]}>1 of 3</Text>
-      </View>
+      <SpkFlowHeader
+        title="New Song Press Kit"
+        stepLabel="1 of 4"
+        showBackButton={canStepBack}
+        onBack={goBackOneStep}
+        onExit={handleClose}
+        isSaving={isSaving}
+      />
 
       <KeyboardAvoidingView
         style={styles.flex}
@@ -211,7 +299,10 @@ export default function SpkDetailsScreen() {
               placeholder="Your artist name"
               placeholderTextColor={secondary}
               value={artistName}
-              onChangeText={setArtistName}
+              onChangeText={(text) => {
+                hasUserEditedArtistName.current = true;
+                mergeDraft({ artistName: text });
+              }}
               returnKeyType="done"
               maxLength={80}
             />
@@ -290,7 +381,7 @@ export default function SpkDetailsScreen() {
               placeholder="e.g. Midnight Drive"
               placeholderTextColor={secondary}
               value={title}
-              onChangeText={setTitle}
+              onChangeText={(text) => mergeDraft({ title: text })}
               returnKeyType="done"
               maxLength={80}
             />
@@ -407,29 +498,6 @@ const styles = StyleSheet.create({
   },
   flex: {
     flex: 1,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    gap: spacing.sm,
-  },
-  backButton: {
-    width: 36,
-    height: 36,
-    alignItems: "center",
-    justifyContent: "center",
-    marginLeft: -spacing.xs,
-  },
-  headerTitle: {
-    ...typography.body,
-    fontWeight: "600",
-    flex: 1,
-  },
-  stepLabel: {
-    fontSize: 13,
-    fontWeight: "500",
   },
   scrollContent: {
     paddingHorizontal: spacing.lg,
