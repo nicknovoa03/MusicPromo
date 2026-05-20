@@ -1,0 +1,55 @@
+<!doctype html><html><head><meta charset="utf-8">
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+body{margin:0;padding:18px;background:#fff;font-family:Inter,system-ui;color:#11131A}
+.h2{font-size:11px;letter-spacing:.16em;text-transform:uppercase;font-weight:700;color:#6B6F7A;margin:0 0 14px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.col h3{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;margin:0 0 8px;color:#6B6F7A}
+.row{display:flex;gap:8px;align-items:baseline;padding:8px 0;border-bottom:1px dashed rgba(0,0,0,.07);font-size:13px;line-height:1.45}
+.row:last-child{border-bottom:none}
+.tick{color:#1EA672;font-weight:800;width:14px;flex-shrink:0}
+.cross{color:#C62828;font-weight:800;width:14px;flex-shrink:0}
+.note{font-size:11px;color:#6B6F7A;line-height:1.55;margin-top:14px;border-top:1px solid rgba(0,0,0,.08);padding-top:10px}
+.tbl{margin-top:14px;border:1px solid rgba(0,0,0,.08);border-radius:8px;overflow:hidden;font-size:12.5px}
+.tbl-row{display:grid;grid-template-columns:140px 1fr;border-bottom:1px solid rgba(0,0,0,.08);padding:10px 12px}
+.tbl-row:last-child{border-bottom:none}
+.tbl-row .l{font-weight:700;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#6B6F7A;align-self:center}
+</style></head><body>
+
+<div class="h2">Flyer · Voice (event-specific extensions to MusicPromo voice)</div>
+
+<div class="grid">
+  <div class="col">
+    <h3>Do</h3>
+    <div class="row"><span class="tick">✓</span><span><strong>Type does the shouting.</strong> 96px Anton is loud enough — never an exclamation point on a flyer.</span></div>
+    <div class="row"><span class="tick">✓</span><span><strong>Abbreviate dates.</strong> <code>SAT APR 25</code>, not <code>Saturday, April 25th 2026</code>.</span></div>
+    <div class="row"><span class="tick">✓</span><span><strong>Em dash for time ranges.</strong> <code>4PM – 8PM</code>, not <code>4-8PM</code> or <code>4 to 8</code>.</span></div>
+    <div class="row"><span class="tick">✓</span><span><strong>Lowercase + slashes for genre lines.</strong> <code>house / disco / grooves</code>.</span></div>
+    <div class="row"><span class="tick">✓</span><span><strong>Pipe-separate footer.</strong> <code>SAT APR 25  |  4PM–8PM  |  NEON GROTTO</code>.</span></div>
+    <div class="row"><span class="tick">✓</span><span><strong>Interpunct in eyebrows.</strong> <code>HAPPY HOUR · 4–7PM</code>.</span></div>
+  </div>
+
+  <div class="col">
+    <h3>Don't</h3>
+    <div class="row"><span class="cross">✗</span><span><code>DISCO AT DUSK !!!</code> — Type already carries weight.</span></div>
+    <div class="row"><span class="cross">✗</span><span><code>Saturday April 25th, 2026 at 4:00pm</code> — Too long, too formal.</span></div>
+    <div class="row"><span class="cross">✗</span><span><code>4-8pm</code> — Wrong dash, wrong case.</span></div>
+    <div class="row"><span class="cross">✗</span><span><code>House, Disco &amp; Grooves Mix</code> — Title-case adds nothing.</span></div>
+    <div class="row"><span class="cross">✗</span><span><code>Save the date 🎉</code> — No emoji, ever.</span></div>
+    <div class="row"><span class="cross">✗</span><span><code>Come party with us!</code> — Marketing voice. Flyers don't beg.</span></div>
+  </div>
+</div>
+
+<div class="tbl">
+  <div class="tbl-row"><div class="l">Eyebrow</div><div><code>ROOFTOP DAY PARTY</code> · <code>HAPPY HOUR · 4–7PM</code> · <code>WAREHOUSE</code></div></div>
+  <div class="tbl-row"><div class="l">Title</div><div><code>DISCO</code> · <code>NIGHT FEVER</code> · <code>EUPHOR EASTER</code></div></div>
+  <div class="tbl-row"><div class="l">Subtitle</div><div><code>at dusk</code> · <code>highland basement party</code> · <code>sahara lounge dance party</code></div></div>
+  <div class="tbl-row"><div class="l">Tagline</div><div><code>house / disco / grooves</code> · <code>techno · all night</code></div></div>
+  <div class="tbl-row"><div class="l">Footer</div><div><code>SAT APR 25  |  4PM–8PM  |  NEON GROTTO ROOFTOP</code></div></div>
+  <div class="tbl-row"><div class="l">Lineup</div><div><code>4PM · MARLEY MAC</code> · <code>5PM · KIWI</code> · <code>6PM · SHELZ</code></div></div>
+  <div class="tbl-row"><div class="l">Empty state</div><div><code>Add a date to keep going.</code> · <code>Pick a venue.</code> · <code>Drop a photo or skip.</code></div></div>
+</div>
+
+<div class="note">Flyer copy is <strong>scannable from across a room</strong>. If a line wouldn't read at 10pt on a 4" print, it doesn't belong on the flyer. Voice elsewhere in the app is unchanged — see <code>README.md</code>.</div>
+
+</body></html>

@@ -6,34 +6,36 @@
 - Feature: Song Press Kit
 - Doc owner: Nick
 - Created: 2026-05-07
-- Status: Draft
+- Last updated: 2026-05-18
+- Status: Implemented (branch `phase-8`)
 - GitHub issue: #24
 
 ---
 
 ## 1. Summary
 
-Phase 8 introduces the Song Press Kit (SPK) Carousel as a second project type alongside the existing Music Promo video. A Song Press Kit is a set of 4 styled static-image slides — cover, track details, vision/concept, and artist bio — designed to be shared as an Instagram carousel.
+Phase 8 introduces the **Song Press Kit (SPK)** as a second project type alongside Music Promo video. An SPK is a **4-slide Instagram carousel** (4:5 portrait) — Cover, Track Details, Vision, and Artist Bio — exported as JPEG images.
 
-This phase also introduces a **project type picker** at the top of the create flow, replacing the current direct-to-editor navigation. The picker presents two options: Music Promo (existing) and Song Press Kit (new).
+The create tab shows a **project type picker** (Music Promo vs Song Press Kit). The SPK flow is a **4-step wizard** with draft persistence (Convex for signed-in users, local storage for guests), background customization on preview, and export to the device photo library.
 
 ---
 
 ## 2. Goals
 
-- Let artists generate a shareable press kit carousel in the same app they already use for promo videos
+- Let artists generate a shareable press kit carousel in the same app they use for promo videos
 - Add a project type picker as infrastructure for future project types
-- Keep the press kit flow as simple as the video flow: fill in a few fields, hit export
-- Persist press kit projects to Convex so users can revisit and re-export
+- Keep the flow simple: artwork + copy in a few screens, preview, export
+- Persist SPK projects so users can exit mid-flow, resume from home, and re-export
 
 ---
 
 ## 3. Non-Goals
 
-- No per-slide customization controls (colors, fonts) — fixed dark editorial theme
-- No audio trimming or video rendering for press kit projects
-- No web or desktop support
-- No cloud storage for press kit artwork — on-device only (same as the video flow)
+- Per-slide typography or layout controls (fonts, positions) — fixed editorial slide components
+- Audio trimming or video rendering for SPK projects
+- Web or desktop support
+- Cloud storage for SPK artwork URIs — media stays on-device (same as video flow)
+- Exporting all four slides through the system share sheet in one action (share opens with the cover slide only; all four are saved to the camera roll on export)
 
 ---
 
@@ -41,149 +43,202 @@ This phase also introduces a **project type picker** at the top of the create fl
 
 ### 4.1 Project type picker
 
-> As an artist, when I tap the create tab I want to choose what kind of project I'm making so the right flow launches.
+> As an artist, when I tap the Create tab I want to choose what kind of project I'm making so the right flow launches.
 
 **Acceptance criteria:**
-- The create tab entry point shows a picker screen with 2 cards: "Music Promo" and "Song Press Kit"
-- "Music Promo" routes into the existing picker → editor → rendering → share flow (no change to that flow)
-- "Song Press Kit" routes into the new press kit flow
-- The picker screen has a back/close button to dismiss without creating a project
+- Create tab shows two cards: **Music Promo** and **Song Press Kit** (`create/type-picker.tsx`, embedded in `(tabs)/create.tsx`)
+- Music Promo → existing `picker → editor → rendering → share` flow (unchanged)
+- Song Press Kit → `create/spk/details` (step 1 of 4)
+- Close/back dismisses without creating a project
 
-### 4.2 Song Press Kit create flow — artwork + title
+### 4.2 Step 1 — Artwork, artist, and title (`details`)
 
-> As an artist, I want to start a Song Press Kit by picking the track artwork and title, either from an existing Music Promo project or from scratch.
-
-**Acceptance criteria:**
-- The press kit flow's first step presents two options: "Link to existing project" and "Start fresh"
-- **Link:** shows a scrollable list of the user's existing Music Promo projects; selecting one pre-fills `title` and `photoUri`
-- **Start fresh:** shows a photo picker (same library call as the existing picker screen) and a text input for track title
-- Cannot advance without both a photo and a title
-
-### 4.3 Song Press Kit create flow — vision/concept
-
-> As an artist, I want to write a statement about the vision or concept behind my track so it appears in the carousel.
+> As an artist, I want to start a press kit with my track artwork and title, optionally linked to an existing Music Promo project.
 
 **Acceptance criteria:**
-- Step 2 is a text input screen labeled "Vision / Concept"
-- Placeholder text: "What's the story behind this track?"
-- Character limit: 280 characters (shown as a counter)
-- This field is required to advance — cannot export with an empty vision
-- The current draft is auto-saved as the user types (local state; persisted to Convex on export)
+- Screen title: **New Song Press Kit**, step label **1 of 4**
+- **Artist name** text field; pre-filled from profile when empty; user edits override profile default
+- **Track artwork** via photo library picker
+- **Link to existing Music Promo** opens a project list; selecting one pre-fills `photoUri`, `title`, `linkedProjectId`, `templateName`, `clipDurationSec`
+- User can unlink and pick fresh artwork
+- **Track title** text field
+- Cannot advance without **both** artwork and a non-empty title
+- **Next** advances to Vision
+- Flow header: back (within wizard), exit (saves draft and leaves — see §4.8)
 
-### 4.4 Slide preview
+### 4.3 Step 2 — Vision / concept (`vision`)
 
-> As an artist, I want to preview my 4 press kit slides before I export them.
-
-**Acceptance criteria:**
-- Step 3 is a full-screen swiper — one slide fills the screen, swipe left/right to move through all 4
-- Dot pagination indicator shows current slide position (e.g. ● ○ ○ ○)
-- Slide data shown accurately reflects: artwork, title, vision text, user profile bio, user profile artist name, user profile social links
-- If the user's bio is empty or they have no social links, an inline nudge is shown with a shortcut to the profile edit screen
-- A "back" button lets the user return to step 2 to edit the vision text
-- An "Export" button is accessible from any slide (fixed at bottom of screen)
-
-### 4.5 Export
-
-> As an artist, I want to export my 4 press kit slides as images I can share.
+> As an artist, I want to write the vision or concept behind my track for the carousel.
 
 **Acceptance criteria:**
-- Tapping "Export" captures each slide as a JPEG using `react-native-view-shot`
-- Exported at the slide's rendered pixel density (target: 1080×1080 per slide for 1:1)
-- After capture, the iOS/Android share sheet opens with all 4 images attached
-- The user can also save each image individually to camera roll
-- Export completes in under 10 seconds on a mid-tier device
-- The press kit project is saved to Convex on successful export (status: "exported")
+- Step label **2 of 4**; track summary strip (artwork + title + artist)
+- Tip card with writing guidance
+- **Vision / Concept** multiline input; placeholder: *What's the story behind this track?*
+- **280-character** limit with live counter (warns when ≤30 remaining)
+- **Required** to advance — empty vision disables **Next**
+- **Next** advances to Track Details
 
-### 4.6 press kit project persistence
+### 4.4 Step 3 — Track metadata (`metadata`)
 
-> As an artist, I want my press kit projects saved in my project history so I can revisit them.
+> As an artist, I want to add optional release metadata that appears on the Track Details slide.
 
 **Acceptance criteria:**
-- press kit projects appear in the home/history tab project list alongside video projects
-- press kit projects show the artwork thumbnail with an "SPK" badge overlay
-- Tapping a Song Press Kit project from the list opens it at the slide preview step
-- The user can re-export at any time from the preview step
+- Step label **3 of 4**; track summary strip
+- Hint: *All fields are optional — fill in what's relevant for this release.*
+- Fields:
+  - **Genre** (text, max 50)
+  - **BPM** (numeric, max 3 digits, number pad on iOS)
+  - **Release date** (native date picker modal; clearable)
+  - **Label** (text, max 60)
+  - **Collaborators** (text, max 100)
+- **Keyboard (iOS):** dark **Done** toolbar above the keyboard (`KeyboardDismissAccessory`); footer **Next** hidden while keyboard is open; Return key moves between text fields where applicable
+- **Next** advances to Preview
+
+### 4.5 Step 4 — Preview, customize, and export (`preview`)
+
+> As an artist, I want to preview all four slides, adjust backgrounds, and export the carousel.
+
+**Acceptance criteria:**
+- Step label shows current slide name (**Cover**, **Track Details**, **Vision**, **Bio**) or **Exported** after a successful export in this session
+- Horizontal **paged carousel** (one slide full width); dot pagination for 4 slides
+- **Background studio** (below carousel, before export):
+  - Separate **cover** image slot and **inner slides (2–4)** image slot
+  - Quick actions: match cover to inner, color-only inner, reset cover to track artwork
+  - **Photo-matched** swatches from artwork + **editorial color presets** (Midnight, Navy, Forest, Bordeaux, Espresso)
+  - Custom color via shared palette UI (same system as Music Promo editor backgrounds)
+- If profile **bio** or **social links** are missing, inline nudge with shortcut to Profile
+- **Export Carousel** captures all 4 slides via `react-native-view-shot`, saves JPEGs to **Camera Roll**, persists project as `exported`
+- Post-export panel: success message, **Share** (system share sheet with cover slide), **Done** (home)
+- Re-opening an exported project from home lands on preview; user can re-export without the pre-export edit nudge
+- Flow header back returns to metadata when not in post-export state
+
+### 4.6 Export
+
+> As an artist, I want exported slides saved and easy to share.
+
+**Acceptance criteria:**
+- Each slide captured at device width × **4:5** height (`SPK_SLIDE_WIDTH` × `SPK_SLIDE_HEIGHT`), JPEG quality ~0.93
+- All **four** images saved to the photo library on export
+- Filenames include project title and slide identifier
+- Export completes in reasonable time on mid-tier devices (target &lt;10s)
+- Signed-in: Convex project `status: "exported"`, `spkStep: "preview"`
+- Guest: local AsyncStorage project with `status: "exported"`
+
+### 4.7 Project history
+
+> As an artist, I want SPK projects in my project list so I can resume or re-export.
+
+**Acceptance criteria:**
+- SPK projects appear on **Home** alongside video projects
+- Card subtitle: **Song Press Kit** (draft: **Song Press Kit · Draft**); thumbnail uses track artwork
+- Tap opens at saved `spkStep` (exported projects always open at **preview**)
+- Draft auto-saves on exit from any wizard step when there is draft content
+
+### 4.8 Draft persistence
+
+> As an artist, I should not lose work if I leave mid-flow.
+
+**Acceptance criteria:**
+- In-flow state held in `SpkDraftProvider` (`mergeDraft` on field change)
+- Exit / save-and-exit flushes to Convex (`saveSpkDraftToConvex`) or local (`saveSpkDraftLocally`) via `useSpkClose`
+- `spkStep` records last wizard step for resume
+- Route params hydrate draft when navigating back/forward; opening from home uses stored project record
 
 ---
 
 ## 5. Slide Designs
 
-All slides: 1:1 aspect ratio, dark editorial theme (near-black background, white/off-white text, single accent treatment).
+All slides: **4:5 portrait** (Instagram carousel), dark editorial theme, white/off-white type. Inner slides (2–4) share `themeColor` and optional `innerBackgroundUri` (photo or solid). Cover uses `customCoverUri` or track artwork.
 
 ### Slide 1 — Cover
 
 ```
-[Full-bleed artwork, darkened overlay]
-  [Top-left] Artist name (large)
-  [Bottom-left] Track title (medium)
-  [Bottom-right] Social handle row — max 4 platform icons, in user's sort order
+[Full-bleed cover image — custom cover or track artwork]
+[Light overlay + bottom gradient]
+[Bottom] Track title (large, bold)
 ```
 
-Data sources: `project.photoUri`, `user.artistName`, `user.links` (first 4 by `sortOrder`)
+**Data:** `customCoverUri` ?? `photoUri`, `title`
 
 ### Slide 2 — Track Details
 
 ```
-[Background: solid near-black or blurred artwork]
-  [Top] "TRACK DETAILS" label (small caps)
-  [Middle] Track title (very large)
-  [Below] Any available meta: linked promo template name, audio clip length
+[Background: theme color and/or inner background photo]
+[Top] "TRACK DETAILS" (small caps)
+[Middle] Track title (large)
+[Meta grid] Genre + BPM (side by side when present)
+[Stack] Released date, Label, Collaborators (as available)
 ```
 
-Data sources: `project.title`, `project.templateId`, `project.trimStart/trimEnd`
+**Data:** `title`, `genre`, `bpm`, `releaseDate` (formatted label), `label`, `collaborators`, `themeColor`, `innerBackgroundUri`
 
-### Slide 3 — Vision / Concept
+*Note: Linked Music Promo `templateName` / `clipDurationSec` are stored on the project but not shown on this slide in v1.*
+
+### Slide 3 — Vision
 
 ```
-[Background: solid dark]
-  [Top] "VISION" label (small caps)
-  [Middle] Vision text in large block-quote style — opening " and closing " curly quotes
-  [Bottom-right] Artist name (small, attribution style)
+[Background: theme color and/or inner background photo]
+[Top] "VISION" (small caps)
+[Middle] Vision text, large quote style
+[Bottom-right] Artist name (attribution)
 ```
 
-Data sources: `project.vision`, `user.artistName`
+**Data:** `vision`, `artistName` (from SPK draft, not only profile), `themeColor`, `innerBackgroundUri`
 
 ### Slide 4 — Artist Bio
 
 ```
-[Background: solid dark]
-  [Top-left] Artist avatar (circular, if available)
-  [Next to avatar] Artist name
-  [Below] Bio text
-  [Bottom] Row of social platform icons with links
+[Background: theme color and/or inner background photo]
+[Top] Avatar (if available) + artist name
+[Middle] Bio text
+[Bottom] Social platform icons / links (profile)
 ```
 
-Data sources: `user.artistName`, `user.avatarImageUrl`, `user.bio`, `user.links`
+**Data:** Profile `artistName`, `avatarImageUrl`, `bio`, `links` (guest: local profile)
 
 ---
 
-## 6. Data Model Changes
+## 6. Data Model
 
-### projects table
+### `projects` table (Convex) and local projects
 
-Add two optional fields:
+| Field | Type | Notes |
+|-------|------|--------|
+| `type` | `"video"` \| `"spk"` | Optional; missing = video |
+| `aspectRatio` | `"4:5"` for SPK | Stored on create |
+| `status` | `"draft"` \| `"exported"` | |
+| `spkStep` | `"details"` \| `"vision"` \| `"metadata"` \| `"preview"` | Resume pointer |
+| `title` | string? | Track title |
+| `photoUri`, `photoName` | string? | Track artwork |
+| `artistName` | string? | SPK-specific override |
+| `vision` | string? | |
+| `genre`, `bpm`, `label`, `collaborators` | string? | Metadata |
+| `releaseDate` | string? | ISO date `YYYY-MM-DD` |
+| `themeColor` | string? | Hex, inner slide fill |
+| `customCoverUri` | string? | Optional cover override |
+| `innerBackgroundUri` | string? | Slides 2–4 photo background |
+| `linkedProjectId` | string? | Source Music Promo project |
+| `templateName`, `clipDurationSec` | string? / number? | From linked promo |
 
-```ts
-type: v.optional(v.union(v.literal("video"), v.literal("spk"))),
-vision: v.optional(v.string()),
-```
-
-- Existing records without `type` are treated as `"video"` at read time
-- `vision` is only relevant when `type === "spk"`
+Existing records without `type` are treated as `"video"` at read time.
 
 ---
 
 ## 7. Navigation / Route Structure
 
 ```
-(tabs)/create.tsx           → project type picker (new screen)
-create/type-picker.tsx      → same as above, or inline in tab
-create/spk/details.tsx      → step 1: artwork + title
-create/spk/vision.tsx       → step 2: vision text
-create/spk/preview.tsx      → step 3: slide preview + export
+(tabs)/create.tsx              → TypePickerScreen (embedded)
+create/type-picker.tsx         → Music Promo | Song Press Kit cards
+create/spk/_layout.tsx         → SpkDraftProvider + stack
+  create/spk/details.tsx       → Step 1: artwork, artist, title
+  create/spk/vision.tsx        → Step 2: vision
+  create/spk/metadata.tsx      → Step 3: track metadata
+  create/spk/preview.tsx       → Step 4: preview + export
 ```
 
-The existing `create/picker.tsx → create/editor.tsx → create/rendering.tsx → create/share.tsx` flow is unchanged.
+Music Promo flow unchanged: `create/picker → editor → rendering → share`.
+
+**Key modules:** `src/lib/spkDraft.ts`, `src/providers/SpkDraftContext.tsx`, `src/hooks/useSpkClose.ts`, `src/hooks/useSpkWizardBack.ts`, `src/components/spk/*`.
 
 ---
 
@@ -191,17 +246,27 @@ The existing `create/picker.tsx → create/editor.tsx → create/rendering.tsx �
 
 | # | Question | Decision |
 |---|----------|----------|
-| 1 | Full-screen swiper or thumbnail strip for slide preview? | Full-screen swiper with dot pagination |
-| 2 | Vision slide — block quote with marks, or plain text? | Block quote with large curly quotation marks |
-| 3 | Show profile edit shortcut when bio/links are missing? | Yes — inline nudge with shortcut in preview step |
-| 4 | Store press kit artwork to Convex cloud, or on-device only? | On-device only |
-| 5 | Cap social links on Cover slide? | Cap at 4, using user's sort order |
+| 1 | Slide preview layout? | Horizontal paged carousel with dot pagination |
+| 2 | Vision slide typography? | Large quote-style body text |
+| 3 | Missing profile bio/links? | Inline nudge on preview with link to Profile |
+| 4 | Artwork / URIs in cloud? | On-device only |
+| 5 | Carousel aspect ratio? | **4:5** portrait (Instagram), not 1:1 |
+| 6 | How many wizard steps? | **4** (details → vision → metadata → preview) |
+| 7 | Track metadata required? | **No** — all metadata fields optional |
+| 8 | Background customization? | **Yes** on preview — cover/inner images + color presets (aligned with Music Promo background system) |
+| 9 | Artist name on cover slide? | **No** in v1 — title only; artist on Vision + Bio |
+| 10 | Social icons on cover? | **No** in v1 — links on Bio slide only |
+| 11 | BPM keyboard dismiss (iOS)? | `InputAccessoryView` Done bar; hide footer Next while keyboard open |
+| 12 | Share after export? | Share sheet for **cover** slide; all four in Camera Roll |
 
 ---
 
 ## 9. Out of Scope / Future Phases
 
-- **Phase 9+:** Event Flyer project type
-- **Phase 9+:** Custom color themes for press kit slides
-- **Phase 9+:** Adding an audio clip or Spotify preview link to the press kit
-- **Phase 9+:** Sharing the press kit as a public link via the MusicPromo artist profile
+- Event Flyer project type
+- Per-slide font / layout editor
+- Artist name and social row on Cover slide
+- Showing linked promo template / clip length on Track Details slide
+- Single share action attaching all four JPEGs
+- Public press kit link on artist profile
+- Spotify / audio preview on press kit slides

@@ -1,0 +1,61 @@
+<!doctype html><html><head><meta charset="utf-8">
+<link rel="stylesheet" href="../colors_and_type.css">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Caveat:wght@700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;padding:18px;background:#fff;font-family:Inter,system-ui;color:#11131A}
+.h2{font-size:11px;letter-spacing:.16em;text-transform:uppercase;font-weight:700;color:#6B6F7A;margin:0 0 14px}
+.matrix{display:grid;grid-template-columns:120px 1fr 1fr;gap:0}
+.cell{padding:14px 12px;border-top:1px solid rgba(0,0,0,.08);display:flex;flex-direction:column;gap:8px}
+.cell.head{background:#FBFAF7;font-weight:700;font-size:12.5px;justify-content:center}
+.role{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#6B6F7A;font-weight:700;margin-bottom:0}
+.faceline{font-family:ui-monospace,Menlo,monospace;font-size:10.5px;color:#6B6F7A}
+.poster{position:relative;color:#fff;overflow:hidden;background:radial-gradient(ellipse at 50% 40%,#6a5a18 0%,#3a1a18 65%,#1a0808 100%);text-align:center;display:flex;flex-direction:column;padding:18px 8px 10px;box-sizing:border-box;border-radius:8px}
+.poster::after{content:"";position:absolute;inset:0;background-image:radial-gradient(circle at 1px 1px,rgba(0,0,0,.4) 1px,transparent 1.5px);background-size:3px 3px;opacity:.55;mix-blend-mode:multiply}
+.poster > *{position:relative;z-index:1}
+.poster .eb{font-size:6px;color:#FFD936;letter-spacing:1.5px;font-weight:700}
+.poster .tt{font-family:Anton;font-size:32px;line-height:.85}
+.poster .ss{font-family:Caveat;font-size:15px;font-style:italic}
+.poster .ft{margin-top:auto;font-size:5px;letter-spacing:.5px;font-weight:600;border-top:1px solid rgba(255,217,54,.3);padding-top:5px}
+.r-916{aspect-ratio:9/16;width:100px;margin:0 auto}
+.r-45{aspect-ratio:4/5;width:140px;margin:0 auto}
+.fmt{display:flex;gap:10px;align-items:center;font-size:12px}
+.fmt .ic{width:32px;height:32px;border-radius:8px;background:#F2F0EA;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;font-family:ui-monospace}
+.specs{font-size:11px;color:#6B6F7A;line-height:1.5}
+.note{font-size:11px;color:#6B6F7A;line-height:1.55;margin-top:14px;border-top:1px solid rgba(0,0,0,.08);padding-top:10px}
+</style></head><body>
+
+<div class="h2">Flyer · Export Matrix · 2 formats × 2 ratios</div>
+
+<div class="matrix">
+  <div class="cell head"></div>
+  <div class="cell head">9:16 · Story</div>
+  <div class="cell head">4:5 · Feed</div>
+
+  <div class="cell">
+    <div class="fmt"><div class="ic">▶</div><div><div style="font-weight:700">Video · MP4</div><div class="specs">With audio · 8–30s</div></div></div>
+  </div>
+  <div class="cell">
+    <div class="r-916"><div class="poster" style="height:100%"><div class="eb">ROOFTOP</div><div class="tt">DISCO</div><div class="ss">at dusk</div><div class="ft">SAT APR 25</div></div></div>
+    <div class="specs"><strong>1080 × 1920</strong> · h.264 · 30fps · &lt;5MB target</div>
+  </div>
+  <div class="cell">
+    <div class="r-45"><div class="poster" style="height:100%"><div class="eb">ROOFTOP</div><div class="tt">DISCO</div><div class="ss">at dusk</div><div class="ft">SAT APR 25</div></div></div>
+    <div class="specs"><strong>1080 × 1350</strong> · h.264 · 30fps · &lt;5MB target</div>
+  </div>
+
+  <div class="cell">
+    <div class="fmt"><div class="ic">■</div><div><div style="font-weight:700">Image · PNG</div><div class="specs">Static · no audio</div></div></div>
+  </div>
+  <div class="cell">
+    <div class="r-916"><div class="poster" style="height:100%"><div class="eb">ROOFTOP</div><div class="tt">DISCO</div><div class="ss">at dusk</div><div class="ft">SAT APR 25</div></div></div>
+    <div class="specs"><strong>1080 × 1920</strong> · sRGB · &lt;1MB</div>
+  </div>
+  <div class="cell">
+    <div class="r-45"><div class="poster" style="height:100%"><div class="eb">ROOFTOP</div><div class="tt">DISCO</div><div class="ss">at dusk</div><div class="ft">SAT APR 25</div></div></div>
+    <div class="specs"><strong>1080 × 1350</strong> · sRGB · &lt;1MB</div>
+  </div>
+</div>
+
+<div class="note">No re-layout between ratios — the template <strong>scales linearly</strong> via a single multiplier prop. Every face, gap, and stroke is multiplied by the same factor. Safe area is 5% on every edge so Story chrome doesn't bite. Video and image share one render path — the image is just frame 0.</div>
+
+</body></html>

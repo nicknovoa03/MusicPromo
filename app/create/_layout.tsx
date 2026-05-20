@@ -39,6 +39,13 @@ export default function CreateLayout() {
         }}
       />
       <Stack.Screen
+        name="flyer"
+        options={{
+          gestureEnabled: false,
+          animation: "slide_from_right",
+        }}
+      />
+      <Stack.Screen
         name="editor"
         options={{
           contentStyle: { backgroundColor: colors.dark.background },

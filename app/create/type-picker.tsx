@@ -32,6 +32,14 @@ const PROJECT_TYPES = [
     route: "/create/spk/details" as const,
     isNew: true,
   },
+  {
+    id: "flyer",
+    title: "Event Flyer",
+    description: "Event announcement · video or image",
+    icon: "ticket-outline" as const,
+    route: "/create/flyer/details" as const,
+    isNew: true,
+  },
 ] as const;
 
 export default function TypePickerScreen({ tabEmbedded = false }: TypePickerScreenProps) {

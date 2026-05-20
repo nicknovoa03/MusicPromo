@@ -36,7 +36,12 @@ import { useSpkWizardBack } from "@/hooks/useSpkWizardBack";
 import { useSpkScreenParams } from "@/hooks/useSpkScreenParams";
 import { getLocalProject } from "@/lib/localProjects";
 import { useSpkDraft } from "@/providers/SpkDraftContext";
-import { convexProjectToSpkDraft, localProjectToSpkDraft } from "@/lib/spkDraft";
+import {
+  convexProjectToSpkDraft,
+  localProjectToSpkDraft,
+  type SpkProjectRecord,
+  type SpkLocalProjectRecord,
+} from "@/lib/spkDraft";
 
 function firstParam(p: string | string[] | undefined): string {
   return Array.isArray(p) ? (p[0] ?? "") : (p ?? "");
@@ -133,7 +138,10 @@ export default function SpkDetailsScreen() {
       if (!project || project.type !== "spk") return;
       hydratedDraftRef.current = true;
       if (project.artistName) hasUserEditedArtistName.current = true;
-      mergeDraft({ ...localProjectToSpkDraft(project), step: "details" });
+      mergeDraft({
+        ...localProjectToSpkDraft(project as SpkLocalProjectRecord),
+        step: "details",
+      });
     };
 
     if (isLocalGuest && localProjectId) {
@@ -144,7 +152,10 @@ export default function SpkDetailsScreen() {
     if (!isLocalGuest && savedProject && savedProject.type === "spk") {
       hydratedDraftRef.current = true;
       if (savedProject.artistName) hasUserEditedArtistName.current = true;
-      mergeDraft({ ...convexProjectToSpkDraft(savedProject), step: "details" });
+      mergeDraft({
+        ...convexProjectToSpkDraft(savedProject as SpkProjectRecord),
+        step: "details",
+      });
     }
   }, [isLocalGuest, localProjectId, savedProject, mergeDraft]);
 

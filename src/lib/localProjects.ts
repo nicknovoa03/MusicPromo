@@ -6,7 +6,8 @@ const LOCAL_PROJECTS_KEY = "musicpromo:local-projects";
 
 type LocalProjectStatus = "draft" | "exported";
 type LocalProjectAspectRatio = "9:16" | "4:5" | "1:1";
-type LocalProjectType = "video" | "spk";
+type LocalProjectType = "video" | "spk" | "flyer";
+type LocalFlyerStep = "details" | "editor" | "export";
 
 export function isLocalProject(project: object): project is LocalProject {
   return typeof (project as LocalProject).id === "string";
@@ -40,6 +41,18 @@ export type LocalProject = {
   templateName?: string;
   clipDurationSec?: number;
   spkStep?: SpkStep;
+  eventTime?: string;
+  eventEndTime?: string;
+  venue?: string;
+  city?: string;
+  flyerEyebrow?: string;
+  flyerTagline?: string;
+  flyerTemplateId?: string;
+  flyerBackgroundKey?: string;
+  flyerAccentColor?: string;
+  flyerExportFormat?: "video" | "image";
+  flyerLineupJson?: string;
+  flyerStep?: LocalFlyerStep;
   status: LocalProjectStatus;
   createdAt: number;
   updatedAt: number;
@@ -73,6 +86,18 @@ export type UpsertLocalProjectInput = {
   templateName?: string;
   clipDurationSec?: number;
   spkStep?: SpkStep;
+  eventTime?: string;
+  eventEndTime?: string;
+  venue?: string;
+  city?: string;
+  flyerEyebrow?: string;
+  flyerTagline?: string;
+  flyerTemplateId?: string;
+  flyerBackgroundKey?: string;
+  flyerAccentColor?: string;
+  flyerExportFormat?: "video" | "image";
+  flyerLineupJson?: string;
+  flyerStep?: LocalFlyerStep;
   status?: LocalProjectStatus;
 };
 

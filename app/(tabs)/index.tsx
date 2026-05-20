@@ -29,7 +29,7 @@ import {
   loadExpoSwiftUIModifiersModule,
   loadExpoSwiftUIModule,
 } from "@/lib/iosNativeUi";
-import { normalizeMediaUri } from "@/lib/mediaUri";
+import { normalizeMediaUri, uriForImageSource } from "@/lib/mediaUri";
 import { getLocalArtistProfile } from "@/lib/localProfile";
 import { encodeUriParam } from "@/lib/uri";
 import { useLocalSession } from "@/providers/localSession";
@@ -46,6 +46,7 @@ import {
 } from "@/lib/templates";
 import { ProjectThumbnail } from "@/components/ProjectThumbnail";
 import { getSpkResumeRoute } from "@/lib/spkDraft";
+import { getFlyerProjectResumeNavigation } from "@/lib/flyerDraft";
 
 type Project = Doc<"projects"> | LocalProject;
 type ProjectAction = "duplicate" | "delete";
@@ -289,8 +290,10 @@ const longPressProjectIdRef = useRef<string | null>(null);
   }, [convex, isLocalGuest, refreshLocalProjects]);
 
   const profileAvatarUri = useMemo(() => {
-    if (isLocalGuest) return normalizeAvatarUri(localAvatarUrl);
-    return normalizeAvatarUri(convexUser?.avatarImageUrl ?? convexUser?.avatarUrl);
+    const raw = isLocalGuest
+      ? normalizeAvatarUri(localAvatarUrl)
+      : normalizeAvatarUri(convexUser?.avatarImageUrl ?? convexUser?.avatarUrl);
+    return uriForImageSource(raw) || null;
   }, [convexUser?.avatarImageUrl, convexUser?.avatarUrl, isLocalGuest, localAvatarUrl]);
 
   useEffect(() => {
@@ -305,6 +308,10 @@ const longPressProjectIdRef = useRef<string | null>(null);
       const stageBackgroundUri = normalizeMediaUri(
         parseTemplateTweaksParam(project.templateTweaks)?.stageBackgroundImageUri ??
           null,
+      );
+      const prefetchablePhotoUri = uriForImageSource(project.photoUri);
+      const prefetchableStageUri = uriForImageSource(
+        parseTemplateTweaksParam(project.templateTweaks)?.stageBackgroundImageUri,
       );
       if (longPressProjectIdRef.current === projectKey) {
         longPressProjectIdRef.current = null;
@@ -322,11 +329,11 @@ const longPressProjectIdRef = useRef<string | null>(null);
       }
       if (deletingProjectId === projectKey) return;
       track("project_reopened", { projectId: projectKey });
-      if (projectPhotoUri) {
-        void Image.prefetch(projectPhotoUri).catch(() => {});
+      if (prefetchablePhotoUri) {
+        void Image.prefetch(prefetchablePhotoUri).catch(() => {});
       }
-      if (stageBackgroundUri) {
-        void Image.prefetch(stageBackgroundUri).catch(() => {});
+      if (prefetchableStageUri) {
+        void Image.prefetch(prefetchableStageUri).catch(() => {});
       }
 
       if (
@@ -334,6 +341,19 @@ const longPressProjectIdRef = useRef<string | null>(null);
         (isLocalProject(project) && project.type === "spk")
       ) {
         const { pathname, params } = getSpkResumeRoute(
+          project as Parameters<typeof getSpkResumeRoute>[0],
+          projectKey,
+          isLocalProject(project),
+        );
+        router.push({ pathname: pathname as any, params });
+        return;
+      }
+
+      if (
+        (!isLocalProject(project) && project.type === "flyer") ||
+        (isLocalProject(project) && project.type === "flyer")
+      ) {
+        const { pathname, params } = getFlyerProjectResumeNavigation(
           project,
           projectKey,
           isLocalProject(project),
@@ -632,6 +652,9 @@ const longPressProjectIdRef = useRef<string | null>(null);
       const isSpkProject =
         (!isLocalProject(item) && item.type === "spk") ||
         (isLocalProject(item) && item.type === "spk");
+      const isFlyerProject =
+        (!isLocalProject(item) && item.type === "flyer") ||
+        (isLocalProject(item) && item.type === "flyer");
       const cardContent = (
         <View style={styles.cardContent}>
           <ProjectThumbnail
@@ -649,7 +672,11 @@ const longPressProjectIdRef = useRef<string | null>(null);
                 ? item.status === "draft"
                   ? "Song Press Kit · Draft"
                   : "Song Press Kit"
-                : formatDate(item.createdAt)}
+                : isFlyerProject
+                  ? item.status === "draft"
+                    ? "Event Flyer · Draft"
+                    : "Event Flyer"
+                  : formatDate(item.createdAt)}
             </Text>
           </View>
         </View>
@@ -798,7 +825,11 @@ const longPressProjectIdRef = useRef<string | null>(null);
             accessibilityRole="button"
           >
             <Image
-              source={profileAvatarUri && !avatarError ? { uri: profileAvatarUri } : require("../../assets/defaults/MusicPromo-DefaultAvatar.jpg")}
+              source={
+                profileAvatarUri && !avatarError
+                  ? { uri: profileAvatarUri }
+                  : require("../../assets/defaults/MusicPromo-DefaultAvatar.jpg")
+              }
               style={styles.avatarImage}
               onError={() => setAvatarError(true)}
             />

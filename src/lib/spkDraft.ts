@@ -31,7 +31,6 @@ export type SpkProjectRecord = Pick<
   Doc<"projects">,
   | "_id"
   | "status"
-  | "type"
   | "title"
   | "photoUri"
   | "photoName"
@@ -49,9 +48,11 @@ export type SpkProjectRecord = Pick<
   | "templateName"
   | "clipDurationSec"
   | "spkStep"
->;
+> & {
+  type?: "video" | "spk";
+};
 
-export type SpkLocalProjectRecord = LocalProject & {
+export type SpkLocalProjectRecord = Omit<LocalProject, "type"> & {
   type?: "video" | "spk";
   vision?: string;
   genre?: string;

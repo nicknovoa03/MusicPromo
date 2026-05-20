@@ -3,13 +3,13 @@ import { View, Image, StyleSheet, Text } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import type { Doc } from "../../convex/_generated/dataModel";
 import { isLocalProject, type LocalProject } from "@/lib/localProjects";
-import { normalizeMediaUri } from "@/lib/mediaUri";
+import { uriForImageSource } from "@/lib/mediaUri";
 import {
   getTemplateDefinition,
   parseTemplateTweaksParam,
   resolveTemplateId,
 } from "@/lib/templates";
-import { colors } from "@/constants/tokens";
+import { colors, radius } from "@/constants/tokens";
 
 type Project = Doc<"projects"> | LocalProject;
 
@@ -25,8 +25,8 @@ let _cachedThumbnailWidth = 0;
 
 export function ProjectThumbnail({ project, title, surfaceColor, fallbackIconColor }: Props) {
   const [thumbnailSize, setThumbnailSize] = useState(_cachedThumbnailWidth);
-  const photoUri = normalizeMediaUri(project.photoUri);
-  const fallbackPreviewUri = normalizeMediaUri(project.exportedVideoUri);
+  const photoUri = uriForImageSource(project.photoUri);
+  const fallbackPreviewUri = uriForImageSource(project.exportedVideoUri);
 
   const isSpk = !isLocalProject(project) && project.type === "spk";
 
@@ -113,6 +113,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.light.surface,
     alignItems: "center",
     justifyContent: "center",
+    borderRadius: radius.lg,
     overflow: "hidden",
   },
   thumbnailImage: {

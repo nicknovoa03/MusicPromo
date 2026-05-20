@@ -1,0 +1,921 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Phase 8 — Song Press Kit · Low-fi Wireframes</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<link rel="preconnect" href="https://rsms.me/" />
+<link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
+<style>
+  :root{
+    --ink:#11131A; --paper:#F6F4EE; --rule:#11131A;
+    --muted:#6B6F7A; --accent:#3A5DFF; --warn:#C62828; --note:#8a6a14;
+    --frame:#000;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--paper);color:var(--ink);
+    font-family:"Inter",system-ui,sans-serif;font-feature-settings:"ss01","cv11";
+    -webkit-font-smoothing:antialiased}
+  .page{max-width:1180px;margin:0 auto;padding:48px 32px 96px}
+  header.hero{border-bottom:1px solid var(--ink);padding-bottom:28px;margin-bottom:32px;
+    display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap}
+  .h-label{font-size:11px;letter-spacing:.18em;text-transform:uppercase;font-weight:700}
+  .h-title{font-size:44px;line-height:1.05;letter-spacing:-.02em;font-weight:800;margin:8px 0 0;max-width:760px}
+  .h-meta{font-size:13px;color:var(--muted);text-align:right;line-height:1.6}
+  nav.toc{display:flex;gap:18px;flex-wrap:wrap;font-size:12px;color:var(--muted);
+    border-top:1px dashed var(--ink);padding-top:14px;margin-bottom:48px}
+  nav.toc a{color:var(--ink);text-decoration:none;border-bottom:1px solid var(--muted)}
+  nav.toc a:hover{border-bottom-color:var(--ink)}
+
+  section.screen{margin:0 0 72px;page-break-inside:avoid}
+  .screen-head{display:flex;align-items:baseline;gap:16px;border-bottom:1px solid var(--ink);
+    padding-bottom:12px;margin-bottom:24px}
+  .screen-num{font-size:64px;line-height:1;font-weight:800;letter-spacing:-.04em;font-family:"Inter Tight",Inter,sans-serif}
+  .screen-name{font-size:24px;font-weight:700;letter-spacing:-.01em;margin:0}
+  .screen-route{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:12px;color:var(--muted);
+    background:#fff;border:1px solid var(--ink);padding:3px 8px;border-radius:4px;margin-left:auto}
+
+  .layout{display:grid;grid-template-columns:300px 1fr;gap:36px;align-items:flex-start}
+  @media (max-width:880px){.layout{grid-template-columns:1fr}}
+
+  /* phone frame */
+  .frame{
+    width:300px;background:var(--frame);border-radius:42px;padding:10px;
+    box-shadow:0 0 0 1px var(--ink), 0 22px 40px -22px rgba(0,0,0,.35);
+    position:relative;
+  }
+  .frame.dark .screenbody{background:#0E1014;color:#fff}
+  .frame.light .screenbody{background:#FBFAF7;color:#11131A}
+  .screenbody{border-radius:32px;height:560px;position:relative;overflow:hidden;
+    display:flex;flex-direction:column}
+  .notch{position:absolute;top:8px;left:50%;transform:translateX(-50%);
+    width:96px;height:24px;background:#000;border-radius:14px;z-index:5}
+  .status{height:36px;display:flex;justify-content:space-between;align-items:center;
+    padding:14px 22px 0;font-size:10px;font-weight:700;letter-spacing:.02em}
+  .frame.dark .status{color:#fff} .frame.light .status{color:#11131A}
+
+  .nav-row{display:flex;align-items:center;gap:8px;padding:6px 18px 8px;font-size:13px;font-weight:600}
+  .chev{display:inline-block;width:18px;text-align:center;font-size:18px;line-height:1}
+  .step{margin-left:auto;font-size:11px;font-weight:500;opacity:.55}
+  .body-area{flex:1;padding:6px 20px 16px;overflow:hidden}
+  .footer-cta{padding:10px 18px 22px;border-top:1px solid rgba(255,255,255,.07)}
+  .frame.light .footer-cta{border-top-color:rgba(0,0,0,.08)}
+  .cta{display:flex;align-items:center;justify-content:center;gap:6px;
+    height:44px;border-radius:12px;background:var(--accent);color:#fff;font-weight:700;font-size:14px}
+  .cta.disabled{opacity:.3}
+
+  /* wireframe primitives */
+  .wf{border:1.5px solid currentColor}
+  .wf-dashed{border:1.5px dashed currentColor}
+  .wf-soft{border:1.5px solid rgba(255,255,255,.18)}
+  .frame.light .wf-soft{border-color:rgba(0,0,0,.18)}
+  .pad-md{padding:10px}
+  .stack{display:flex;flex-direction:column}
+  .row{display:flex;align-items:center}
+  .square{aspect-ratio:1/1;width:100%;border-radius:14px;display:flex;align-items:center;justify-content:center}
+  .placeholder-x{
+    background:repeating-linear-gradient(45deg,transparent 0 8px,rgba(255,255,255,.06) 8px 9px);
+    position:relative}
+  .placeholder-x::before, .placeholder-x::after{
+    content:"";position:absolute;inset:14%;border:1px solid currentColor;opacity:.4}
+  .placeholder-x::after{transform:rotate(0);border-style:none;
+    background:linear-gradient(to top right, transparent calc(50% - 0.5px), currentColor calc(50% - 0.5px), currentColor calc(50% + 0.5px), transparent calc(50% + 0.5px)),
+               linear-gradient(to top left, transparent calc(50% - 0.5px), currentColor calc(50% - 0.5px), currentColor calc(50% + 0.5px), transparent calc(50% + 0.5px));
+    opacity:.35;border:none}
+  .frame.light .placeholder-x{background:repeating-linear-gradient(45deg,transparent 0 8px,rgba(0,0,0,.06) 8px 9px)}
+
+  .label-cap{font-size:9px;letter-spacing:.2em;text-transform:uppercase;font-weight:700;opacity:.55}
+  .input-line{height:38px;border-radius:10px;display:flex;align-items:center;padding:0 12px;font-size:12px;opacity:.55}
+  .pill{display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 10px;border-radius:999px;font-size:11px;font-weight:600}
+  .dot-row{display:flex;justify-content:center;gap:5px;padding:10px 0}
+  .dot{width:5px;height:5px;border-radius:99px;background:currentColor;opacity:.3}
+  .dot.active{width:18px;opacity:1}
+
+  /* annotation column */
+  .annot{font-size:13px;line-height:1.6}
+  .annot h3{margin:0 0 8px;font-size:13px;letter-spacing:.18em;text-transform:uppercase;font-weight:700;border-bottom:1px solid var(--ink);padding-bottom:4px}
+  .annot .group{margin-bottom:18px}
+  .annot ul{margin:6px 0 0;padding-left:18px}
+  .annot li{margin-bottom:5px}
+  .annot li b{font-weight:700}
+  .annot code{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:11.5px;
+    background:rgba(0,0,0,.06);padding:1px 5px;border-radius:3px}
+  .anno-tag{display:inline-block;min-width:18px;height:18px;padding:0 5px;border-radius:99px;
+    background:var(--ink);color:var(--paper);font-size:10px;font-weight:700;text-align:center;line-height:18px;margin-right:6px;vertical-align:1px;font-family:"Inter Tight",sans-serif}
+  .edge-cases{background:#FFF7E0;border:1px solid #E0C97A;border-radius:8px;padding:12px 14px;margin-top:8px;font-size:12.5px;line-height:1.55}
+  .edge-cases h4{margin:0 0 4px;font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--note)}
+  .edge-cases ul{margin:0;padding-left:16px}
+
+  /* ascii block (kept for reference per spec) */
+  details.ascii{margin-top:14px}
+  details.ascii summary{cursor:pointer;font-size:11px;letter-spacing:.16em;text-transform:uppercase;font-weight:700;color:var(--muted)}
+  details.ascii pre{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:11px;line-height:1.55;
+    background:#fff;border:1px solid var(--ink);border-radius:6px;padding:14px;overflow:auto;margin-top:8px;white-space:pre}
+
+  /* tiny anno markers on the phone */
+  .marker{position:absolute;width:18px;height:18px;border-radius:99px;background:var(--ink);color:#fff;
+    font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;
+    font-family:"Inter Tight",sans-serif;border:2px solid var(--paper);z-index:8}
+
+  /* flow diagram */
+  .flow{margin-top:48px;border-top:1px solid var(--ink);padding-top:32px}
+  .flow h2{font-size:24px;font-weight:700;letter-spacing:-.01em;margin:0 0 24px}
+  .flowmap{display:grid;grid-template-columns:repeat(7,1fr);gap:14px;align-items:center;font-size:11.5px}
+  .node{border:1.5px solid var(--ink);border-radius:10px;padding:10px;background:#fff;text-align:center;min-height:80px;display:flex;flex-direction:column;justify-content:center;gap:3px;position:relative}
+  .node.start{background:var(--ink);color:var(--paper)}
+  .node.new{background:#FFF7E0}
+  .node.existing{background:#E8F1FF}
+  .node .ntitle{font-weight:700;font-size:12px}
+  .node .nroute{font-family:ui-monospace,monospace;font-size:9.5px;opacity:.65}
+  .node .nbadge{position:absolute;top:-7px;right:6px;font-size:8.5px;letter-spacing:.12em;
+    text-transform:uppercase;font-weight:700;background:var(--ink);color:var(--paper);padding:1px 6px;border-radius:99px}
+  .arrow{text-align:center;font-size:18px;color:var(--muted)}
+  .flowlegend{display:flex;gap:18px;margin-top:18px;font-size:11.5px;color:var(--muted);flex-wrap:wrap}
+  .swatch{display:inline-block;width:14px;height:14px;border:1.5px solid var(--ink);vertical-align:-3px;margin-right:5px;border-radius:3px}
+
+  /* substitution callout */
+  .callout{background:#fff;border:1px dashed var(--ink);padding:12px 14px;border-radius:6px;font-size:12.5px;
+    line-height:1.6;margin-bottom:32px}
+  .callout b{font-weight:700}
+</style>
+</head>
+<body>
+<div class="page">
+
+<header class="hero">
+  <div>
+    <div class="h-label">Phase 8 · Song Press Kit</div>
+    <h1 class="h-title">Song Press Kit — three steps from a track to a four-slide Instagram post.</h1>
+  </div>
+  <div class="h-meta">
+    MusicPromo · iOS<br>
+    React Native + Expo · Convex · Clerk<br>
+    Wireframes (not pixel-spec)
+  </div>
+</header>
+
+<nav class="toc">
+  <span class="h-label" style="color:var(--ink)">Screens —</span>
+  <a href="#s1">01 Type Picker</a>
+  <a href="#s2">02 Song Press Kit Details</a>
+  <a href="#s3">03 Song Press Kit Vision</a>
+  <a href="#s4">04 Song Press Kit Preview</a>
+  <a href="#s5">05 Slide Components</a>
+  <a href="#s6">06 Home / SPK Badge</a>
+  <a href="#flow">→ Flow Diagram</a>
+</nav>
+
+<div class="callout">
+  <b>Wireframe conventions.</b> Hatched fills = user-supplied imagery (photo, artwork, avatar).
+  Solid 1.5px lines = real UI surface; dashed = empty/placeholder state.
+  Light frames = app chrome (adapts to system theme); <b>dark frames = always-dark editorial theme</b> (Song Press Kit flow + slides).
+  Numbered circles (<span class="anno-tag" style="background:var(--ink)">1</span>) reference notes in the right column.
+  Slide labels are 1-indexed.
+</div>
+
+<!-- ============================================================
+     SCREEN 1 — TYPE PICKER
+     ============================================================ -->
+<section class="screen" id="s1" data-screen-label="01 Type Picker">
+  <div class="screen-head">
+    <div class="screen-num">01</div>
+    <h2 class="screen-name">Type Picker</h2>
+    <code class="screen-route">app/create/type-picker.tsx</code>
+  </div>
+
+  <div class="layout">
+    <div class="frame light">
+      <div class="notch"></div>
+      <div class="screenbody">
+        <div class="status"><span>9:41</span><span>● ●</span></div>
+        <!-- close button -->
+        <div class="row" style="padding:8px 18px 4px">
+          <div class="icon-square" style="width:32px;height:32px;border:1.5px solid #11131A;border-radius:99px;display:flex;align-items:center;justify-content:center;font-size:14px">×</div>
+        </div>
+        <div class="marker" style="top:64px;left:8px">1</div>
+
+        <div class="body-area">
+          <div style="font-size:24px;font-weight:800;letter-spacing:-.02em;margin:18px 0 4px">New Project</div>
+          <div style="font-size:13px;opacity:.55;margin-bottom:24px">Create a promo or press kit</div>
+
+          <div class="wf row pad-md" style="border-radius:14px;margin-bottom:10px;gap:12px;position:relative">
+            <div style="width:36px;height:36px;border-radius:99px;background:#11131A;color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px">▶</div>
+            <div style="flex:1">
+              <div style="font-size:13px;font-weight:700">Music Promo</div>
+              <div style="font-size:10.5px;opacity:.55;line-height:1.35;margin-top:1px">Turn a photo + audio into a promo video</div>
+            </div>
+            <div style="opacity:.5">›</div>
+          </div>
+          <div class="marker" style="top:188px;right:10px">2</div>
+
+          <div class="wf row pad-md" style="border-radius:14px;gap:12px;position:relative">
+            <div style="width:36px;height:36px;border-radius:99px;background:#11131A;color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px">≣</div>
+            <div style="flex:1">
+              <div style="font-size:13px;font-weight:700">Song Press Kit</div>
+              <div style="font-size:10.5px;opacity:.55;line-height:1.35;margin-top:1px">Create a 4-slide press kit carousel for a track</div>
+            </div>
+            <div style="opacity:.5">›</div>
+            <div style="position:absolute;top:6px;right:36px;font-size:8px;letter-spacing:.16em;text-transform:uppercase;font-weight:700;background:var(--accent);color:#fff;padding:2px 6px;border-radius:99px">New</div>
+          </div>
+          <div class="marker" style="top:268px;right:10px">3</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="annot">
+      <div class="group">
+        <h3>Purpose</h3>
+        First screen of every new project. Branches Music Promo (existing) from EPK Carousel (new).
+        Reached either by tapping the <b>Create</b> tab or the <b>+</b> FAB on Home.
+      </div>
+
+      <div class="group">
+        <h3>Anatomy</h3>
+        <ul>
+          <li><span class="anno-tag">1</span><b>Dismiss.</b> Only renders when presented as a stack push (e.g. from the FAB). When the screen is <b>tab-embedded</b> (via <code>(tabs)/create.tsx</code>) the close button is hidden — switching tabs is the dismiss.</li>
+          <li><span class="anno-tag">2</span><b>Music Promo card.</b> Tap → <code>/create/picker</code>. Identical to today's entry; no visual change.</li>
+          <li><span class="anno-tag">3</span><b>EPK Carousel card.</b> Tap → <code>/create/epk/details</code>. NEW badge for v1; remove after 2 weeks of release. Description copy is fixed: it must mention <i>"4-slide"</i> and <i>"Instagram"</i> so users self-select correctly.</li>
+        </ul>
+      </div>
+
+      <div class="group">
+        <h3>States</h3>
+        <ul>
+          <li><b>Default.</b> Both cards equal weight. No selection state — tap navigates immediately.</li>
+          <li><b>Pressed.</b> Card opacity 0.8 + scale 0.985 (system press style).</li>
+          <li><b>Tab-embedded.</b> Close button suppressed; <code>tabEmbedded</code> prop true.</li>
+        </ul>
+      </div>
+
+      <div class="edge-cases">
+        <h4>Edge cases a designer would catch</h4>
+        <ul>
+          <li>If user reaches this screen and the type-picker analytics fires twice (once on tab press, once on mount), the first event should win. Code already debounces via <code>previousPathnameRef</code> — keep this.</li>
+          <li>After EPK launch hits 2 weeks, drop the <i>"New"</i> badge. Do not leave it indefinitely.</li>
+          <li>Card order matters: Music Promo first (familiar), EPK second (new). Do not A/B-test order — alphabetical reads as demoting EPK.</li>
+          <li>If a third project type is ever added, this becomes a list rather than two large cards. Plan for that — keep the card markup repeatable, not absolutely positioned.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <details class="ascii"><summary>ASCII reference</summary>
+<pre>
+┌─────────────────────────────────────────┐
+│ [×]                                     │  ← close (hidden if tab-embedded)
+│                                         │
+│   New Project                           │  ← h1 (30 / 700 / -0.02em)
+│   What are you making?                  │  ← body-secondary
+│                                         │
+│   ┌─────────────────────────────────┐   │
+│   │ (▶)  Music Promo            ›   │   │  ← existing flow
+│   │      Turn a photo + audio clip  │   │
+│   │      into a short promo video   │   │
+│   └─────────────────────────────────┘   │
+│                                         │
+│   ┌─────────────────────────────────┐   │
+│   │ (≣)  EPK Carousel       [NEW] › │   │  ← Phase 8
+│   │      Generate a 4-slide         │   │
+│   │      Instagram carousel         │   │
+│   └─────────────────────────────────┘   │
+│                                         │
+└─────────────────────────────────────────┘
+</pre></details>
+</section>
+
+<!-- ============================================================
+     SCREEN 2 — SONG PRESS KIT DETAILS
+     ============================================================ -->
+<section class="screen" id="s2" data-screen-label="02 Song Press Kit Details">
+  <div class="screen-head">
+    <div class="screen-num">02</div>
+    <h2 class="screen-name">Song Press Kit Details — Step 1</h2>
+    <code class="screen-route">app/create/spk/details.tsx</code>
+  </div>
+
+  <div class="layout">
+    <div class="frame dark">
+      <div class="notch"></div>
+      <div class="screenbody">
+        <div class="status"><span>9:41</span><span>● ●</span></div>
+
+        <div class="nav-row">
+          <span class="chev">‹</span>
+          <span>New Press Kit</span>
+          <span class="step">1 of 3</span>
+        </div>
+        <div class="marker" style="top:48px;right:8px">1</div>
+
+        <div class="body-area">
+          <div class="label-cap" style="margin:6px 0 8px">Track Artwork</div>
+
+          <div class="wf-dashed square placeholder-x" style="opacity:.85;margin-bottom:10px;position:relative">
+            <div style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);font-size:10px;opacity:.6">Tap to add artwork</div>
+          </div>
+          <div class="marker" style="top:130px;left:8px">2</div>
+
+          <div class="wf-soft row" style="border-radius:10px;padding:7px 10px;gap:6px;font-size:11px;opacity:.7;margin-bottom:16px">
+            ⛓ Link to existing Music Promo
+          </div>
+          <div class="marker" style="top:332px;left:8px">3</div>
+
+          <div class="label-cap" style="margin:0 0 6px">Track Title</div>
+          <div class="wf-soft input-line">e.g. Midnight Drive</div>
+          <div class="marker" style="top:382px;right:8px">4</div>
+        </div>
+
+        <div class="footer-cta">
+          <div class="cta disabled">Next  →</div>
+        </div>
+        <div class="marker" style="bottom:18px;right:8px">5</div>
+      </div>
+    </div>
+
+    <div class="annot">
+      <div class="group">
+        <h3>Purpose</h3>
+        Collect the two minimum facts about the track: <b>artwork</b> and <b>title</b>. Offers a power-user shortcut: pre-fill both from an existing Music Promo project.
+      </div>
+
+      <div class="group">
+        <h3>Anatomy</h3>
+        <ul>
+          <li><span class="anno-tag">1</span><b>Header.</b> Back chevron + screen name + <code>1 of 3</code> step counter. Step counter is right-aligned, secondary color — never bold.</li>
+          <li><span class="anno-tag">2</span><b>Artwork well.</b> 1:1 aspect, dashed border when empty, solid when filled. Filled state shows a <code>[Change]</code> chip overlay on tap-and-hold; this is the only entry to re-pick.</li>
+          <li><span class="anno-tag">3</span><b>Link affordance.</b> Tapping opens a page-sheet modal listing prior Music Promo projects (thumbnail + title + date). Selecting one fills artwork + title and shows a <i>"Linked"</i> badge in place of this row. The <code>×</code> on the badge unlinks but <b>does not clear</b> the filled fields — by design.</li>
+          <li><span class="anno-tag">4</span><b>Title input.</b> Single line, 80-char cap (no counter). Placeholder example is concrete, not abstract.</li>
+          <li><span class="anno-tag">5</span><b>Next.</b> Disabled at 0.3 opacity until <b>both</b> artwork and trimmed title are present. Validates on press, not on blur.</li>
+        </ul>
+      </div>
+
+      <div class="group">
+        <h3>State variants</h3>
+        <ul>
+          <li><b>Empty</b> (shown). Both fields blank, Next disabled.</li>
+          <li><b>Linked.</b> Artwork filled from existing project. Link row replaced by a chip: <code>✓ Linked  [×]</code>. Title pre-filled, editable. Template + clip length captured silently and forwarded to the Track Details slide.</li>
+          <li><b>Photo loading.</b> Artwork well shows a centered spinner; tap ignored.</li>
+          <li><b>Permission denied.</b> Native alert from <code>ImagePicker</code>; well stays empty.</li>
+          <li><b>No prior projects (guest).</b> Modal empty state: <i>"Sign in to link an existing Music Promo."</i></li>
+        </ul>
+      </div>
+
+      <div class="edge-cases">
+        <h4>Edge cases</h4>
+        <ul>
+          <li>User picks a HEIC photo. Force <code>preferredAssetRepresentationMode = Compatible</code> so downstream FFmpeg/slide capture doesn't choke (mirrors picker.tsx).</li>
+          <li>User links a project whose photo file no longer exists locally (cleared cache). The link-picker list itself should hide those projects rather than 404 the EPK flow.</li>
+          <li>Title with only whitespace must not advance — currently guarded by <code>title.trim()</code>. Keep.</li>
+          <li>Linking pre-fills title — but what if the linked project's title is empty? Today it pre-fills with <code>""</code>; design intent is: leave the title field focused and empty so the user types one. Worth a test.</li>
+          <li>Modal sheet uses native iOS pageSheet — back-swipe-to-dismiss is expected. Don't add a redundant Cancel chevron.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <details class="ascii"><summary>ASCII reference</summary>
+<pre>
+┌─────────────────────────────────────────┐
+│ ‹  New EPK                    1 of 3    │
+│                                         │
+│  TRACK ARTWORK                          │
+│  ┌─────────────────────────────────┐    │
+│  │                                 │    │
+│  │            [×]                  │    │  ← dashed when empty
+│  │     "Tap to add artwork"        │    │      photo when filled (+ Change chip)
+│  │                                 │    │
+│  └─────────────────────────────────┘    │
+│  [ ⛓ Link to existing Music Promo ]    │
+│        ↓ (becomes when linked)          │
+│  [ ✓ Linked                        × ]  │
+│                                         │
+│  TRACK TITLE                            │
+│  ┌─────────────────────────────────┐    │
+│  │ e.g. Midnight Drive             │    │
+│  └─────────────────────────────────┘    │
+│                                         │
+│  ───────────────────────────────────    │
+│  [          Next  →          ]          │  ← disabled until photo + title
+└─────────────────────────────────────────┘
+</pre></details>
+</section>
+
+<!-- ============================================================
+     SCREEN 3 — VISION
+     ============================================================ -->
+<section class="screen" id="s3" data-screen-label="03 Song Press Kit Vision">
+  <div class="screen-head">
+    <div class="screen-num">03</div>
+    <h2 class="screen-name">Song Press Kit Vision — Step 2</h2>
+    <code class="screen-route">app/create/spk/vision.tsx</code>
+  </div>
+
+  <div class="layout">
+    <div class="frame dark">
+      <div class="notch"></div>
+      <div class="screenbody">
+        <div class="status"><span>9:41</span><span>● ●</span></div>
+        <div class="nav-row">
+          <span class="chev">‹</span>
+          <span>Vision</span>
+          <span class="step">2 of 3</span>
+        </div>
+
+        <div class="body-area">
+          <div class="wf-soft row" style="border-radius:10px;padding:6px 8px;gap:8px;margin-bottom:18px">
+            <div class="placeholder-x" style="width:34px;height:34px;border-radius:6px;flex-shrink:0"></div>
+            <div style="font-size:12px;font-weight:700">Midnight Drive</div>
+          </div>
+          <div class="marker" style="top:108px;right:8px">1</div>
+
+          <div class="label-cap" style="margin:0 0 8px;letter-spacing:.3em">Vision / Concept</div>
+          <div class="wf-soft" style="border-radius:14px;padding:14px;height:200px;position:relative">
+            <div style="font-size:13px;opacity:.4;line-height:1.45">
+              What's the story behind this track?
+            </div>
+            <div style="position:absolute;bottom:10px;right:14px;font-size:10px;opacity:.5">280</div>
+          </div>
+          <div class="marker" style="top:200px;left:8px">2</div>
+          <div class="marker" style="top:340px;right:8px">3</div>
+        </div>
+
+        <div class="footer-cta">
+          <div class="cta disabled">Next  →</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="annot">
+      <div class="group">
+        <h3>Purpose</h3>
+        Capture the artist's voice in one paragraph. This text becomes the Slide 3 block-quote — the centerpiece of the carousel.
+      </div>
+
+      <div class="group">
+        <h3>Anatomy</h3>
+        <ul>
+          <li><span class="anno-tag">1</span><b>Track strip.</b> Thumbnail + title from Step 1, read-only. Anchors the user — they're writing <i>about this track</i>, not in the abstract.</li>
+          <li><span class="anno-tag">2</span><b>Vision input.</b> Multiline, autofocus on mount, soft keyboard-aware. Min height ~180px so the field looks invitingly large. Placeholder is the literal product question, not "Enter description".</li>
+          <li><span class="anno-tag">3</span><b>Live counter.</b> Counts <i>remaining</i> (not used). Turns warning-red (<code>#FF6B6B</code>) at <code>remaining ≤ 30</code>. Bottom-right of card, not floating.</li>
+        </ul>
+      </div>
+
+      <div class="group">
+        <h3>State variants</h3>
+        <ul>
+          <li><b>Empty.</b> Placeholder visible, counter <code>280</code>, Next disabled.</li>
+          <li><b>Filling.</b> Counter ticks down. Field grows? No — fixed min-height, internal scroll if user pastes a wall of text.</li>
+          <li><b>Approaching limit (≤ 30 chars).</b> Counter turns red. Input continues to accept up to 280, then hard-stops (no truncation alert).</li>
+          <li><b>At cap.</b> Counter shows <code>0</code> in red. Next is enabled. Further keystrokes are silently dropped.</li>
+        </ul>
+      </div>
+
+      <div class="edge-cases">
+        <h4>Edge cases</h4>
+        <ul>
+          <li>Whitespace-only string must not enable Next. Already guarded by <code>vision.trim().length > 0</code>.</li>
+          <li>Paste &gt; 280 chars. We truncate silently rather than rejecting — friendlier than the iOS native ding. (Spec is silent; mirror SMS-style truncation.)</li>
+          <li>Hardware keyboard / iPad split keyboard: avoid covering the Next button. <code>KeyboardAvoidingView</code> with <code>behavior="padding"</code> already handles this.</li>
+          <li>The vision is forwarded as a URL param. 280 chars is well within param limits — no need for AsyncStorage handoff.</li>
+          <li>Back navigation does <b>not</b> warn about unsaved text. v1 acceptable; if drop-off is high, add a haptic confirm.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <details class="ascii"><summary>ASCII reference</summary>
+<pre>
+┌─────────────────────────────────────────┐
+│ ‹  Vision                     2 of 3    │
+│                                         │
+│  ┌─────────────────────────────────┐    │
+│  │ [art]  Midnight Drive           │    │  ← read-only strip
+│  └─────────────────────────────────┘    │
+│                                         │
+│  V I S I O N   /   C O N C E P T        │
+│  ┌─────────────────────────────────┐    │
+│  │ What's the story behind         │    │
+│  │ this track?                     │    │
+│  │                                 │    │
+│  │                                 │    │
+│  │                          280    │    │  ← counter (red ≤ 30)
+│  └─────────────────────────────────┘    │
+│                                         │
+│  ───────────────────────────────────    │
+│  [          Next  →          ]          │
+└─────────────────────────────────────────┘
+</pre></details>
+</section>
+
+<!-- ============================================================
+     SCREEN 4 — PREVIEW
+     ============================================================ -->
+<section class="screen" id="s4" data-screen-label="04 Song Press Kit Preview">
+  <div class="screen-head">
+    <div class="screen-num">04</div>
+    <h2 class="screen-name">Song Press Kit Preview — Step 3</h2>
+    <code class="screen-route">app/create/spk/preview.tsx</code>
+  </div>
+
+  <div class="layout">
+    <div class="frame dark">
+      <div class="notch"></div>
+      <div class="screenbody" style="background:#000">
+        <div class="status"><span>9:41</span><span>● ●</span></div>
+
+        <div class="nav-row" style="color:#fff">
+          <span class="chev">‹</span>
+          <span>Press Kit</span>
+          <span class="step">Cover</span>
+        </div>
+
+        <!-- big slide canvas -->
+        <div style="margin:6px 12px 0;flex:1;position:relative;border-radius:14px;overflow:hidden">
+          <div class="placeholder-x" style="position:absolute;inset:0;color:#fff"></div>
+          <div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.25),rgba(0,0,0,.55))"></div>
+          <div style="position:absolute;top:12px;left:14px;font-size:10px;letter-spacing:.18em;text-transform:uppercase;font-weight:700;color:#fff">Artist Name</div>
+          <div style="position:absolute;bottom:42px;left:14px;font-family:'Inter Tight',sans-serif;font-size:26px;line-height:1;font-weight:800;color:#fff;letter-spacing:-.02em">Midnight<br>Drive</div>
+          <div style="position:absolute;bottom:14px;right:14px;display:flex;gap:6px">
+            <div style="width:18px;height:18px;border-radius:99px;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.4)"></div>
+            <div style="width:18px;height:18px;border-radius:99px;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.4)"></div>
+            <div style="width:18px;height:18px;border-radius:99px;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.4)"></div>
+          </div>
+          <div style="position:absolute;top:8px;right:10px;font-size:9px;opacity:.5;color:#fff">1 / 4</div>
+        </div>
+        <div class="marker" style="top:130px;left:8px">1</div>
+        <div class="marker" style="top:330px;right:8px">2</div>
+
+        <!-- dots -->
+        <div class="dot-row" style="color:#fff;padding:8px 0 4px">
+          <div class="dot active"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+        </div>
+        <div class="marker" style="bottom:128px;left:8px">3</div>
+
+        <!-- nudge -->
+        <div class="wf-soft" style="margin:0 14px 8px;padding:7px 9px;border-radius:8px;display:flex;align-items:center;gap:6px;font-size:10px;color:rgba(255,255,255,.7)">
+          <span>◐</span><span style="flex:1">Add a bio and social links to complete your press kit</span><span style="font-weight:700;color:#fff">Edit</span>
+        </div>
+        <div class="marker" style="bottom:84px;right:8px">4</div>
+
+        <div class="footer-cta" style="border-top-color:rgba(255,255,255,.07)">
+          <div class="cta">↗  Export Carousel</div>
+        </div>
+        <div class="marker" style="bottom:22px;right:8px">5</div>
+      </div>
+    </div>
+
+    <div class="annot">
+      <div class="group">
+        <h3>Purpose</h3>
+        Final review + export. Full-screen swiper through all 4 slides; one button to save them all to the Camera Roll.
+      </div>
+
+      <div class="group">
+        <h3>Anatomy</h3>
+        <ul>
+          <li><span class="anno-tag">1</span><b>Slide canvas.</b> One slide fills the available width. Aspect is 1:1 visually but the capture surface is rendered at <code>SLIDE_WIDTH × 5/4</code> for IG safe area (matches current preview code). Horizontal pageable swiper. The right-column "step" indicator switches from <code>1 of 3</code> to <b>the slide name</b> (<code>Cover</code> / <code>Track Details</code> / <code>Vision</code> / <code>Bio</code>).</li>
+          <li><span class="anno-tag">2</span><b>Slide counter.</b> Tiny <code>n/4</code> overlay top-right of the slide itself. Decorative, not the source of truth (the dots are).</li>
+          <li><span class="anno-tag">3</span><b>Dot pagination.</b> Active dot is a pill (18×5), inactive dots are 5×5 circles at 30% opacity. Tap-on-dot is <b>not</b> a navigation affordance — swipe only. (Open question: do we want tap-to-jump? Not in the spec.)</li>
+          <li><span class="anno-tag">4</span><b>Profile nudge.</b> Rendered only when <code>!bio && links.length === 0</code>. Tap → <code>/profile</code>. Persists across all 4 slides — does not animate per-slide.</li>
+          <li><span class="anno-tag">5</span><b>Export.</b> Single primary CTA, fixed bottom. Captures each slide via <code>captureRef</code>, saves 4 JPGs to MediaLibrary, then alerts <i>"4 slides saved to your Camera Roll. Open Instagram and create a carousel post."</i> Replaces back-stack with Home.</li>
+        </ul>
+      </div>
+
+      <div class="group">
+        <h3>State variants</h3>
+        <ul>
+          <li><b>Default.</b> All four slides render; nudge hidden if profile is complete.</li>
+          <li><b>Nudge visible.</b> Profile incomplete; banner sits above the export CTA. Banner is dismissible only by completing the profile (no ×).</li>
+          <li><b>Exporting.</b> Export button shows spinner + <code>"Exporting…"</code>. Button disabled. Swipe still enabled.</li>
+          <li><b>Permission denied.</b> Native alert: <i>"Allow access to your photo library to save the slides."</i> Button returns to idle on dismiss.</li>
+          <li><b>Re-open from Home.</b> If user taps an existing EPK project, lands here with all data pre-filled. Export updates the existing project (<code>status: "exported"</code>) rather than creating a new one. Header back chevron returns to Home, not Vision.</li>
+        </ul>
+      </div>
+
+      <div class="edge-cases">
+        <h4>Edge cases</h4>
+        <ul>
+          <li><b>Capture timing.</b> Slide 4 has a remote avatar — <code>captureRef</code> can fire before the image decodes. Add an <code>onLoad</code> race plus a 500ms floor (mirror the profile share card pattern).</li>
+          <li><b>Slide order in Camera Roll.</b> iOS Photos sorts by capture timestamp. Save sequentially with a tiny await between, so order is preserved (1 → 4) when the user multi-selects in Instagram.</li>
+          <li><b>Vision text overflow.</b> 280 chars + curly quotes can run off slide 3 at certain dynamic-type sizes. The slide should auto-scale font from 28→22pt; do not truncate.</li>
+          <li><b>Missing avatar on slide 4.</b> Render the default avatar JPG, never an empty circle.</li>
+          <li><b>No social links.</b> Slide 1 social-icons row collapses — don't render empty dots. Slide 4 row hides entirely.</li>
+          <li><b>Pull-to-back gesture.</b> Disabled on this screen (<code>gestureEnabled: false</code>) so a horizontal swipe doesn't accidentally pop back. Keep.</li>
+          <li><b>Memory.</b> Four full-bleed View captures + 4 JPGs can spike on older iPhones. Use <code>quality: 0.93</code> JPG (current) and capture sequentially, not in parallel.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <details class="ascii"><summary>ASCII reference</summary>
+<pre>
+┌─────────────────────────────────────────┐
+│ ‹  Preview                       Cover  │
+│ ┌─────────────────────────────────────┐ │
+│ │ ARTIST NAME                   1/4   │ │
+│ │                                     │ │
+│ │   [user photo, full-bleed]          │ │  ← 1:1 slide canvas
+│ │   (darkened overlay)                │ │
+│ │                                     │ │
+│ │   Midnight                          │ │
+│ │   Drive             ○ ○ ○ ○         │ │  ← social icons
+│ └─────────────────────────────────────┘ │
+│              ▬ ● ○ ○ ○                  │  ← dots (active = pill)
+│ ┌─────────────────────────────────────┐ │
+│ │ ◐ Add a bio and links…    Edit      │ │  ← nudge (conditional)
+│ └─────────────────────────────────────┘ │
+│ ───────────────────────────────────     │
+│ [        ↗  Export Carousel        ]    │
+└─────────────────────────────────────────┘
+</pre></details>
+</section>
+
+<!-- ============================================================
+     SCREEN 5 — SLIDE COMPONENTS
+     ============================================================ -->
+<section class="screen" id="s5" data-screen-label="05 Slide Components">
+  <div class="screen-head">
+    <div class="screen-num">05</div>
+    <h2 class="screen-name">EPK Slide Components</h2>
+    <code class="screen-route">components/epk/Epk*Slide.tsx</code>
+  </div>
+
+  <div style="font-size:13px;line-height:1.6;margin-bottom:24px;color:var(--muted);max-width:760px">
+    The four slides rendered inside the Preview swiper above — and saved to the Camera Roll on export. All slides share the editorial dark theme (<code>#000</code> background, white type), 1:1 logical aspect, and the same outer margin grid (20px). Display type appears in two places only: <b>Cover</b> track title and <b>Track Details</b> track title.
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:18px;color:#fff" id="slide-grid">
+    <!-- SLIDE 1 — COVER -->
+    <div data-screen-label="Slide 1 · Cover">
+      <div style="aspect-ratio:1/1;background:#000;border-radius:14px;position:relative;overflow:hidden;border:1px solid #11131A">
+        <div class="placeholder-x" style="position:absolute;inset:0"></div>
+        <div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.25),rgba(0,0,0,.65))"></div>
+        <div style="position:absolute;top:14px;left:16px;font-size:10px;letter-spacing:.2em;text-transform:uppercase;font-weight:700">Artist Name</div>
+        <div style="position:absolute;bottom:46px;left:16px;font-family:'Inter Tight',sans-serif;font-size:30px;line-height:.9;font-weight:800;letter-spacing:-.03em">Midnight<br>Drive</div>
+        <div style="position:absolute;bottom:14px;right:14px;display:flex;gap:6px">
+          <div style="width:18px;height:18px;border-radius:99px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.45)"></div>
+          <div style="width:18px;height:18px;border-radius:99px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.45)"></div>
+          <div style="width:18px;height:18px;border-radius:99px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.45)"></div>
+          <div style="width:18px;height:18px;border-radius:99px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.45)"></div>
+        </div>
+      </div>
+      <div style="margin-top:10px;color:var(--ink)">
+        <div style="font-size:11px;letter-spacing:.18em;text-transform:uppercase;font-weight:700;color:var(--muted)">Slide 1</div>
+        <div style="font-size:15px;font-weight:700;margin-top:2px">Cover</div>
+        <div style="font-size:12px;color:var(--muted);line-height:1.5;margin-top:6px">Full-bleed user artwork · gradient overlay (rgba 0,0,0, 0.25 → 0.65) · artist name top-left as small caps · track title bottom-left in display sans · up to 4 social glyphs bottom-right.</div>
+      </div>
+    </div>
+
+    <!-- SLIDE 2 — TRACK DETAILS -->
+    <div data-screen-label="Slide 2 · Track Details">
+      <div style="aspect-ratio:1/1;background:#0E1014;border-radius:14px;position:relative;overflow:hidden;border:1px solid #11131A;padding:16px;display:flex;flex-direction:column;justify-content:space-between">
+        <div style="font-size:10px;letter-spacing:.2em;text-transform:uppercase;font-weight:700;opacity:.55">Track Details</div>
+        <div>
+          <div style="font-family:'Inter Tight',sans-serif;font-size:34px;line-height:.88;font-weight:800;letter-spacing:-.04em">Midnight<br>Drive</div>
+          <div style="margin-top:8px;font-size:10px;color:rgba(255,255,255,.55);line-height:1.4">
+            <div>Spinning Record · 0:30</div>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:10px;color:var(--ink)">
+        <div style="font-size:11px;letter-spacing:.18em;text-transform:uppercase;font-weight:700;color:var(--muted)">Slide 2</div>
+        <div style="font-size:15px;font-weight:700;margin-top:2px">Track Details</div>
+        <div style="font-size:12px;color:var(--muted);line-height:1.5;margin-top:6px">Black background, no imagery. Eyebrow label at top. Track title set in oversized display sans. Secondary meta below at small body weight: template name · clip length.</div>
+      </div>
+    </div>
+
+    <!-- SLIDE 3 — VISION -->
+    <div data-screen-label="Slide 3 · Vision">
+      <div style="aspect-ratio:1/1;background:#0E1014;border-radius:14px;position:relative;overflow:hidden;border:1px solid #11131A;padding:18px;display:flex;flex-direction:column;justify-content:space-between">
+        <div style="font-size:10px;letter-spacing:.2em;text-transform:uppercase;font-weight:700;opacity:.55">Vision</div>
+        <div style="font-family:'Inter Tight',sans-serif;font-size:17px;line-height:1.2;font-weight:500;letter-spacing:-.01em">
+          <span style="font-size:32px;line-height:0;display:inline-block;transform:translateY(8px);opacity:.7">&ldquo;</span>
+          A late-night drive through empty city blocks &mdash; warm synths, cold rain, headlights on chrome.
+          <span style="font-size:32px;line-height:0;display:inline-block;transform:translateY(8px);opacity:.7">&rdquo;</span>
+        </div>
+        <div style="text-align:right;font-size:9px;letter-spacing:.2em;text-transform:uppercase;font-weight:700;opacity:.6">— Artist Name</div>
+      </div>
+      <div style="margin-top:10px;color:var(--ink)">
+        <div style="font-size:11px;letter-spacing:.18em;text-transform:uppercase;font-weight:700;color:var(--muted)">Slide 3</div>
+        <div style="font-size:15px;font-weight:700;margin-top:2px">Vision</div>
+        <div style="font-size:12px;color:var(--muted);line-height:1.5;margin-top:6px">Eyebrow at top. Vision text as a block-quote in display sans with real curly quotes (&ldquo; &rdquo;), not ASCII. Auto-scales 28 → 22pt to fit 280 chars. Artist attribution bottom-right in small caps.</div>
+      </div>
+    </div>
+
+    <!-- SLIDE 4 — BIO -->
+    <div data-screen-label="Slide 4 · Bio">
+      <div style="aspect-ratio:1/1;background:#0E1014;border-radius:14px;position:relative;overflow:hidden;border:1px solid #11131A;padding:18px;display:flex;flex-direction:column;justify-content:space-between">
+        <div>
+          <div style="width:54px;height:54px;border-radius:99px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.3);margin-bottom:10px"></div>
+          <div style="font-family:'Inter Tight',sans-serif;font-size:18px;font-weight:800;letter-spacing:-.02em">Artist Name</div>
+          <div style="font-size:10px;line-height:1.45;opacity:.7;margin-top:6px">LA-based producer making late-night electronic music. Releasing on Future Tape.</div>
+        </div>
+        <div style="display:flex;gap:6px">
+          <div style="width:20px;height:20px;border-radius:99px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.4)"></div>
+          <div style="width:20px;height:20px;border-radius:99px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.4)"></div>
+          <div style="width:20px;height:20px;border-radius:99px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.4)"></div>
+        </div>
+      </div>
+      <div style="margin-top:10px;color:var(--ink)">
+        <div style="font-size:11px;letter-spacing:.18em;text-transform:uppercase;font-weight:700;color:var(--muted)">Slide 4</div>
+        <div style="font-size:15px;font-weight:700;margin-top:2px">Artist Bio</div>
+        <div style="font-size:12px;color:var(--muted);line-height:1.5;margin-top:6px">Circular avatar (or default silhouette). Artist name in display sans below. Bio body in small UI sans. Social-icon row pinned to bottom.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="edge-cases" style="margin-top:24px">
+    <h4>Slide-level edge cases</h4>
+    <ul>
+      <li><b>Long artist names.</b> Slide 1 small-caps name should wrap rather than truncate; max 2 lines. Display title on Slide 2 has higher priority — it can shrink to keep the artist name intact.</li>
+      <li><b>Single-word track title.</b> Slides 1 + 2 should not force a line break — let the type rag naturally.</li>
+      <li><b>No social links.</b> Slide 1 icon row hides; slide 4 icon row hides. Don't render empty placeholders on export.</li>
+      <li><b>Bio &gt; ~140 chars.</b> Slide 4 should clip at 140 with an ellipsis rather than overflow the avatar/name area.</li>
+      <li><b>Vision quote escape.</b> User types a literal <code>"</code> in their vision — render as curly per surrounding punctuation rules. Don't double-encode.</li>
+      <li><b>Slide 2 secondary meta.</b> If clip length is missing (fresh-start path, no linked project), the line collapses to <i>just</i> the template name. If template name is also missing, hide the line entirely — don't render <code>·</code> with nothing on either side.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============================================================
+     SCREEN 6 — HOME EPK BADGE
+     ============================================================ -->
+<section class="screen" id="s6" data-screen-label="06 Home / EPK Badge">
+  <div class="screen-head">
+    <div class="screen-num">06</div>
+    <h2 class="screen-name">Home List — SPK Badge</h2>
+    <code class="screen-route">src/components/ProjectThumbnail.tsx</code>
+  </div>
+
+  <div class="layout">
+    <div class="frame light">
+      <div class="notch"></div>
+      <div class="screenbody">
+        <div class="status"><span>9:41</span><span>● ●</span></div>
+
+        <div class="row" style="padding:8px 18px 12px;align-items:center">
+          <div style="font-size:22px;font-weight:800;letter-spacing:-.02em">Projects</div>
+          <div style="margin-left:auto;display:flex;gap:8px">
+            <div style="width:30px;height:30px;border-radius:8px;border:1.5px solid #11131A;display:flex;align-items:center;justify-content:center;font-size:12px">✓</div>
+            <div style="width:30px;height:30px;border-radius:99px;background:#E8E2D5"></div>
+          </div>
+        </div>
+
+        <div class="body-area" style="padding-top:0">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <!-- music promo card (no badge) -->
+            <div style="position:relative">
+              <div class="wf" style="aspect-ratio:9/16;border-radius:12px;overflow:hidden;position:relative">
+                <div class="placeholder-x" style="position:absolute;inset:0;color:#11131A"></div>
+              </div>
+              <div style="font-size:11px;font-weight:700;margin-top:6px">Midnight Drive</div>
+              <div style="font-size:9px;opacity:.55">May 5, 2026</div>
+            </div>
+
+            <!-- SPK card (with badge) -->
+            <div style="position:relative">
+              <div class="wf" style="aspect-ratio:9/16;border-radius:12px;overflow:hidden;position:relative">
+                <div class="placeholder-x" style="position:absolute;inset:0;color:#11131A"></div>
+                <div style="position:absolute;top:8px;left:8px;font-size:8px;letter-spacing:.18em;text-transform:uppercase;font-weight:800;background:#11131A;color:#fff;padding:3px 7px;border-radius:99px">SPK</div>
+              </div>
+              <div style="font-size:11px;font-weight:700;margin-top:6px">Midnight Drive</div>
+              <div style="font-size:9px;opacity:.55">Song Press Kit</div>
+            </div>
+            <div class="marker" style="top:128px;right:8px">1</div>
+
+            <div style="position:relative">
+              <div class="wf" style="aspect-ratio:9/16;border-radius:12px;overflow:hidden;position:relative">
+                <div class="placeholder-x" style="position:absolute;inset:0;color:#11131A"></div>
+              </div>
+              <div style="font-size:11px;font-weight:700;margin-top:6px">Heatwave</div>
+              <div style="font-size:9px;opacity:.55">Apr 22, 2026</div>
+            </div>
+
+            <div style="position:relative">
+              <div class="wf" style="aspect-ratio:9/16;border-radius:12px;overflow:hidden;position:relative">
+                <div class="placeholder-x" style="position:absolute;inset:0;color:#11131A"></div>
+                <div style="position:absolute;top:8px;left:8px;font-size:8px;letter-spacing:.18em;text-transform:uppercase;font-weight:800;background:#11131A;color:#fff;padding:3px 7px;border-radius:99px">SPK</div>
+              </div>
+              <div style="font-size:11px;font-weight:700;margin-top:6px">Pavement</div>
+              <div style="font-size:9px;opacity:.55">Song Press Kit</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- FAB -->
+        <div style="position:absolute;bottom:30px;right:18px;width:48px;height:48px;border-radius:99px;background:#11131A;color:#fff;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:300">+</div>
+      </div>
+    </div>
+
+    <div class="annot">
+      <div class="group">
+        <h3>Purpose</h3>
+        Differentiate EPK projects from Music Promo projects at a glance, in the existing 2-column grid. No layout change — only a badge overlay + a swapped date subtitle.
+      </div>
+
+      <div class="group">
+        <h3>Anatomy</h3>
+        <ul>
+          <li><span class="anno-tag">1</span><b>EPK badge.</b> Pill, 8pt all-caps, 0.18em tracked, on solid <code>--ink</code> background. Anchored top-left inside the thumbnail with 8px inset. Always above any thumbnail image. Aspect of the thumbnail itself does <i>not</i> change — keep 9:16 even for EPK projects, using the cover artwork; the slides themselves are 1:1 but the project thumbnail is the artwork.</li>
+          <li><b>Subtitle swap.</b> Music Promo cards show <code>formatDate(createdAt)</code>. EPK cards show the string <code>"EPK Carousel"</code> (mirrors the existing <code>renderProjectCard</code> branch in <code>(tabs)/index.tsx</code>).</li>
+        </ul>
+      </div>
+
+      <div class="edge-cases">
+        <h4>Edge cases</h4>
+        <ul>
+          <li><b>Multi-select.</b> Selection checkmark badge sits top-right (existing behavior). Badge stays top-left — they don't conflict.</li>
+          <li><b>Long titles.</b> Both card types truncate to 1 line. No special treatment for EPK.</li>
+          <li><b>Tap target.</b> Tapping an EPK card opens directly to the Preview screen with all fields rehydrated (existing route handles this). Long-press still opens multi-select.</li>
+          <li><b>Sort.</b> Mix EPK and Music Promo chronologically by <code>createdAt</code> — do not group by type. Differentiation is the badge, not the layout.</li>
+          <li><b>Future:</b> filter chip ("All / Music Promo / EPK") at top of grid. Not v1, but reserve space mentally — header right-actions are already tight.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     FLOW DIAGRAM
+     ============================================================ -->
+<section class="flow" id="flow" data-screen-label="Flow Diagram">
+  <h2>Phase 8 flow — Song Press Kit (SPK)</h2>
+
+  <div class="flowmap">
+    <div class="node start">
+      <div class="ntitle">Home (FAB)</div>
+      <div class="nroute">(tabs)/index</div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="node new">
+      <div class="nbadge">New entry</div>
+      <div class="ntitle">Type Picker</div>
+      <div class="nroute">create/type-picker</div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="node existing">
+      <div class="ntitle">Music Promo<br>flow</div>
+      <div class="nroute">create/picker → editor → share</div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="node existing">
+      <div class="ntitle">Editor → Render → Share</div>
+      <div class="nroute">create/editor · rendering · share</div>
+    </div>
+  </div>
+
+  <div class="flowmap" style="margin-top:10px">
+    <div></div>
+    <div></div>
+    <div></div>
+    <div class="arrow" style="text-align:center">↓</div>
+    <div class="node new">
+      <div class="nbadge">New</div>
+      <div class="ntitle">SPK Details</div>
+      <div class="nroute">create/spk/details</div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="node new">
+      <div class="ntitle">SPK Vision</div>
+      <div class="nroute">create/spk/vision</div>
+    </div>
+  </div>
+
+  <div class="flowmap" style="margin-top:10px">
+    <div></div><div></div><div></div><div></div><div></div>
+    <div class="arrow" style="text-align:center">↓</div>
+    <div class="node new">
+      <div class="ntitle">SPK Preview<br>(export)</div>
+      <div class="nroute">create/spk/preview</div>
+    </div>
+  </div>
+
+  <div class="flowmap" style="margin-top:10px">
+    <div></div><div></div><div></div><div></div><div></div>
+    <div class="arrow" style="text-align:center">↓</div>
+    <div class="node start">
+      <div class="ntitle">Home</div>
+      <div class="nroute">(tabs)/index ← replace</div>
+    </div>
+  </div>
+
+  <div class="flowlegend">
+    <div><span class="swatch" style="background:#FFF7E0"></span>New Phase 8 screen</div>
+    <div><span class="swatch" style="background:#E8F1FF"></span>Existing Music Promo screen (unchanged)</div>
+    <div><span class="swatch" style="background:#11131A"></span>Entry / exit point</div>
+  </div>
+
+  <div style="font-size:13px;line-height:1.65;margin-top:24px;max-width:760px;color:var(--muted)">
+    <b style="color:var(--ink)">Notes on routing.</b> The Type Picker is also embedded directly into the
+    <code>(tabs)/create.tsx</code> tab via a <code>tabEmbedded</code> prop, so tapping the Create tab lands
+    on the same UI without a stack push or close button. Both entry paths reach the same flow.
+    The SPK stack uses a dedicated layout (<code>create/spk/_layout.tsx</code>) that pins
+    <code>contentStyle.backgroundColor</code> to <code>colors.dark.background</code> — the editorial dark theme
+    is set <i>at the navigator</i>, not per-screen, so transitions don't flash light.
+    Preview uses <code>animation: "fade"</code> and <code>gestureEnabled: false</code> because it's the export
+    artifact and we don't want a horizontal back-swipe colliding with the slide swiper.
+  </div>
+</section>
+
+</div>
+</body>
+</html>

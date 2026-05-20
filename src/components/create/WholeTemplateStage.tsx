@@ -3,6 +3,7 @@ import { Image, Pressable, StyleSheet, View } from "react-native";
 import { radius } from "@/constants/tokens";
 import { CircularMediaPreview } from "@/components/create/CircularMediaPreview";
 import { BetaWatermark } from "@/components/create/BetaWatermark";
+import { uriForImageSource } from "@/lib/mediaUri";
 import type { TemplateStageProps } from "@/lib/templates";
 import {
   GRAPHIC_POP_STAGE_BACKGROUND_HEX,
@@ -51,15 +52,15 @@ export function WholeTemplateStage({
   );
   const discX = Math.round(layout.discX + (layout.discSize - discSize) / 2);
   const discY = Math.round(layout.discY + (layout.discSize - discSize) / 2);
-  const hasBackgroundImage = Boolean(templateTweaks?.stageBackgroundImageUri);
+  const stageBackgroundUri = uriForImageSource(
+    templateTweaks?.stageBackgroundImageUri,
+  );
+  const hasBackgroundImage = Boolean(stageBackgroundUri);
   const shouldShowWatermark =
     showWatermark ?? templateTweaks?.showWatermark ?? true;
   const backgroundSource = useMemo(
-    () =>
-      templateTweaks?.stageBackgroundImageUri
-        ? { uri: templateTweaks.stageBackgroundImageUri }
-        : null,
-    [templateTweaks?.stageBackgroundImageUri],
+    () => (stageBackgroundUri ? { uri: stageBackgroundUri } : null),
+    [stageBackgroundUri],
   );
 
   return (

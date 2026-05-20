@@ -1,0 +1,124 @@
+<!doctype html><html><head><meta charset="utf-8">
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+body{margin:0;padding:18px;background:#fff;font-family:Inter,system-ui;color:#11131A}
+.h2{font-size:11px;letter-spacing:.16em;text-transform:uppercase;font-weight:700;color:#6B6F7A;margin:0 0 14px}
+.tbl{border:1px solid rgba(0,0,0,.08);border-radius:10px;overflow:hidden;font-size:12.5px}
+.row{display:grid;grid-template-columns:120px 60px 1fr 200px;border-bottom:1px solid rgba(0,0,0,.08);padding:11px 12px;align-items:start;gap:12px}
+.row.head{background:#FBFAF7;font-weight:700;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:#6B6F7A}
+.row:last-child{border-bottom:none}
+.field{font-family:ui-monospace,Menlo,monospace;font-weight:700;color:#11131A;font-size:12px}
+.req{font-weight:800;font-size:10px;letter-spacing:.5px;text-align:center;padding:1px 6px;border-radius:3px;display:inline-block}
+.req.y{background:#11131A;color:#fff}
+.req.n{background:#F2F0EA;color:#6B6F7A}
+.desc{color:#11131A;line-height:1.5}
+.ex{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#6B6F7A;line-height:1.45}
+.note{font-size:11px;color:#6B6F7A;line-height:1.55;margin-top:14px;border-top:1px solid rgba(0,0,0,.08);padding-top:10px}
+</style></head><body>
+
+<div class="h2">Flyer · Required Field Schema</div>
+
+<div class="tbl">
+  <div class="row head">
+    <div>Field</div><div>Req</div><div>Description</div><div>Example</div>
+  </div>
+  <div class="row">
+    <div class="field">eventName</div>
+    <div><span class="req y">YES</span></div>
+    <div class="desc">The headline. 1–3 words is the sweet spot. Long names auto-scale; truncates past 24 characters.</div>
+    <div class="ex">"DISCO"<br>"NIGHT FEVER"</div>
+  </div>
+  <div class="row">
+    <div class="field">date</div>
+    <div><span class="req y">YES</span></div>
+    <div class="desc">Always uppercase, weekday + month abbrev. Stored as ISO; rendered abbreviated.</div>
+    <div class="ex">"SAT APR 25"<br>"THURS MAY 14"</div>
+  </div>
+  <div class="row">
+    <div class="field">time</div>
+    <div><span class="req y">YES</span></div>
+    <div class="desc">Start–end. Em dash between. No leading zeros, no AM/PM after a hyphen.</div>
+    <div class="ex">"4PM – 8PM"<br>"8PM – LATE"</div>
+  </div>
+  <div class="row">
+    <div class="field">venue</div>
+    <div><span class="req y">YES</span></div>
+    <div class="desc">Free-form. Single line. Auto-uppercases in footer, mixed-case in script slots.</div>
+    <div class="ex">"Neon Grotto Rooftop"</div>
+  </div>
+  <div class="row">
+    <div class="field">city</div>
+    <div><span class="req n">opt</span></div>
+    <div class="desc"><code>City, ST</code>. Appended after venue when present.</div>
+    <div class="ex">"Austin, TX"</div>
+  </div>
+  <div class="row" style="align-items:start">
+    <div class="field">lineup</div>
+    <div><span class="req n">opt</span></div>
+    <div class="desc">
+      Object. Drops off the layout entirely when <code>items</code> is empty.
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:4px">
+        <div style="display:grid;grid-template-columns:110px 1fr;gap:4px 8px;font-size:11px;line-height:1.5">
+          <span style="font-family:ui-monospace,monospace;color:#6B6F7A">items</span><span>LineupItem[] — 0–10 performers in display order</span>
+          <span style="font-family:ui-monospace,monospace;color:#6B6F7A">showSetTimes</span><span>boolean — toggle in Text tab; times stored but hidden when false</span>
+          <span style="font-family:ui-monospace,monospace;color:#6B6F7A">layout</span><span>"grid2col" | "column" | "festival" | "spotlight" — auto-suggested from count</span>
+          <span style="font-family:ui-monospace,monospace;color:#6B6F7A">introLabel</span><span>string | null — "SOUNDS BY", "MUSIC BY", "DJ SET BY", "FEATURING", "WITH", or custom</span>
+        </div>
+        <div style="margin-top:6px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#6B6F7A">LineupItem</div>
+        <div style="display:grid;grid-template-columns:110px 1fr;gap:4px 8px;font-size:11px;line-height:1.5">
+          <span style="font-family:ui-monospace,monospace;color:#6B6F7A">name</span><span>string — always uppercased on render</span>
+          <span style="font-family:ui-monospace,monospace;color:#6B6F7A">headliner</span><span>boolean — at most one per flyer; renders in display font at larger scale</span>
+          <span style="font-family:ui-monospace,monospace;color:#6B6F7A">setTime</span><span>string | null — start-only, no leading zero, e.g. "9PM", "2AM"</span>
+        </div>
+      </div>
+    </div>
+    <div class="ex">
+      {<br>
+      &nbsp;items: [<br>
+      &nbsp;&nbsp;{ name:"MARLEY MAC",<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;headliner:true,<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;setTime:"9PM" },<br>
+      &nbsp;&nbsp;{ name:"KIWI",<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;setTime:"7PM" }<br>
+      &nbsp;],<br>
+      &nbsp;showSetTimes: true,<br>
+      &nbsp;layout: "spotlight",<br>
+      &nbsp;introLabel: "SOUNDS BY"<br>
+      }
+    </div>
+  </div>
+  <div class="row">
+    <div class="field">eyebrow</div>
+    <div><span class="req n">opt</span></div>
+    <div class="desc">Category tag. All caps, letter-spaced. Distinct from <code>tagline</code> — this is the <em>what</em>, not the <em>sound</em>.</div>
+    <div class="ex">"ROOFTOP DAY PARTY"</div>
+  </div>
+  <div class="row">
+    <div class="field">tagline</div>
+    <div><span class="req n">opt</span></div>
+    <div class="desc">Genre line. Lowercase, slashes between, accent color.</div>
+    <div class="ex">"house / disco / grooves"</div>
+  </div>
+  <div class="row">
+    <div class="field">age</div>
+    <div><span class="req n">opt</span></div>
+    <div class="desc">Renders as a stamp/pill, never inline.</div>
+    <div class="ex">"18+", "21+"</div>
+  </div>
+  <div class="row">
+    <div class="field">photo</div>
+    <div><span class="req n">opt</span></div>
+    <div class="desc">User artwork. If present, replaces the textured background; overlay opacity slider (0–60%) keeps type legible.</div>
+    <div class="ex">URI / camera roll asset</div>
+  </div>
+  <div class="row">
+    <div class="field">audio</div>
+    <div><span class="req n">opt</span></div>
+    <div class="desc">10–30s clip for video export. Trimmed in the Audio tab. No effect on image export.</div>
+    <div class="ex">URI · trimStart · trimEnd</div>
+  </div>
+</div>
+
+<div class="note">Every template renders the <strong>same schema</strong> — the visual treatment changes, the data doesn't. The <code>lineup</code> block is modular: templates declare a zone; <code>LineupBlock</code> fills it. Layout is auto-suggested from performer count but always overridable. Templates are also <strong>data-defaulted</strong>: an empty flyer still looks complete, not blank.</div>
+
+</body></html>

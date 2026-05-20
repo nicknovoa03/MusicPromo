@@ -192,7 +192,8 @@ export default function SpkPreviewScreen() {
   const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const offsetX = e.nativeEvent.contentOffset.x;
     const index = Math.round(offsetX / SPK_SLIDE_WIDTH);
-    setCurrentSlide(Math.max(0, Math.min(SLIDE_COUNT - 1, index)));
+    const next = Math.max(0, Math.min(SLIDE_COUNT - 1, index));
+    setCurrentSlide((prev) => (prev === next ? prev : next));
   }, []);
 
   const pickBackgroundImage = useCallback(async (): Promise<string | null> => {
@@ -504,7 +505,7 @@ export default function SpkPreviewScreen() {
             horizontal
             pagingEnabled
             showsHorizontalScrollIndicator={false}
-            onMomentumScrollEnd={handleScroll}
+            onScroll={handleScroll}
             scrollEventThrottle={16}
             style={[styles.swiper, { height: SPK_SLIDE_HEIGHT }]}
             contentContainerStyle={styles.swiperContent}

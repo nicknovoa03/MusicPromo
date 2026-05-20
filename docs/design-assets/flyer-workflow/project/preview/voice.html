@@ -1,0 +1,28 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;padding:18px;background:#fff;font-family:Inter,system-ui;color:#11131A}
+.h2{font-size:11px;letter-spacing:.16em;text-transform:uppercase;font-weight:700;color:#6B6F7A;margin:0 0 10px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.col{}
+.row{padding:8px 0;border-bottom:1px solid #eee;font-size:13px;line-height:1.5}
+.row:last-child{border-bottom:0}
+.good::before{content:"✓";color:#1EA672;margin-right:8px;font-weight:700}
+.bad::before{content:"✗";color:#C62828;margin-right:8px;font-weight:700}
+.bad{color:#6B6F7A}
+</style></head><body>
+<div class="grid">
+<div class="col"><div class="h2">Voice — yes</div>
+<div class="row good">"What's the story behind this track?"</div>
+<div class="row good">"4 slides saved to your Camera Roll."</div>
+<div class="row good">"Pick a photo"</div>
+<div class="row good">"Add a bio and social links to complete your EPK"</div>
+<div class="row good">"Could not load that image. Please try another one."</div>
+</div>
+<div class="col"><div class="h2">Voice — no</div>
+<div class="row bad">"Tell us your amazing story ✨"</div>
+<div class="row bad">"We've successfully saved everything for you!"</div>
+<div class="row bad">"Upload Media"</div>
+<div class="row bad">"Don't forget to fill out your profile 😉"</div>
+<div class="row bad">"Oops! Something went wrong."</div>
+</div>
+</div>
+</body></html>

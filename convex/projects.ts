@@ -26,7 +26,21 @@ export const create = mutation({
     audioName: v.optional(v.string()),
     trimStart: v.optional(v.number()),
     trimEnd: v.optional(v.number()),
-    type: v.optional(v.union(v.literal("video"), v.literal("spk"))),
+    type: v.optional(v.union(v.literal("video"), v.literal("spk"), v.literal("flyer"))),
+    eventTime: v.optional(v.string()),
+    eventEndTime: v.optional(v.string()),
+    venue: v.optional(v.string()),
+    city: v.optional(v.string()),
+    flyerEyebrow: v.optional(v.string()),
+    flyerTagline: v.optional(v.string()),
+    flyerTemplateId: v.optional(v.string()),
+    flyerBackgroundKey: v.optional(v.string()),
+    flyerAccentColor: v.optional(v.string()),
+    flyerExportFormat: v.optional(v.union(v.literal("video"), v.literal("image"))),
+    flyerLineupJson: v.optional(v.string()),
+    flyerStep: v.optional(
+      v.union(v.literal("details"), v.literal("editor"), v.literal("export")),
+    ),
     vision: v.optional(v.string()),
     genre: v.optional(v.string()),
     bpm: v.optional(v.string()),
@@ -78,7 +92,19 @@ export const create = mutation({
       audioName?: string;
       trimStart?: number;
       trimEnd?: number;
-      type?: "video" | "spk";
+      type?: "video" | "spk" | "flyer";
+      eventTime?: string;
+      eventEndTime?: string;
+      venue?: string;
+      city?: string;
+      flyerEyebrow?: string;
+      flyerTagline?: string;
+      flyerTemplateId?: string;
+      flyerBackgroundKey?: string;
+      flyerAccentColor?: string;
+      flyerExportFormat?: "video" | "image";
+      flyerLineupJson?: string;
+      flyerStep?: "details" | "editor" | "export";
       vision?: string;
       genre?: string;
       bpm?: string;
@@ -134,6 +160,28 @@ export const create = mutation({
       projectDoc.clipDurationSec = args.clipDurationSec;
     }
     if (args.spkStep !== undefined) projectDoc.spkStep = args.spkStep;
+    if (args.eventTime !== undefined) projectDoc.eventTime = args.eventTime;
+    if (args.eventEndTime !== undefined) projectDoc.eventEndTime = args.eventEndTime;
+    if (args.venue !== undefined) projectDoc.venue = args.venue;
+    if (args.city !== undefined) projectDoc.city = args.city;
+    if (args.flyerEyebrow !== undefined) projectDoc.flyerEyebrow = args.flyerEyebrow;
+    if (args.flyerTagline !== undefined) projectDoc.flyerTagline = args.flyerTagline;
+    if (args.flyerTemplateId !== undefined) {
+      projectDoc.flyerTemplateId = args.flyerTemplateId;
+    }
+    if (args.flyerBackgroundKey !== undefined) {
+      projectDoc.flyerBackgroundKey = args.flyerBackgroundKey;
+    }
+    if (args.flyerAccentColor !== undefined) {
+      projectDoc.flyerAccentColor = args.flyerAccentColor;
+    }
+    if (args.flyerExportFormat !== undefined) {
+      projectDoc.flyerExportFormat = args.flyerExportFormat;
+    }
+    if (args.flyerLineupJson !== undefined) {
+      projectDoc.flyerLineupJson = args.flyerLineupJson;
+    }
+    if (args.flyerStep !== undefined) projectDoc.flyerStep = args.flyerStep;
 
     return await ctx.db.insert("projects", projectDoc);
   },
@@ -178,7 +226,21 @@ export const update = mutation({
     exportedVideoUri: v.optional(v.string()),
     status: v.optional(v.union(v.literal("draft"), v.literal("exported"))),
     vision: v.optional(v.string()),
-    type: v.optional(v.union(v.literal("video"), v.literal("spk"))),
+    type: v.optional(v.union(v.literal("video"), v.literal("spk"), v.literal("flyer"))),
+    eventTime: v.optional(v.string()),
+    eventEndTime: v.optional(v.string()),
+    venue: v.optional(v.string()),
+    city: v.optional(v.string()),
+    flyerEyebrow: v.optional(v.string()),
+    flyerTagline: v.optional(v.string()),
+    flyerTemplateId: v.optional(v.string()),
+    flyerBackgroundKey: v.optional(v.string()),
+    flyerAccentColor: v.optional(v.string()),
+    flyerExportFormat: v.optional(v.union(v.literal("video"), v.literal("image"))),
+    flyerLineupJson: v.optional(v.string()),
+    flyerStep: v.optional(
+      v.union(v.literal("details"), v.literal("editor"), v.literal("export")),
+    ),
     genre: v.optional(v.string()),
     bpm: v.optional(v.string()),
     releaseDate: v.optional(v.string()),
@@ -248,6 +310,28 @@ export const update = mutation({
       updates.clipDurationSec = args.clipDurationSec;
     }
     if (args.spkStep !== undefined) updates.spkStep = args.spkStep;
+    if (args.eventTime !== undefined) updates.eventTime = args.eventTime;
+    if (args.eventEndTime !== undefined) updates.eventEndTime = args.eventEndTime;
+    if (args.venue !== undefined) updates.venue = args.venue;
+    if (args.city !== undefined) updates.city = args.city;
+    if (args.flyerEyebrow !== undefined) updates.flyerEyebrow = args.flyerEyebrow;
+    if (args.flyerTagline !== undefined) updates.flyerTagline = args.flyerTagline;
+    if (args.flyerTemplateId !== undefined) {
+      updates.flyerTemplateId = args.flyerTemplateId;
+    }
+    if (args.flyerBackgroundKey !== undefined) {
+      updates.flyerBackgroundKey = args.flyerBackgroundKey;
+    }
+    if (args.flyerAccentColor !== undefined) {
+      updates.flyerAccentColor = args.flyerAccentColor;
+    }
+    if (args.flyerExportFormat !== undefined) {
+      updates.flyerExportFormat = args.flyerExportFormat;
+    }
+    if (args.flyerLineupJson !== undefined) {
+      updates.flyerLineupJson = args.flyerLineupJson;
+    }
+    if (args.flyerStep !== undefined) updates.flyerStep = args.flyerStep;
 
     await ctx.db.patch(args.projectId, {
       ...updates,
