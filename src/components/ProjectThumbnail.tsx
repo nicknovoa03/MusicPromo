@@ -1,14 +1,21 @@
 import { useMemo, useState } from "react";
 import { View, Image, StyleSheet, Text } from "react-native";
+import { useFonts } from "expo-font";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import type { Doc } from "../../convex/_generated/dataModel";
 import { isLocalProject, type LocalProject } from "@/lib/localProjects";
 import { uriForImageSource } from "@/lib/mediaUri";
 import {
+  convexProjectToFlyerDraft,
+  localProjectToFlyerDraft,
+} from "@/lib/flyerDraft";
+import {
   getTemplateDefinition,
   parseTemplateTweaksParam,
   resolveTemplateId,
 } from "@/lib/templates";
+import { FlyerPreviewFrame } from "@/components/flyer/FlyerPreviewFrame";
+import { FLYER_FONT_SOURCES } from "@/lib/flyerFonts";
 import { colors, radius } from "@/constants/tokens";
 
 type Project = Doc<"projects"> | LocalProject;
@@ -28,7 +35,8 @@ export function ProjectThumbnail({ project, title, surfaceColor, fallbackIconCol
   const photoUri = uriForImageSource(project.photoUri);
   const fallbackPreviewUri = uriForImageSource(project.exportedVideoUri);
 
-  const isSpk = !isLocalProject(project) && project.type === "spk";
+  const isSpk = project.type === "spk";
+  const isFlyer = project.type === "flyer";
 
   if (isSpk) {
     return (
@@ -49,6 +57,21 @@ export function ProjectThumbnail({ project, title, surfaceColor, fallbackIconCol
           <Text style={styles.spkBadgeText}>SPK</Text>
         </View>
       </View>
+    );
+  }
+
+  if (isFlyer) {
+    return (
+      <FlyerProjectThumbnail
+        project={project}
+        thumbnailSize={thumbnailSize}
+        fallbackPreviewUri={fallbackPreviewUri}
+        fallbackIconColor={fallbackIconColor}
+        onLayout={(nextSize) => {
+          if (nextSize !== _cachedThumbnailWidth) _cachedThumbnailWidth = nextSize;
+          setThumbnailSize((current) => (current === nextSize ? current : nextSize));
+        }}
+      />
     );
   }
 
@@ -101,6 +124,61 @@ export function ProjectThumbnail({ project, title, surfaceColor, fallbackIconCol
           size={30}
           color={fallbackIconColor}
         />
+      )}
+    </View>
+  );
+}
+
+type FlyerProjectThumbnailProps = {
+  project: Project;
+  thumbnailSize: number;
+  fallbackPreviewUri: string | null;
+  fallbackIconColor: string;
+  onLayout: (size: number) => void;
+};
+
+function FlyerProjectThumbnail({
+  project,
+  thumbnailSize,
+  fallbackPreviewUri,
+  fallbackIconColor,
+  onLayout,
+}: FlyerProjectThumbnailProps) {
+  const [fontsLoaded] = useFonts(FLYER_FONT_SOURCES);
+  const flyerDraft = useMemo(
+    () =>
+      isLocalProject(project)
+        ? localProjectToFlyerDraft(project)
+        : convexProjectToFlyerDraft(project),
+    [project],
+  );
+  const aspectRatio = flyerDraft.aspectRatio ?? "9:16";
+  const photoUri = uriForImageSource(project.photoUri);
+
+  return (
+    <View
+      style={[styles.thumbnail, { backgroundColor: "#111" }]}
+      onLayout={(event) => {
+        onLayout(Math.round(event.nativeEvent.layout.width));
+      }}
+    >
+      {thumbnailSize > 0 && fontsLoaded ? (
+        <FlyerPreviewFrame
+          draft={flyerDraft}
+          aspectRatio={aspectRatio}
+          maxWidth={thumbnailSize}
+          maxHeight={thumbnailSize}
+        />
+      ) : photoUri ? (
+        <Image source={{ uri: photoUri }} style={styles.thumbnailImage} resizeMode="cover" />
+      ) : fallbackPreviewUri ? (
+        <Image
+          source={{ uri: fallbackPreviewUri }}
+          style={styles.thumbnailImage}
+          resizeMode="cover"
+        />
+      ) : (
+        <Ionicons name="calendar-outline" size={30} color={fallbackIconColor} />
       )}
     </View>
   );

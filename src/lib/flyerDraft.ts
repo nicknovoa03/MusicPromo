@@ -36,6 +36,7 @@ export type FlyerDraftInput = {
   venue?: string;
   city?: string;
   eyebrow?: string;
+  flyerSubtitle?: string;
   tagline?: string;
   photoUri?: string | null;
   photoName?: string | null;
@@ -60,8 +61,33 @@ const FLYER_ROUTES: Record<FlyerStep, string> = {
   export: "/create/flyer/export",
 };
 
+export const FLYER_STEP_PATHS = FLYER_ROUTES;
+
+export const FLYER_STEP_ORDER: FlyerStep[] = ["details", "editor", "export"];
+
+export function getFlyerPreviousStep(step: FlyerStep): FlyerStep | null {
+  const index = FLYER_STEP_ORDER.indexOf(step);
+  if (index <= 0) return null;
+  return FLYER_STEP_ORDER[index - 1] ?? null;
+}
+
+export function getFlyerStepLabel(step: FlyerStep): string {
+  const index = FLYER_STEP_ORDER.indexOf(step);
+  return `${index + 1} of ${FLYER_STEP_ORDER.length}`;
+}
+
 export function getFlyerResumeRoute(step: FlyerStep): string {
   return FLYER_ROUTES[step] ?? FLYER_ROUTES.details;
+}
+
+export function getFlyerResumeStepFromProject(project: {
+  status?: "draft" | "exported";
+  flyerStep?: FlyerStep;
+}): FlyerStep {
+  if (project.status === "exported") return "editor";
+  if (project.flyerStep === "export") return "export";
+  if (project.flyerStep === "editor") return "editor";
+  return "details";
 }
 
 export function getFlyerProjectResumeNavigation(
@@ -69,18 +95,17 @@ export function getFlyerProjectResumeNavigation(
   projectKey: string,
   isLocal: boolean,
 ): { pathname: string; params: Record<string, string> } {
-  const draft = isLocal
-    ? localProjectToFlyerDraft(project as LocalProject)
-    : convexProjectToFlyerDraft(project as ConvexProject);
-  const step = draft.step ?? "details";
+  const step = getFlyerResumeStepFromProject(project);
   return {
     pathname: getFlyerResumeRoute(step),
-    params: flyerDraftToRouteParams(draft, {
-      projectId: isLocal ? undefined : projectKey,
-      localProjectId: isLocal ? projectKey : undefined,
-      isExistingProject: true,
-      fromHome: true,
-    }),
+    params: {
+      step,
+      ...(isLocal
+        ? { localProjectId: projectKey }
+        : { projectId: projectKey }),
+      isExistingProject: "1",
+      fromHome: "1",
+    },
   };
 }
 
@@ -104,6 +129,7 @@ export function parseFlyerRouteParams(params: FlyerRouteParams): FlyerDraftInput
     venue: routeParam(params.venue) || undefined,
     city: routeParam(params.city) || undefined,
     eyebrow: routeParam(params.eyebrow) || undefined,
+    flyerSubtitle: routeParam(params.flyerSubtitle) || undefined,
     tagline: routeParam(params.tagline) || undefined,
     photoUri: routeParam(params.photoUri) || undefined,
     photoName: routeParam(params.photoName) || undefined,
@@ -151,6 +177,7 @@ export function flyerDraftToRouteParams(
   set("venue", draft.venue);
   set("city", draft.city);
   set("eyebrow", draft.eyebrow);
+  set("flyerSubtitle", draft.flyerSubtitle);
   set("tagline", draft.tagline);
   set("photoUri", draft.photoUri);
   set("photoName", draft.photoName);
@@ -220,6 +247,7 @@ export function convexProjectToFlyerDraft(project: ConvexProject): FlyerDraftInp
     venue: project.venue,
     city: project.city,
     eyebrow: project.flyerEyebrow,
+    flyerSubtitle: project.flyerSubtitle,
     tagline: project.flyerTagline,
     photoUri: project.photoUri,
     photoName: project.photoName,
@@ -250,6 +278,7 @@ export function localProjectToFlyerDraft(project: LocalProject): FlyerDraftInput
     venue: project.venue,
     city: project.city,
     eyebrow: project.flyerEyebrow,
+    flyerSubtitle: project.flyerSubtitle,
     tagline: project.flyerTagline,
     photoUri: project.photoUri,
     photoName: project.photoName,
@@ -310,6 +339,7 @@ export async function saveFlyerDraftToConvex({
         ? input.trimEnd
         : undefined,
     flyerEyebrow: input.eyebrow?.trim() || undefined,
+    flyerSubtitle: input.flyerSubtitle?.trim() || undefined,
     flyerTagline: input.tagline?.trim() || undefined,
     flyerTemplateId: input.templateId,
     flyerBackgroundKey: input.backgroundKey,
@@ -370,6 +400,7 @@ export async function saveFlyerDraftLocally({
         ? input.trimEnd
         : undefined,
     flyerEyebrow: input.eyebrow?.trim() || undefined,
+    flyerSubtitle: input.flyerSubtitle?.trim() || undefined,
     flyerTagline: input.tagline?.trim() || undefined,
     flyerTemplateId: input.templateId,
     flyerBackgroundKey: input.backgroundKey,

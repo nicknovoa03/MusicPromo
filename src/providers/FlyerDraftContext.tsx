@@ -70,10 +70,20 @@ export function FlyerDraftProvider({ children }: { children: ReactNode }) {
 
     if (Object.keys(draftFields).length > 0) {
       setDraft((prev) => {
-        const keys = Object.keys(draftFields) as (keyof FlyerDraftInput)[];
-        const hasChange = keys.some((key) => prev[key] !== draftFields[key]);
+        const patch: Partial<FlyerDraftInput> = {};
+        for (const [key, value] of Object.entries(draftFields) as [
+          keyof FlyerDraftInput,
+          unknown,
+        ][]) {
+          if (value === undefined || value === null) continue;
+          if (typeof value === "string" && !value.trim()) continue;
+          patch[key] = value as FlyerDraftInput[typeof key];
+        }
+        const keys = Object.keys(patch) as (keyof FlyerDraftInput)[];
+        if (keys.length === 0) return prev;
+        const hasChange = keys.some((key) => prev[key] !== patch[key]);
         if (!hasChange) return prev;
-        return { ...prev, ...draftFields };
+        return { ...prev, ...patch };
       });
     }
     if (nextProjectId) setProjectId((prev) => (prev === nextProjectId ? prev : nextProjectId));

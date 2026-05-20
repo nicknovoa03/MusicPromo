@@ -46,6 +46,7 @@ export type LocalProject = {
   venue?: string;
   city?: string;
   flyerEyebrow?: string;
+  flyerSubtitle?: string;
   flyerTagline?: string;
   flyerTemplateId?: string;
   flyerBackgroundKey?: string;
@@ -91,6 +92,7 @@ export type UpsertLocalProjectInput = {
   venue?: string;
   city?: string;
   flyerEyebrow?: string;
+  flyerSubtitle?: string;
   flyerTagline?: string;
   flyerTemplateId?: string;
   flyerBackgroundKey?: string;

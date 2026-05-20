@@ -1,12 +1,11 @@
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { colors, spacing } from "@/constants/tokens";
 
-export type FlyerEditorTab = "text" | "colors" | "fonts" | "photo" | "audio";
+export type FlyerEditorTab = "text" | "colors" | "photo" | "audio";
 
 const TABS: { id: FlyerEditorTab; label: string }[] = [
   { id: "text", label: "Text" },
   { id: "colors", label: "Colors" },
-  { id: "fonts", label: "Fonts" },
   { id: "photo", label: "Photo" },
   { id: "audio", label: "Audio" },
 ];

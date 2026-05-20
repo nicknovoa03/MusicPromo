@@ -35,3 +35,5 @@ All wireframes, mockups, and web-rendered previews must load Inter via the font 
 ## Current Phase
 
 Phase 8 — Song Press Kit. Requirements: `docs/requirements/SONG_PRESS_KIT_REQUIREMENTS.md`.
+
+Show Flyer (in progress): `docs/requirements/SHOW_FLYER_REQUIREMENTS.md`.

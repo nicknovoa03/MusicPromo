@@ -32,6 +32,7 @@ export const create = mutation({
     venue: v.optional(v.string()),
     city: v.optional(v.string()),
     flyerEyebrow: v.optional(v.string()),
+    flyerSubtitle: v.optional(v.string()),
     flyerTagline: v.optional(v.string()),
     flyerTemplateId: v.optional(v.string()),
     flyerBackgroundKey: v.optional(v.string()),
@@ -98,6 +99,7 @@ export const create = mutation({
       venue?: string;
       city?: string;
       flyerEyebrow?: string;
+      flyerSubtitle?: string;
       flyerTagline?: string;
       flyerTemplateId?: string;
       flyerBackgroundKey?: string;
@@ -165,6 +167,7 @@ export const create = mutation({
     if (args.venue !== undefined) projectDoc.venue = args.venue;
     if (args.city !== undefined) projectDoc.city = args.city;
     if (args.flyerEyebrow !== undefined) projectDoc.flyerEyebrow = args.flyerEyebrow;
+    if (args.flyerSubtitle !== undefined) projectDoc.flyerSubtitle = args.flyerSubtitle;
     if (args.flyerTagline !== undefined) projectDoc.flyerTagline = args.flyerTagline;
     if (args.flyerTemplateId !== undefined) {
       projectDoc.flyerTemplateId = args.flyerTemplateId;
@@ -232,6 +235,7 @@ export const update = mutation({
     venue: v.optional(v.string()),
     city: v.optional(v.string()),
     flyerEyebrow: v.optional(v.string()),
+    flyerSubtitle: v.optional(v.string()),
     flyerTagline: v.optional(v.string()),
     flyerTemplateId: v.optional(v.string()),
     flyerBackgroundKey: v.optional(v.string()),
@@ -315,6 +319,7 @@ export const update = mutation({
     if (args.venue !== undefined) updates.venue = args.venue;
     if (args.city !== undefined) updates.city = args.city;
     if (args.flyerEyebrow !== undefined) updates.flyerEyebrow = args.flyerEyebrow;
+    if (args.flyerSubtitle !== undefined) updates.flyerSubtitle = args.flyerSubtitle;
     if (args.flyerTagline !== undefined) updates.flyerTagline = args.flyerTagline;
     if (args.flyerTemplateId !== undefined) {
       updates.flyerTemplateId = args.flyerTemplateId;

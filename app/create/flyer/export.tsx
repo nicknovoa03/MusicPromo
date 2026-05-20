@@ -8,71 +8,125 @@ import {
   Alert,
   Share,
   Platform,
+  useWindowDimensions,
+  ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import * as MediaLibrary from "expo-media-library";
 import ViewShot, { type ViewShotRef } from "react-native-view-shot";
 import { colors, spacing, radius } from "@/constants/tokens";
+import { FlyerPreviewFrame } from "@/components/flyer/FlyerPreviewFrame";
 import { FlyerTemplateView } from "@/components/flyer/FlyerTemplateView";
+import { FlyerFlowHeader } from "@/components/flyer/FlyerFlowHeader";
 import { useFlyerDraft } from "@/providers/FlyerDraftContext";
 import { useFlyerScreenParams } from "@/hooks/useFlyerScreenParams";
 import { useFlyerClose } from "@/hooks/useFlyerClose";
+import { useFlyerWizardBack } from "@/hooks/useFlyerWizardBack";
 import {
   flyerExportSize,
   FLYER_CAPTURE_QUALITY,
-  previewSize,
+  FLYER_PREVIEW_MAX_WIDTH_EXPORT,
+  flyerPreviewMaxHeight,
 } from "@/lib/flyerDimensions";
 import type { FlyerAspectRatio, FlyerExportFormat } from "@/lib/flyerDraft";
+import { getFlyerStepLabel } from "@/lib/flyerDraft";
 import { renderFlyerVideo } from "@/lib/renderFlyerVideo";
+import {
+  downloadImageUri,
+  isWebImageExportAvailable,
+  shareOrDownloadImageUri,
+  slugifyExportFileName,
+  captureWebViewShot,
+} from "@/lib/webImageDownload";
 
 const INSTAGRAM_GRADIENT = ["#F58529", "#DD2A7B", "#8134AF"] as const;
 
 export default function FlyerExportScreen() {
-  const router = useRouter();
   useFlyerScreenParams("export");
-  const { draft, mergeDraft } = useFlyerDraft();
-  const { persistDraft } = useFlyerClose({ step: "export", skipPersist: true });
+  const { draft, mergeDraft, isExistingProject } = useFlyerDraft();
+  const { height: windowHeight } = useWindowDimensions();
   const exportRef = useRef<ViewShotRef>(null);
+  const webCaptureRef = useRef<ViewShotRef>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [saved, setSaved] = useState(false);
   const [progress, setProgress] = useState(0);
+  const { handleClose, persistDraft, isSaving } = useFlyerClose({
+    step: "export",
+    skipPersist: saved,
+    persistStatus: isExistingProject || saved ? "exported" : "draft",
+  });
+  const { goBackOneStep, canStepBack } = useFlyerWizardBack("export");
 
   const aspectRatio = draft.aspectRatio ?? "9:16";
   const exportFormat = draft.exportFormat ?? "image";
+  const isWeb = isWebImageExportAvailable();
   const exportSize = flyerExportSize(aspectRatio);
-  const preview = previewSize(aspectRatio, 180);
+  const previewMaxHeight =
+    aspectRatio === "9:16"
+      ? Math.round(windowHeight * 0.48)
+      : flyerPreviewMaxHeight(windowHeight);
+  const previewMaxWidth =
+    aspectRatio === "9:16"
+      ? Math.round(FLYER_PREVIEW_MAX_WIDTH_EXPORT * 1.2)
+      : FLYER_PREVIEW_MAX_WIDTH_EXPORT;
   const trimStart = draft.trimStart ?? 0;
   const trimEnd = draft.trimEnd ?? trimStart + 10;
   const clipSec = Math.max(1, trimEnd - trimStart);
+  const exportFileName = `${slugifyExportFileName(draft.eventName ?? "event-flyer")}-${aspectRatio.replace(":", "x")}`;
 
   const captureImage = useCallback(async () => {
+    if (isWeb) {
+      return captureWebViewShot(webCaptureRef.current);
+    }
+
     const ref = exportRef.current;
     if (!ref?.capture) {
       throw new Error("Export view not ready");
     }
     return ref.capture();
-  }, []);
+  }, [isWeb]);
 
-  const saveToCameraRoll = useCallback(async () => {
-    setIsExporting(true);
-    setProgress(0);
-    try {
+  const saveFlyerImage = useCallback(
+    async (uri: string) => {
+      if (isWeb) {
+        downloadImageUri(uri, exportFileName);
+        return;
+      }
+
       const permission = await MediaLibrary.requestPermissionsAsync();
       if (!permission.granted) {
         Alert.alert(
           "Permission needed",
           "Allow photo library access to save your flyer.",
         );
-        return;
+        const denied = new Error("Photo library permission denied");
+        denied.name = "PermissionDenied";
+        throw denied;
       }
 
+      await MediaLibrary.saveToLibraryAsync(uri);
+    },
+    [exportFileName, isWeb],
+  );
+
+  const saveToCameraRoll = useCallback(async () => {
+    setIsExporting(true);
+    setProgress(0);
+    try {
       if (exportFormat === "video") {
         if (Platform.OS === "web") {
           Alert.alert(
             "Video export unavailable",
             "Video export requires a native build. On web, switch to image export or test on your phone.",
+          );
+          return;
+        }
+        const permission = await MediaLibrary.requestPermissionsAsync();
+        if (!permission.granted) {
+          Alert.alert(
+            "Permission needed",
+            "Allow photo library access to save your flyer.",
           );
           return;
         }
@@ -102,12 +156,18 @@ export default function FlyerExportScreen() {
         );
       } else {
         const uri = await captureImage();
-        await MediaLibrary.saveToLibraryAsync(uri);
+        await saveFlyerImage(uri);
         await persistDraft({ step: "export" }, "exported");
       }
 
       setSaved(true);
     } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return;
+      }
+      if (error instanceof Error && error.name === "PermissionDenied") {
+        return;
+      }
       Alert.alert(
         "Export failed",
         error instanceof Error ? error.message : "Could not save your flyer.",
@@ -124,29 +184,50 @@ export default function FlyerExportScreen() {
     exportFormat,
     mergeDraft,
     persistDraft,
+    saveFlyerImage,
     trimEnd,
     trimStart,
   ]);
 
   const handleShare = useCallback(async () => {
     try {
-      let shareUri: string;
       if (exportFormat === "video" && draft.audioUri) {
+        if (Platform.OS === "web") {
+          Alert.alert(
+            "Video export unavailable",
+            "Video export requires a native build. On web, switch to image export or test on your phone.",
+          );
+          return;
+        }
         if (!saved) {
           await saveToCameraRoll();
         }
-        shareUri = draft.exportedVideoUri ?? "";
+        const shareUri = draft.exportedVideoUri ?? "";
         if (!shareUri) {
           throw new Error("Video export is not ready yet.");
         }
-      } else {
-        if (!saved) {
-          await saveToCameraRoll();
-        }
-        shareUri = await captureImage();
+        await Share.share({ url: shareUri });
+        return;
       }
-      await Share.share({ url: shareUri });
+
+      const uri = await captureImage();
+      if (isWeb) {
+        await shareOrDownloadImageUri(uri, exportFileName);
+        if (!saved) {
+          await persistDraft({ step: "export" }, "exported");
+          setSaved(true);
+        }
+        return;
+      }
+
+      if (!saved) {
+        await saveToCameraRoll();
+      }
+      await Share.share({ url: uri });
     } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return;
+      }
       Alert.alert(
         "Share failed",
         error instanceof Error ? error.message : "Could not share your flyer.",
@@ -156,7 +237,10 @@ export default function FlyerExportScreen() {
     captureImage,
     draft.audioUri,
     draft.exportedVideoUri,
+    exportFileName,
     exportFormat,
+    isWeb,
+    persistDraft,
     saveToCameraRoll,
     saved,
   ]);
@@ -167,28 +251,28 @@ export default function FlyerExportScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
-      <View style={styles.header}>
-        <Pressable
-          onPress={() => router.back()}
-          accessibilityRole="button"
-          accessibilityLabel="Close"
-        >
-          <Ionicons name="close" size={28} color={colors.dark.text} />
-        </Pressable>
-        <Text style={styles.headerTitle}>Export</Text>
-        <View style={{ width: 40 }} />
-      </View>
+      <FlyerFlowHeader
+        title={draft.eventName?.trim() || "Export"}
+        stepLabel={getFlyerStepLabel("export")}
+        showBackButton={canStepBack}
+        onBack={goBackOneStep}
+        onExit={handleClose}
+        isSaving={isSaving || isExporting}
+      />
 
-      <View style={styles.body}>
+      <ScrollView
+        style={styles.body}
+        contentContainerStyle={styles.bodyContent}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.previewWrap}>
-          <View
-            style={[
-              styles.previewFrame,
-              { width: preview.width, height: preview.height },
-            ]}
-          >
-            <FlyerTemplateView draft={draft} />
-          </View>
+          <FlyerPreviewFrame
+            draft={draft}
+            aspectRatio={aspectRatio}
+            maxWidth={previewMaxWidth}
+            maxHeight={previewMaxHeight}
+            borderRadius={radius.md}
+          />
         </View>
 
         {isExporting && exportFormat === "video" ? (
@@ -256,31 +340,61 @@ export default function FlyerExportScreen() {
           onPress={() => void saveToCameraRoll()}
           disabled={isExporting}
           accessibilityRole="button"
-          accessibilityLabel="Save to camera roll"
+          accessibilityLabel={isWeb ? "Download PNG" : "Save to camera roll"}
         >
-          <Text style={styles.secondaryButtonText}>Save to camera roll</Text>
+          <Text style={styles.secondaryButtonText}>
+            {isWeb ? "Download PNG" : "Save to camera roll"}
+          </Text>
         </Pressable>
 
         {saved ? (
-          <Text style={styles.savedHint}>Saved to your camera roll.</Text>
+          <Text style={styles.savedHint}>
+            {isWeb ? "Downloaded to your device." : "Saved to your camera roll."}
+          </Text>
         ) : null}
-      </View>
+      </ScrollView>
 
-      <ViewShot
-        ref={exportRef}
-        style={[
-          styles.offscreen,
-          { width: exportSize.width, height: exportSize.height },
-        ]}
-        options={{
-          format: "png",
-          quality: FLYER_CAPTURE_QUALITY,
-          width: exportSize.width,
-          height: exportSize.height,
-        }}
-      >
-        <FlyerTemplateView draft={draft} />
-      </ViewShot>
+      {isWeb ? (
+        <View
+          pointerEvents="none"
+          style={[
+            styles.webCaptureLayer,
+            { width: exportSize.width, height: exportSize.height },
+          ]}
+        >
+          <ViewShot
+            ref={webCaptureRef}
+            style={{ width: exportSize.width, height: exportSize.height }}
+            options={{
+              format: "png",
+              quality: FLYER_CAPTURE_QUALITY,
+              width: exportSize.width,
+              height: exportSize.height,
+              result: "data-uri",
+            }}
+          >
+            <FlyerTemplateView draft={draft} />
+          </ViewShot>
+        </View>
+      ) : null}
+
+      {!isWeb ? (
+        <ViewShot
+          ref={exportRef}
+          style={[
+            styles.offscreen,
+            { width: exportSize.width, height: exportSize.height },
+          ]}
+          options={{
+            format: "png",
+            quality: FLYER_CAPTURE_QUALITY,
+            width: exportSize.width,
+            height: exportSize.height,
+          }}
+        >
+          <FlyerTemplateView draft={draft} />
+        </ViewShot>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -326,31 +440,24 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.dark.background,
   },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  headerTitle: {
-    fontSize: 17,
-    fontWeight: "600",
-    color: colors.dark.text,
-  },
   body: {
     flex: 1,
+  },
+  bodyContent: {
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.lg,
   },
   previewWrap: {
     alignItems: "center",
-    marginVertical: spacing.md,
+    marginVertical: spacing.sm,
+    flexShrink: 1,
   },
-  previewFrame: {
-    borderRadius: radius.md,
+  webCaptureLayer: {
+    position: "absolute",
+    top: 0,
+    left: -10000,
+    opacity: 1,
     overflow: "hidden",
-    backgroundColor: "#111",
   },
   progressHint: {
     fontSize: 13,

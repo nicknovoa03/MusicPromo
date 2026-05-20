@@ -71,6 +71,7 @@ export default defineSchema({
     venue: v.optional(v.string()),
     city: v.optional(v.string()),
     flyerEyebrow: v.optional(v.string()),
+    flyerSubtitle: v.optional(v.string()),
     flyerTagline: v.optional(v.string()),
     flyerTemplateId: v.optional(v.string()),
     flyerBackgroundKey: v.optional(v.string()),

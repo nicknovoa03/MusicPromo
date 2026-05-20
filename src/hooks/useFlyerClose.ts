@@ -1,5 +1,4 @@
 import { useCallback, useRef, useState } from "react";
-import { Platform } from "react-native";
 import { useRouter } from "expo-router";
 import { useMutation, useConvexAuth } from "convex/react";
 import { api } from "../../convex/_generated/api";
@@ -128,7 +127,7 @@ export function useFlyerClose({
     const run = async () => {
       if (skipPersist) {
         if (onAfterSave) onAfterSave();
-        else if (Platform.OS !== "web") router.replace("/");
+        else router.replace("/");
         return;
       }
 
@@ -141,7 +140,7 @@ export function useFlyerClose({
         setIsSaving(false);
         savePromiseRef.current = null;
         if (onAfterSave) onAfterSave();
-        else if (Platform.OS !== "web") router.replace("/");
+        else router.replace("/");
       }
     };
 

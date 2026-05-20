@@ -16,20 +16,22 @@ import { Audio } from "expo-av";
 import { colors, spacing, radius } from "@/constants/tokens";
 import { AudioTrimmer } from "@/components/create/AudioTrimmer";
 import { FlyerLineupEditor } from "@/components/flyer/FlyerLineupEditor";
-import { FlyerTemplateView } from "@/components/flyer/FlyerTemplateView";
-import {
-  FlyerEditorTabs,
+import { FlyerPreviewFrame } from "@/components/flyer/FlyerPreviewFrame";
+import { FLYER_PREVIEW_MAX_WIDTH_EDITOR } from "@/lib/flyerDimensions";
+import { FlyerEditorTabs,
   type FlyerEditorTab,
 } from "@/components/flyer/FlyerEditorTabs";
+import { FlyerFlowHeader } from "@/components/flyer/FlyerFlowHeader";
 import { useFlyerDraft } from "@/providers/FlyerDraftContext";
 import { useFlyerScreenParams } from "@/hooks/useFlyerScreenParams";
 import { useFlyerClose } from "@/hooks/useFlyerClose";
-import { previewSize } from "@/lib/flyerDimensions";
+import { useFlyerWizardBack } from "@/hooks/useFlyerWizardBack";
 import type { FlyerLineup, FlyerTemplateId } from "@/lib/flyerDraft";
-import { defaultFlyerLineup, parseFlyerLineup } from "@/lib/flyerDraft";
+import { defaultFlyerLineup, getFlyerStepLabel, parseFlyerLineup } from "@/lib/flyerDraft";
 import {
   FLYER_ACCENT_SWATCHES,
   FLYER_BACKGROUND_PRESETS,
+  FLYER_EYEBROW_FIELD,
   FLYER_TEMPLATE_OPTIONS,
 } from "@/lib/flyerTemplates";
 
@@ -37,11 +39,13 @@ export default function FlyerEditorScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   useFlyerScreenParams("editor");
-  const { draft, mergeDraft, getNavigationParams } = useFlyerDraft();
+  const { draft, mergeDraft, getNavigationParams, isExistingProject } = useFlyerDraft();
   const { handleClose, saveAndContinue, isSaving } = useFlyerClose({
     step: "editor",
+    persistStatus: isExistingProject ? "exported" : "draft",
     getFlushPatch: () => ({ step: "export" }),
   });
+  const { goBackOneStep, canStepBack } = useFlyerWizardBack("editor");
   const [activeTab, setActiveTab] = useState<FlyerEditorTab>("colors");
   const [audioDurationSec, setAudioDurationSec] = useState(180);
 
@@ -82,12 +86,8 @@ export default function FlyerEditorScreen() {
     };
   }, [draft.audioUri, draft.trimEnd, mergeDraft, trimStart]);
 
-  const aspectRatio = draft.aspectRatio ?? "9:16";
   const templateId = draft.templateId ?? "heat";
-  const preview = useMemo(
-    () => previewSize(aspectRatio, 220),
-    [aspectRatio],
-  );
+  const eyebrowField = FLYER_EYEBROW_FIELD[templateId];
 
   const pickPhoto = useCallback(async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -129,44 +129,25 @@ export default function FlyerEditorScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
-      <View style={styles.header}>
-        <Pressable
-          onPress={handleClose}
-          disabled={isSaving}
-          accessibilityRole="button"
-          accessibilityLabel="Save and exit"
-        >
-          <Ionicons name="close" size={28} color={colors.dark.text} />
-        </Pressable>
-        <Text style={styles.headerTitle} numberOfLines={1}>
-          {draft.eventName?.trim() || "Event Flyer"}
-        </Text>
-        <Pressable
-          style={styles.exportButton}
-          onPress={() => void handleExport()}
-          disabled={isSaving}
-          accessibilityRole="button"
-          accessibilityLabel="Export"
-        >
-          <Text style={styles.exportButtonText}>Export</Text>
-        </Pressable>
-      </View>
+      <FlyerFlowHeader
+        title={draft.eventName?.trim() || "Event Flyer"}
+        stepLabel={getFlyerStepLabel("editor")}
+        showBackButton={canStepBack}
+        onBack={goBackOneStep}
+        onExit={handleClose}
+        isSaving={isSaving}
+      />
 
       <View style={styles.previewArea}>
-        <View style={styles.aspectBadge}>
-          <Text style={styles.aspectBadgeText}>{aspectRatio}</Text>
-        </View>
-        <View
-          style={[
-            styles.previewFrame,
-            { width: preview.width, height: preview.height },
-          ]}
-        >
-          <FlyerTemplateView draft={draft} templateId={templateId} />
-        </View>
+        <FlyerPreviewFrame
+          draft={draft}
+          templateId={templateId}
+          maxWidth={FLYER_PREVIEW_MAX_WIDTH_EDITOR}
+          borderRadius={radius.md}
+        />
       </View>
 
-      <View style={[styles.sheet, { paddingBottom: insets.bottom + spacing.md }]}>
+      <View style={[styles.sheet, { paddingBottom: spacing.md }]}>
         <Text style={styles.sheetSectionLabel}>Template</Text>
         <ScrollView
           horizontal
@@ -212,10 +193,16 @@ export default function FlyerEditorScreen() {
           {activeTab === "text" ? (
             <View style={styles.panel}>
               <Field
-                label="Eyebrow"
+                label={eyebrowField.label}
                 value={draft.eyebrow ?? ""}
                 onChange={(eyebrow) => mergeDraft({ eyebrow })}
-                placeholder="ROOFTOP DAY PARTY"
+                placeholder={eyebrowField.placeholder}
+              />
+              <Field
+                label="Subtitle"
+                value={draft.flyerSubtitle ?? ""}
+                onChange={(flyerSubtitle) => mergeDraft({ flyerSubtitle })}
+                placeholder="highland basement party"
               />
               <Field
                 label="Event name"
@@ -287,14 +274,6 @@ export default function FlyerEditorScreen() {
             </View>
           ) : null}
 
-          {activeTab === "fonts" ? (
-            <View style={styles.panel}>
-              <Text style={styles.fontsCopy}>
-                Fonts are set by the template. Switch templates to change the display style.
-              </Text>
-            </View>
-          ) : null}
-
           {activeTab === "photo" ? (
             <View style={styles.panel}>
               <Pressable style={styles.actionRow} onPress={pickPhoto}>
@@ -353,28 +332,28 @@ export default function FlyerEditorScreen() {
             </View>
           ) : null}
         </ScrollView>
+      </View>
 
-        <View style={styles.aspectRow}>
-          {(["9:16", "4:5"] as const).map((ratio) => {
-            const active = aspectRatio === ratio;
-            return (
-              <Pressable
-                key={ratio}
-                style={[styles.aspectButton, active && styles.aspectButtonActive]}
-                onPress={() => mergeDraft({ aspectRatio: ratio })}
-              >
-                <Text
-                  style={[
-                    styles.aspectButtonText,
-                    active && styles.aspectButtonTextActive,
-                  ]}
-                >
-                  {ratio === "9:16" ? "9:16 Story" : "4:5 Post"}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+      <View
+        style={[
+          styles.footer,
+          { paddingBottom: insets.bottom + spacing.sm },
+        ]}
+      >
+        <Pressable
+          style={({ pressed }) => [
+            styles.footerExportButton,
+            isSaving && styles.footerExportButtonDisabled,
+            pressed && !isSaving && styles.pressed,
+          ]}
+          onPress={() => void handleExport()}
+          disabled={isSaving}
+          accessibilityRole="button"
+          accessibilityLabel="Export flyer"
+        >
+          <Text style={styles.footerExportButtonText}>Export</Text>
+          <Ionicons name="arrow-forward" size={18} color={colors.accent.onPrimary} />
+        </Pressable>
       </View>
     </SafeAreaView>
   );
@@ -410,57 +389,39 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.dark.background,
   },
-  header: {
+  footer: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.dark.border,
+    backgroundColor: colors.dark.surface,
+  },
+  footerExportButton: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    justifyContent: "center",
+    gap: spacing.xs,
+    backgroundColor: colors.accent.primary,
+    borderRadius: radius.md,
+    paddingVertical: spacing.md,
   },
-  headerTitle: {
-    flex: 1,
-    textAlign: "center",
-    fontSize: 14,
-    fontWeight: "500",
-    color: colors.dark.textSecondary,
-    marginHorizontal: spacing.sm,
+  footerExportButtonDisabled: {
+    opacity: 0.3,
   },
-  exportButton: {
-    backgroundColor: colors.dark.text,
-    borderRadius: radius.full,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-  },
-  exportButtonText: {
-    color: colors.dark.background,
-    fontSize: 15,
+  footerExportButtonText: {
+    fontSize: 17,
     fontWeight: "600",
+    color: colors.accent.onPrimary,
+  },
+  pressed: {
+    opacity: 0.8,
+    transform: [{ scale: 0.985 }],
   },
   previewArea: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: spacing.lg,
-  },
-  aspectBadge: {
-    position: "absolute",
-    top: 0,
-    right: spacing.lg,
-    backgroundColor: "rgba(255,255,255,0.1)",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: radius.sm,
-  },
-  aspectBadgeText: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: colors.dark.text,
-    letterSpacing: 0.5,
-  },
-  previewFrame: {
-    borderRadius: radius.md,
-    overflow: "hidden",
-    backgroundColor: "#111",
   },
   sheet: {
     backgroundColor: colors.dark.surface,
@@ -559,11 +520,6 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.dark.border,
   },
-  fontsCopy: {
-    fontSize: 14,
-    color: colors.dark.textSecondary,
-    lineHeight: 20,
-  },
   actionRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -592,31 +548,5 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     textTransform: "uppercase",
     marginTop: spacing.sm,
-  },
-  aspectRow: {
-    flexDirection: "row",
-    gap: spacing.sm,
-    marginTop: spacing.sm,
-  },
-  aspectButton: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: radius.md,
-    alignItems: "center",
-    backgroundColor: colors.dark.surfaceMuted,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.dark.border,
-  },
-  aspectButtonActive: {
-    backgroundColor: colors.dark.text,
-    borderColor: colors.dark.text,
-  },
-  aspectButtonText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: colors.dark.text,
-  },
-  aspectButtonTextActive: {
-    color: colors.dark.background,
   },
 });

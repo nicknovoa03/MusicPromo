@@ -15,13 +15,14 @@ export type FlyerTemplateData = {
   presenter?: string;
   titleA?: string;
   titleB?: string;
-  iridescentSubtitle?: string;
+  eventSubtitle?: string;
   artists?: string;
   genres?: string;
   age?: string;
   date?: string;
   time?: string;
   venue?: string;
+  city?: string;
   overline?: string;
   djLabel?: string;
   djs?: string[];
@@ -92,6 +93,28 @@ export const FLYER_ACCENT_SWATCHES = [
   "#D6B3FF",
 ];
 
+export const FLYER_EYEBROW_DEFAULTS: Record<FlyerTemplateId, string> = {
+  heat: "ROOFTOP DAY PARTY",
+  iridescent: "JAXX EVENTS & HIGHLAND PRESENT",
+  vintage: "thursday",
+};
+
+export const FLYER_EYEBROW_FIELD: Record<
+  FlyerTemplateId,
+  { label: string; placeholder: string }
+> = {
+  heat: { label: "Eyebrow", placeholder: FLYER_EYEBROW_DEFAULTS.heat },
+  iridescent: {
+    label: "Presenter",
+    placeholder: FLYER_EYEBROW_DEFAULTS.iridescent,
+  },
+  vintage: { label: "Overline", placeholder: FLYER_EYEBROW_DEFAULTS.vintage },
+};
+
+export function defaultFlyerEyebrow(templateId: FlyerTemplateId): string {
+  return FLYER_EYEBROW_DEFAULTS[templateId];
+}
+
 function formatEventDate(isoOrDisplay: string | undefined): string {
   if (!isoOrDisplay?.trim()) return "SAT APR 25";
   const d = new Date(isoOrDisplay);
@@ -121,6 +144,7 @@ function splitEventTitle(name: string): { title: string; subtitle: string } {
 export function buildFlyerTemplateData(
   draft: FlyerDraftInput,
   lineup?: FlyerLineup,
+  templateId: FlyerTemplateId = draft.templateId ?? "heat",
 ): FlyerTemplateData {
   const eventName = draft.eventName?.trim() || "Disco at Dusk";
   const { title, subtitle } = splitEventTitle(eventName);
@@ -137,31 +161,34 @@ export function buildFlyerTemplateData(
   const acts = lineupToTemplateActs(parsedLineup);
 
   const words = eventName.split(/\s+/);
-  const titleA = (words[0] ?? "EUPHOR").toUpperCase();
-  const titleB = (words.slice(1).join(" ") || "EASTER").toUpperCase();
+  const titleA = (words[0] ?? "EVENT").toUpperCase();
+  const titleB = words.slice(1).join(" ").toUpperCase();
 
-  const iridescentSubtitle = draft.tagline?.trim() || "highland basement party";
+  const eventSubtitle = draft.flyerSubtitle?.trim() || undefined;
+  const eyebrowText =
+    draft.eyebrow?.trim() || defaultFlyerEyebrow(templateId);
 
   return {
     badge: "HAPPY HOUR · 4-7PM",
-    eyebrow: draft.eyebrow?.trim() || "ROOFTOP DAY PARTY",
+    eyebrow: eyebrowText,
     title,
     subtitle,
     tagline: draft.tagline?.trim() || "house / disco / grooves",
     footer,
     lineup: parsedLineup,
     lineupActs: acts,
-    presenter: "JAXX EVENTS & HIGHLAND PRESENT",
+    presenter: eyebrowText,
     titleA,
     titleB,
-    iridescentSubtitle,
+    eventSubtitle,
     artists: acts.map((a) => a.name).slice(0, 2).join("  ×  ") || "KIWI  ×  FVLL3N 3GO",
     genres: "HOUSE / TECHNO / DISCO / GHETTOTECH",
     age: "18+",
     date,
     time,
-    venue: city ? `${venue}, ${city}`.toUpperCase() : venue.toUpperCase(),
-    overline: "thursday",
+    venue: venue.toUpperCase(),
+    city: city?.toUpperCase(),
+    overline: eyebrowText,
     djLabel: "WITH DJs",
     djs: acts.slice(0, 2).map((a) => a.name),
   };

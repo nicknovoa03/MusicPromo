@@ -1,7 +1,15 @@
-import { View, Text, StyleSheet, Image } from "react-native";
+import { Platform, View, Text, StyleSheet, Image } from "react-native";
+import type { FlyerAspectRatio } from "@/lib/flyerDraft";
 import type { FlyerTemplateData } from "@/lib/flyerTemplates";
+import {
+  flyerSize,
+  flyerScriptLineHeight,
+  flyerStackedTitleLineHeight,
+  isFlyerCompact,
+} from "@/lib/flyerLayout";
 import { FlyerGradientBackground } from "./FlyerGradientBackground";
 import { FlyerWatermark } from "./FlyerWatermark";
+import { FlyerEventSubtitle } from "./FlyerEventSubtitle";
 import { FlyerLineupBlock } from "./FlyerLineupBlock";
 import { flyerFontFamilies } from "@/lib/flyerFonts";
 
@@ -10,6 +18,7 @@ type HeatFlyerTemplateProps = {
   backgroundColors: string[];
   accentColor: string;
   photoUri?: string | null;
+  aspectRatio?: FlyerAspectRatio;
   showWatermark?: boolean;
 };
 
@@ -18,8 +27,16 @@ export function HeatFlyerTemplate({
   backgroundColors,
   accentColor,
   photoUri,
+  aspectRatio = "9:16",
   showWatermark = true,
 }: HeatFlyerTemplateProps) {
+  const compact = isFlyerCompact(aspectRatio);
+  const fs = (value: number) => flyerSize(value, aspectRatio);
+  const titleSize = fs(compact ? 44 : 56);
+  // Caveat reads smaller than Anton at the same pt size — keep closer to design (~38/72).
+  const subtitleSize = Math.round(titleSize * 0.72);
+  const titleOverlap = fs(compact ? 6 : 8);
+
   return (
     <View style={styles.root}>
       {photoUri ? (
@@ -31,26 +48,122 @@ export function HeatFlyerTemplate({
         <FlyerGradientBackground colors={backgroundColors} />
       )}
       <View style={styles.halftone} pointerEvents="none" />
-      <View style={[styles.badge, { backgroundColor: accentColor }]}>
-        <Text style={styles.badgeText}>{data.badge}</Text>
+      <View
+        style={[
+          styles.badge,
+          {
+            backgroundColor: accentColor,
+            top: fs(14),
+            paddingHorizontal: fs(12),
+            paddingVertical: fs(6),
+          },
+        ]}
+      >
+        <Text style={[styles.badgeText, { fontSize: fs(9) }]}>{data.badge}</Text>
       </View>
-      <View style={styles.content}>
-        <View style={styles.center}>
-          <Text style={[styles.eyebrow, { color: accentColor }]}>{data.eyebrow}</Text>
-          <Text style={[styles.title, { fontFamily: flyerFontFamilies.display }]}>
-            {data.title}
+      <View
+        style={[
+          styles.content,
+          {
+            padding: fs(compact ? 16 : 22),
+          },
+        ]}
+      >
+        <Text
+          style={[
+            styles.eyebrow,
+            {
+              color: accentColor,
+              fontSize: fs(10),
+            },
+          ]}
+        >
+          {data.eyebrow}
+        </Text>
+        <View
+          style={[
+            styles.titleBlock,
+            compact && styles.titleBlockCompact,
+            { paddingTop: fs(Platform.OS === "ios" ? 8 : 0) },
+          ]}
+        >
+          <View
+            style={[
+              styles.titleGroup,
+              { paddingHorizontal: fs(compact ? 10 : 14) },
+            ]}
+          >
+            <Text
+              style={[
+                styles.titleDisplay,
+                {
+                  fontFamily: flyerFontFamilies.display,
+                  fontSize: titleSize,
+                  lineHeight: flyerStackedTitleLineHeight(titleSize),
+                  paddingTop: fs(Platform.OS === "ios" ? 4 : 0),
+                },
+              ]}
+            >
+              {data.title}
+            </Text>
+            <View
+              style={[
+                styles.scriptLineWrap,
+                {
+                  minHeight: Math.round(subtitleSize * 1.55),
+                  marginTop: -titleOverlap,
+                  paddingHorizontal: fs(4),
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.titleScript,
+                  {
+                    fontFamily: flyerFontFamilies.script,
+                    fontSize: subtitleSize,
+                    lineHeight: flyerScriptLineHeight(subtitleSize),
+                  },
+                ]}
+              >
+                {data.subtitle}
+              </Text>
+            </View>
+          </View>
+          <FlyerEventSubtitle
+            text={data.eventSubtitle}
+            color="#fff"
+            aspectRatio={aspectRatio}
+          />
+          <Text
+            style={[
+              styles.tagline,
+              {
+                color: accentColor,
+                fontSize: fs(11),
+                marginTop: fs(compact ? 4 : 6),
+              },
+            ]}
+          >
+            {data.tagline}
           </Text>
-          <Text style={[styles.subtitle, { fontFamily: flyerFontFamilies.script }]}>
-            {data.subtitle}
-          </Text>
-          <Text style={[styles.tagline, { color: accentColor }]}>{data.tagline}</Text>
           <FlyerLineupBlock
             lineup={data.lineup}
             accentColor={accentColor}
             templateId="heat"
+            aspectRatio={aspectRatio}
           />
         </View>
-        <Text style={[styles.footer, { borderTopColor: `${accentColor}4D` }]}>
+        <Text
+          style={[
+            styles.footer,
+            {
+              borderTopColor: `${accentColor}4D`,
+              fontSize: fs(9),
+              paddingTop: fs(compact ? 8 : 12),
+            },
+          ]}
+        >
           {data.footer}
         </Text>
       </View>
@@ -76,15 +189,11 @@ const styles = StyleSheet.create({
   },
   badge: {
     position: "absolute",
-    top: 14,
     right: -4,
     transform: [{ rotate: "8deg" }],
-    paddingHorizontal: 12,
-    paddingVertical: 6,
     zIndex: 2,
   },
   badgeText: {
-    fontSize: 9,
     fontWeight: "800",
     fontStyle: "italic",
     color: "#000",
@@ -92,50 +201,64 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingTop: 56,
-    paddingHorizontal: 20,
-    paddingBottom: 24,
-  },
-  center: {
-    flex: 1,
-    alignItems: "center",
+    justifyContent: "space-between",
   },
   eyebrow: {
-    fontSize: 10,
     fontWeight: "700",
     letterSpacing: 3,
-    marginBottom: 8,
+    textAlign: "center",
+    flexShrink: 0,
   },
-  title: {
-    fontSize: 56,
-    fontWeight: "400",
-    lineHeight: 48,
+  titleBlock: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 0,
+    width: "100%",
+  },
+  titleBlockCompact: {
+    flex: 0,
+    flexGrow: 1,
+    flexShrink: 1,
+    justifyContent: "center",
+  },
+  titleGroup: {
+    alignItems: "center",
+    alignSelf: "stretch",
+    zIndex: 2,
+    flexShrink: 0,
+    overflow: "visible",
+  },
+  scriptLineWrap: {
+    justifyContent: "center",
+    alignItems: "center",
+    alignSelf: "stretch",
+    overflow: "visible",
+  },
+  titleDisplay: {
     letterSpacing: -1,
     color: "#fff",
     textAlign: "center",
     textTransform: "uppercase",
+    alignSelf: "center",
   },
-  subtitle: {
-    fontSize: 28,
-    fontWeight: "700",
+  titleScript: {
     color: "#fff",
-    marginTop: -2,
     textAlign: "center",
+    // Caveat italic overhangs the measured text box on the right.
+    paddingHorizontal: 2,
   },
   tagline: {
-    fontSize: 11,
     fontWeight: "500",
-    marginTop: 4,
     letterSpacing: 1,
     textAlign: "center",
   },
   footer: {
-    fontSize: 9,
     fontWeight: "600",
     letterSpacing: 1.2,
     textAlign: "center",
     color: "#fff",
-    paddingTop: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
+    flexShrink: 0,
   },
 });

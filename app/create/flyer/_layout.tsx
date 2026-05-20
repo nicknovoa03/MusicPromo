@@ -4,16 +4,24 @@ import { colors } from "@/constants/tokens";
 import { FlyerWebPreviewFrame } from "@/components/flyer/FlyerWebPreviewFrame";
 import { FlyerDraftProvider } from "@/providers/FlyerDraftContext";
 import { FlyerFontsProvider } from "@/providers/FlyerFontsProvider";
+import { useFlyerProjectHydration } from "@/hooks/useFlyerProjectHydration";
 
+/** Forward: new screen enters from the right. Back uses `animationTypeForReplace: "pop"`. */
 const forwardAnimation = Platform.OS === "ios" ? "default" : "slide_from_right";
 
 const backReplaceOptions = {
   animationTypeForReplace: "pop" as const,
 };
 
+function FlyerProjectHydrator() {
+  useFlyerProjectHydration();
+  return null;
+}
+
 export default function FlyerLayout() {
   return (
     <FlyerDraftProvider>
+      <FlyerProjectHydrator />
       <FlyerFontsProvider>
       <FlyerWebPreviewFrame>
       <Stack
@@ -26,6 +34,7 @@ export default function FlyerLayout() {
         <Stack.Screen
           name="details"
           options={{
+            ...backReplaceOptions,
             contentStyle: {
               backgroundColor: colors.light.background,
             },

@@ -11,15 +11,17 @@ import { VintageFlyerTemplate } from "./VintageFlyerTemplate";
 type FlyerTemplateViewProps = {
   draft: FlyerDraftInput;
   templateId?: FlyerTemplateId;
+  aspectRatio?: FlyerDraftInput["aspectRatio"];
   showWatermark?: boolean;
 };
 
 export function FlyerTemplateView({
   draft,
   templateId = draft.templateId ?? "heat",
+  aspectRatio = draft.aspectRatio ?? "9:16",
   showWatermark = true,
 }: FlyerTemplateViewProps) {
-  const data = buildFlyerTemplateData(draft);
+  const data = buildFlyerTemplateData(draft, undefined, templateId);
   const backgroundColors = resolveBackgroundGradient(
     templateId,
     draft.backgroundKey,
@@ -33,6 +35,7 @@ export function FlyerTemplateView({
           data={data}
           backgroundColors={backgroundColors}
           photoUri={draft.photoUri}
+          aspectRatio={aspectRatio}
           showWatermark={showWatermark}
         />
       );
@@ -42,6 +45,7 @@ export function FlyerTemplateView({
           data={data}
           backgroundColors={backgroundColors}
           photoUri={draft.photoUri}
+          aspectRatio={aspectRatio}
           showWatermark={showWatermark}
         />
       );
@@ -53,6 +57,7 @@ export function FlyerTemplateView({
           backgroundColors={backgroundColors}
           accentColor={accentColor}
           photoUri={draft.photoUri}
+          aspectRatio={aspectRatio}
           showWatermark={showWatermark}
         />
       );

@@ -16,11 +16,13 @@ import * as DocumentPicker from "expo-document-picker";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
 import { ReleaseDatePickerModal } from "@/components/spk/ReleaseDatePickerModal";
 import { EventTimePickerModal } from "@/components/flyer/EventTimePickerModal";
+import { FlyerFlowHeader } from "@/components/flyer/FlyerFlowHeader";
 import { formatTimeDisplay } from "@/lib/flyerEventTime";
 import { useFlyerDraft } from "@/providers/FlyerDraftContext";
 import { useFlyerScreenParams } from "@/hooks/useFlyerScreenParams";
 import { useFlyerClose } from "@/hooks/useFlyerClose";
-import { defaultFlyerLineup } from "@/lib/flyerDraft";
+import { useFlyerWizardBack } from "@/hooks/useFlyerWizardBack";
+import { defaultFlyerLineup, getFlyerStepLabel } from "@/lib/flyerDraft";
 
 function formatDisplayDate(iso: string | undefined): string {
   if (!iso?.trim()) return "";
@@ -40,15 +42,17 @@ export default function FlyerDetailsScreen() {
   const isDark = colorScheme === "dark";
   useFlyerScreenParams("details");
 
-  const { draft, mergeDraft, getNavigationParams } = useFlyerDraft();
+  const { draft, mergeDraft, getNavigationParams, isExistingProject } = useFlyerDraft();
   const { handleClose, saveAndContinue, isSaving } = useFlyerClose({
     step: "details",
+    persistStatus: isExistingProject ? "exported" : "draft",
     getFlushPatch: () => ({
       step: "editor",
       lineupJson:
         draft.lineupJson ?? JSON.stringify(defaultFlyerLineup()),
     }),
   });
+  const { goBackOneStep, canStepBack } = useFlyerWizardBack("details");
   const [datePickerVisible, setDatePickerVisible] = useState(false);
   const [startTimePickerVisible, setStartTimePickerVisible] = useState(false);
   const [endTimePickerVisible, setEndTimePickerVisible] = useState(false);
@@ -120,36 +124,15 @@ export default function FlyerDetailsScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: bg }]} edges={["top", "bottom"]}>
-      <View style={styles.header}>
-        <Pressable
-          onPress={handleClose}
-          disabled={isSaving}
-          accessibilityRole="button"
-          accessibilityLabel="Cancel"
-        >
-          <Text style={[styles.headerAction, { color: text }]}>Cancel</Text>
-        </Pressable>
-        <Text style={[styles.headerTitle, { color: text }]}>New Event Flyer</Text>
-        <Pressable
-          onPress={() => void handleNext()}
-          disabled={!canAdvance || isSaving}
-          style={[
-            styles.nextButton,
-            { backgroundColor: canAdvance ? text : surface },
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel="Next"
-        >
-          <Text
-            style={[
-              styles.nextButtonText,
-              { color: canAdvance ? bg : secondary },
-            ]}
-          >
-            Next
-          </Text>
-        </Pressable>
-      </View>
+      <FlyerFlowHeader
+        title="New Event Flyer"
+        stepLabel={getFlyerStepLabel("details")}
+        showBackButton={canStepBack}
+        onBack={goBackOneStep}
+        onExit={handleClose}
+        isSaving={isSaving}
+        tone="light"
+      />
 
       <ScrollView
         contentContainerStyle={[
@@ -273,9 +256,44 @@ export default function FlyerDetailsScreen() {
         </View>
 
         <Text style={[styles.hint, { color: secondary }]}>
-          You can pick a template and customize colors, fonts, and lineup on the next screen.
+          You can pick a template and customize colors and lineup on the next screen.
         </Text>
       </ScrollView>
+
+      <View
+        style={[
+          styles.footer,
+          { borderTopColor: border, paddingBottom: insets.bottom + spacing.sm },
+        ]}
+      >
+        <Pressable
+          style={({ pressed }) => [
+            styles.footerNextButton,
+            { backgroundColor: text },
+            !canAdvance && styles.footerNextButtonDisabled,
+            pressed && canAdvance && styles.pressed,
+          ]}
+          onPress={() => void handleNext()}
+          disabled={!canAdvance || isSaving}
+          accessibilityRole="button"
+          accessibilityLabel="Next step"
+          accessibilityState={{ disabled: !canAdvance || isSaving }}
+        >
+          <Text
+            style={[
+              styles.footerNextButtonText,
+              { color: canAdvance ? bg : secondary },
+            ]}
+          >
+            Next
+          </Text>
+          <Ionicons
+            name="arrow-forward"
+            size={18}
+            color={canAdvance ? bg : secondary}
+          />
+        </Pressable>
+      </View>
 
       <ReleaseDatePickerModal
         visible={datePickerVisible}
@@ -323,31 +341,28 @@ export default function FlyerDetailsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: {
+  footer: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  footerNextButton: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    justifyContent: "center",
+    gap: spacing.xs,
+    borderRadius: radius.md,
+    paddingVertical: spacing.md,
   },
-  headerAction: {
-    fontSize: 17,
-    minWidth: 64,
+  footerNextButtonDisabled: {
+    opacity: 0.3,
   },
-  headerTitle: {
-    fontSize: 17,
-    fontWeight: "600",
+  footerNextButtonText: {
+    ...typography.button,
   },
-  nextButton: {
-    borderRadius: radius.full,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    minWidth: 64,
-    alignItems: "center",
-  },
-  nextButtonText: {
-    fontSize: 15,
-    fontWeight: "600",
+  pressed: {
+    opacity: 0.8,
+    transform: [{ scale: 0.985 }],
   },
   scroll: {
     paddingHorizontal: spacing.md,

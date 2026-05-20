@@ -263,10 +263,11 @@ Music Promo flow unchanged: `create/picker → editor → rendering → share`.
 
 ## 9. Out of Scope / Future Phases
 
-- Event Flyer project type
 - Per-slide font / layout editor
 - Artist name and social row on Cover slide
 - Showing linked promo template / clip length on Track Details slide
 - Single share action attaching all four JPEGs
 - Public press kit link on artist profile
 - Spotify / audio preview on press kit slides
+
+*(Show Flyer is a separate project type — see `docs/requirements/SHOW_FLYER_REQUIREMENTS.md`.)*

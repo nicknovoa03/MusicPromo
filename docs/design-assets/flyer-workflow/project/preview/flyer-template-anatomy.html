@@ -63,7 +63,7 @@ body{margin:0;padding:18px;background:#F6F4EE;font-family:Inter,system-ui;color:
     </div>
     <div class="row">
       <div class="tag">B</div>
-      <div><div class="k">Eyebrow · optional</div><div class="v">All caps, letter-spaced ~2px, accent color. The category tag — <code>ROOFTOP DAY PARTY</code>, <code>WAREHOUSE</code>.</div></div>
+      <div><div class="k">Eyebrow · optional</div><div class="v">One field, three faces: Heat eyebrow (accent caps) · Iridescent presenter · Vintage overline (script). Template-specific default when empty.</div></div>
     </div>
     <div class="row">
       <div class="tag">C</div>
@@ -71,23 +71,23 @@ body{margin:0;padding:18px;background:#F6F4EE;font-family:Inter,system-ui;color:
     </div>
     <div class="row">
       <div class="tag">D</div>
-      <div><div class="k">Subtitle · optional</div><div class="v">The qualifier. Caveat (script) for Heat; italic Inter for Iridescent; Pinyon Script overline for Vintage. Always lowercase.</div></div>
+      <div><div class="k">Event subtitle · optional</div><div class="v">Below the title on <strong>all</strong> templates. Medium Inter, centered, lowercase-friendly. Draft field <code>flyerSubtitle</code> — hidden when empty. Distinct from Heat's script word split and from the tagline.</div></div>
     </div>
     <div class="row">
       <div class="tag">E</div>
-      <div><div class="k">Tagline · optional</div><div class="v">Genre line. Lowercase, slash-separated. Accent color. Distinct from the eyebrow — this is the <em>sound</em>, not the <em>category</em>.</div></div>
+      <div><div class="k">Tagline · optional</div><div class="v">Genre line. Heat: accent, lowercase slashes. Vintage: uppercase below lineup. Not the event subtitle.</div></div>
     </div>
     <div class="row">
       <div class="tag">F</div>
-      <div><div class="k">Lineup · 0–10 acts</div><div class="v">Modular <code>LineupBlock</code>. Layout auto-suggested from count: 2–4 → grid, 5–8 → column, 9–10 → festival. Optional intro label above (<code>SOUNDS BY</code>, <code>MUSIC BY</code>, etc.). Set times toggle-able per flyer. Drops off entirely if empty.</div></div>
+      <div><div class="k">Lineup · 0–10 acts</div><div class="v">Modular <code>FlyerLineupBlock</code>. Layouts: <code>grid</code> (full-width 2-col), <code>column</code>, <code>festival</code>, <code>spotlight</code> (1-row pill). Auto-suggested from count; user override in Text tab. Intro label + set-times toggle. Drops off when empty.</div></div>
     </div>
     <div class="row">
       <div class="tag">G</div>
-      <div><div class="k">Footer · required</div><div class="v">Date · Time · Venue, pipe-separated, all caps. Hairline accent rule above. The one piece of info every flyer guarantees.</div></div>
+      <div><div class="k">Footer · required</div><div class="v">Date · Time · Venue (template-specific layout). Hairline rule on Heat.</div></div>
     </div>
     <div class="row">
       <div class="tag">H</div>
-      <div><div class="k">Watermark · always</div><div class="v"><code>MusicPromo</code> in the bottom-right, low-contrast. Never removable — it's how the app tracks attribution.</div></div>
+      <div><div class="k">Watermark · always</div><div class="v"><code>MusicPromo</code> bottom-right, low-contrast.</div></div>
     </div>
   </div>
 </div>

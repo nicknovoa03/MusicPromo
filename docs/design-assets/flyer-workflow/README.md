@@ -14,5 +14,6 @@ Extracted from the Anthropic design package (`musicpromo-design-system`).
 ## App implementation
 
 - Routes: `app/create/flyer/details`, `editor`, `export`
+- Requirements: `docs/requirements/SHOW_FLYER_REQUIREMENTS.md`
 - Components: `src/components/flyer/`
 - Draft state: `src/providers/FlyerDraftContext.tsx`, `src/lib/flyerDraft.ts`
