@@ -22,7 +22,7 @@
     "start:dev-client": "expo start --dev-client",
     "preflight:ios": "npx expo config --type introspect",
     "preflight:release": "npx tsc --noEmit && npx tsc --noEmit -p convex/tsconfig.json && npx expo config --type public",
-    "build:ios:development": "npx eas build -p ios --profile development",
+    "build:ios:development": "EXPO_NO_CAPABILITY_SYNC=1 npx eas build -p ios --profile development",
     "build:ios:production": "npx eas build -p ios --profile production",
     "build:android:preview": "npx eas build -p android --profile preview",
     "deploy:ios:testflight": "npx eas build -p ios --profile production --auto-submit",
