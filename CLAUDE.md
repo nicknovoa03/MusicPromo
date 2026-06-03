@@ -34,6 +34,6 @@ All wireframes, mockups, and web-rendered previews must load Inter via the font 
 
 ## Current Phase
 
-Phase 8 — Song Press Kit. Requirements: `docs/requirements/SONG_PRESS_KIT_REQUIREMENTS.md`.
+**App Store v1 (iOS, Music Promo only)** — `EXPO_PUBLIC_LAUNCH_SCOPE=music-promo-only` (default). SPK and Show Flyer routes stay in repo but are hidden; set `EXPO_PUBLIC_LAUNCH_SCOPE=full` to re-enable. Production EAS submit is iOS-only.
 
-Show Flyer (in progress): `docs/requirements/SHOW_FLYER_REQUIREMENTS.md`.
+Deferred until post-v1: Phase 8 Song Press Kit (`docs/requirements/SONG_PRESS_KIT_REQUIREMENTS.md`), Show Flyer (`docs/requirements/SHOW_FLYER_REQUIREMENTS.md`).

@@ -47,6 +47,11 @@ import {
 import { ProjectThumbnail } from "@/components/ProjectThumbnail";
 import { getSpkResumeRoute } from "@/lib/spkDraft";
 import { getFlyerProjectResumeNavigation } from "@/lib/flyerDraft";
+import {
+  filterProjectsForLaunchScope,
+  isMusicPromoOnlyLaunch,
+  MUSIC_PROMO_CREATE_ROUTE,
+} from "@/lib/launchScope";
 
 type Project = Doc<"projects"> | LocalProject;
 type ProjectAction = "duplicate" | "delete";
@@ -337,8 +342,9 @@ const longPressProjectIdRef = useRef<string | null>(null);
       }
 
       if (
-        (!isLocalProject(project) && project.type === "spk") ||
-        (isLocalProject(project) && project.type === "spk")
+        !isMusicPromoOnlyLaunch() &&
+        ((!isLocalProject(project) && project.type === "spk") ||
+          (isLocalProject(project) && project.type === "spk"))
       ) {
         const { pathname, params } = getSpkResumeRoute(
           project as Parameters<typeof getSpkResumeRoute>[0],
@@ -350,8 +356,9 @@ const longPressProjectIdRef = useRef<string | null>(null);
       }
 
       if (
-        (!isLocalProject(project) && project.type === "flyer") ||
-        (isLocalProject(project) && project.type === "flyer")
+        !isMusicPromoOnlyLaunch() &&
+        ((!isLocalProject(project) && project.type === "flyer") ||
+          (isLocalProject(project) && project.type === "flyer"))
       ) {
         const { pathname, params } = getFlyerProjectResumeNavigation(
           project,
@@ -567,10 +574,12 @@ const longPressProjectIdRef = useRef<string | null>(null);
     return () => { cancelled = true; };
   }, [stableProjects]);
 
-  const visibleProjects = useMemo(
-    () => stableProjects.filter((p) => !brokenProjectIds.has(getProjectId(p))),
-    [stableProjects, brokenProjectIds],
-  );
+  const visibleProjects = useMemo(() => {
+    const accessible = stableProjects.filter(
+      (p) => !brokenProjectIds.has(getProjectId(p)),
+    );
+    return filterProjectsForLaunchScope(accessible);
+  }, [stableProjects, brokenProjectIds]);
 
   const isLoading = isLocalGuest
     ? localProjects === null
@@ -1012,7 +1021,13 @@ const longPressProjectIdRef = useRef<string | null>(null);
             { backgroundColor: fabBackgroundColor },
             pressed && styles.fabPressed,
           ]}
-          onPress={() => router.push("/create/type-picker" as any)}
+          onPress={() =>
+            router.push(
+              (isMusicPromoOnlyLaunch()
+                ? MUSIC_PROMO_CREATE_ROUTE
+                : "/create/type-picker") as any,
+            )
+          }
           accessibilityLabel="Create new project"
           accessibilityRole="button"
         >

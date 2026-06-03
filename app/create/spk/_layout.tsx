@@ -1,6 +1,7 @@
 import { Stack } from "expo-router";
 import { Platform } from "react-native";
 import { colors } from "@/constants/tokens";
+import { LaunchScopeRedirect } from "@/components/LaunchScopeRedirect";
 import { SpkDraftProvider } from "@/providers/SpkDraftContext";
 
 /** Forward: new screen enters from the right. Back uses `animationTypeForReplace: "pop"`. */
@@ -12,6 +13,8 @@ const backReplaceOptions = {
 
 export default function SpkLayout() {
   return (
+    <>
+    <LaunchScopeRedirect />
     <SpkDraftProvider>
     <Stack
       screenOptions={{
@@ -33,5 +36,6 @@ export default function SpkLayout() {
       />
     </Stack>
     </SpkDraftProvider>
+    </>
   );
 }

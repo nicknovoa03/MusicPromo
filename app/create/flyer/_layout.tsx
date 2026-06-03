@@ -1,6 +1,7 @@
 import { Stack } from "expo-router";
 import { Platform } from "react-native";
 import { colors } from "@/constants/tokens";
+import { LaunchScopeRedirect } from "@/components/LaunchScopeRedirect";
 import { FlyerWebPreviewFrame } from "@/components/flyer/FlyerWebPreviewFrame";
 import { FlyerDraftProvider } from "@/providers/FlyerDraftContext";
 import { FlyerFontsProvider } from "@/providers/FlyerFontsProvider";
@@ -20,6 +21,8 @@ function FlyerProjectHydrator() {
 
 export default function FlyerLayout() {
   return (
+    <>
+    <LaunchScopeRedirect />
     <FlyerDraftProvider>
       <FlyerProjectHydrator />
       <FlyerFontsProvider>
@@ -52,5 +55,6 @@ export default function FlyerLayout() {
       </FlyerWebPreviewFrame>
       </FlyerFontsProvider>
     </FlyerDraftProvider>
+    </>
   );
 }

@@ -10,6 +10,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
+import { isMusicPromoOnlyLaunch } from "@/lib/launchScope";
 
 interface TypePickerScreenProps {
   tabEmbedded?: boolean;
@@ -41,6 +42,10 @@ const PROJECT_TYPES = [
     isNew: true,
   },
 ] as const;
+
+const VISIBLE_PROJECT_TYPES = isMusicPromoOnlyLaunch()
+  ? PROJECT_TYPES.filter((type) => type.id === "music-promo")
+  : PROJECT_TYPES;
 
 export default function TypePickerScreen({ tabEmbedded = false }: TypePickerScreenProps) {
   const router = useRouter();
@@ -83,7 +88,7 @@ export default function TypePickerScreen({ tabEmbedded = false }: TypePickerScre
         </View>
 
         <View style={styles.cards}>
-          {PROJECT_TYPES.map((type) => (
+          {VISIBLE_PROJECT_TYPES.map((type) => (
             <Pressable
               key={type.id}
               style={({ pressed }) => [
