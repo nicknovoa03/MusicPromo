@@ -2,6 +2,8 @@
 
 This project uses Expo Continuous Native Generation (CNG). `ios/` and `android/` are generated and git-ignored, so `app.json` + `eas.json` are the source of truth.
 
+**v1 launch scope:** Music Promo only on iOS. See [App Store v1 — Launch Scope](./app-store-v1-launch-scope.md).
+
 ## 1) One-time setup
 
 1. Log in to Expo and Apple:
@@ -25,7 +27,10 @@ This project uses Expo Continuous Native Generation (CNG). `ios/` and `android/`
 
 ## 3) Preflight before each build
 
-1. Validate config:
+1. Confirm launch scope for the profile you are building:
+   - **preview** / **production** → `EXPO_PUBLIC_LAUNCH_SCOPE=music-promo-only` in `eas.json`
+   - After install: **Create** must open photo/audio picker (not the 3-card type picker)
+2. Validate config:
    - `npx expo config --type introspect`
 2. Confirm the app version in `app.json`:
    - Bump `expo.version` when making a new store-facing release.
@@ -64,10 +69,11 @@ This project uses Expo Continuous Native Generation (CNG). `ios/` and `android/`
 
 ## 6) Common gotchas
 
-1. If push token registration fails on TestFlight, verify:
+1. If Create still shows Song Press Kit / Event Flyer, the installed build predates launch-scope gating or was built with `EXPO_PUBLIC_LAUNCH_SCOPE=full`. Rebuild with preview/production profile. See [launch scope doc](./app-store-v1-launch-scope.md).
+2. If push token registration fails on TestFlight, verify:
    - Push Notifications capability is enabled for the App ID
    - Build was created with production APNs entitlements
-2. If OTA updates do not apply, verify:
+3. If OTA updates do not apply, verify:
    - `runtimeVersion` matches installed app version policy
    - Update was published to the expected channel
-3. If EAS asks to regenerate credentials, allow EAS to manage iOS credentials unless you need manual cert/profile control.
+4. If EAS asks to regenerate credentials, allow EAS to manage iOS credentials unless you need manual cert/profile control.
