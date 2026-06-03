@@ -86,6 +86,10 @@
       "./plugins/withFfmpegBitcodeStrip",
       "expo-font"
     ],
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
     "experiments": {
       "typedRoutes": true
     },

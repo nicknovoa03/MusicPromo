@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>MusicPromo — Show Flyer Workflow</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Anton&family=Bebas+Neue&family=Caveat:wght@400;700&family=Pinyon+Script&display=swap" rel="stylesheet"/>
+<style>
+  html, body { margin: 0; padding: 0; background: #f0eee9; font-family: 'Inter', sans-serif; }
+  #root { width: 100vw; height: 100vh; overflow: hidden; }
+</style>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" src="ios-frame.jsx"></script>
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="flyer-templates.jsx"></script>
+<script type="text/babel" src="flyer-screens.jsx"></script>
+
+<script type="text/babel">
+function App() {
+  return (
+    <DesignCanvas>
+      {/* ─────── Section 1: Full flyer templates ─────── */}
+      <DCSection id="templates" title="Show Flyer Templates" subtitle="3 curated styles · modular system for adding more">
+        <DCArtboard id="t-heat" label="Heat · Textured halftone" width={360} height={640}>
+          <div style={{ width: '100%', height: '100%' }}>
+            <HeatTemplate scale={0.9}/>
+          </div>
+        </DCArtboard>
+        <DCArtboard id="t-iridescent" label="Iridescent · Holographic" width={360} height={640}>
+          <div style={{ width: '100%', height: '100%' }}>
+            <IridescentTemplate scale={0.9}/>
+          </div>
+        </DCArtboard>
+        <DCArtboard id="t-vintage" label="Vintage · Warm grain" width={360} height={640}>
+          <div style={{ width: '100%', height: '100%' }}>
+            <VintageTemplate scale={0.9}/>
+          </div>
+        </DCArtboard>
+      </DCSection>
+
+      {/* ─────── Section 2: Browse flow (light theme) ─────── */}
+      <DCSection id="browse" title="Browse Flow" subtitle="Light theme · enter the flyer flow from Create tab">
+        <DCArtboard id="s1-create" label="1 · Create menu" width={402} height={874}>
+          <IOSDevice>
+            <ScreenCreateMenu/>
+          </IOSDevice>
+        </DCArtboard>
+        <DCArtboard id="s2-picker" label="2 · Flyer details" width={402} height={874}>
+          <IOSDevice>
+            <ScreenFlyerPicker/>
+          </IOSDevice>
+        </DCArtboard>
+      </DCSection>
+
+      {/* ─────── Section 3: Editor flow (dark theme) ─────── */}
+      <DCSection id="editor" title="Editor" subtitle="Dark theme · tabs for Text / Colors / Fonts / Photo / Audio">
+        <DCArtboard id="s3-colors" label="3 · Colors tab" width={402} height={874}>
+          <IOSDevice dark>
+            <ScreenFlyerEditor TemplateComponent={HeatTemplate} templateLabel="Heat"/>
+          </IOSDevice>
+        </DCArtboard>
+        <DCArtboard id="s3-text" label="4 · Text tab (editing)" width={402} height={874}>
+          <IOSDevice dark>
+            <ScreenFlyerEditorText/>
+          </IOSDevice>
+        </DCArtboard>
+        <DCArtboard id="s3-audio" label="5 · Audio trim" width={402} height={874}>
+          <IOSDevice dark>
+            <ScreenFlyerEditorAudio/>
+          </IOSDevice>
+        </DCArtboard>
+      </DCSection>
+
+      {/* ─────── Section 4: Export flow ─────── */}
+      <DCSection id="export" title="Export" subtitle="Video MP4 or static image · 9:16 or 4:5">
+        <DCArtboard id="s4-export" label="6 · Export sheet" width={402} height={874}>
+          <IOSDevice dark>
+            <ScreenFlyerExport/>
+          </IOSDevice>
+        </DCArtboard>
+      </DCSection>
+
+      {/* ─────── Section 5: Template variants ─────── */}
+      <DCSection id="variants" title="Template at Different Sizes" subtitle="Same template, 9:16 (Story) vs 4:5 (Feed)">
+        <DCArtboard id="v-916" label="Heat · 9:16 Story" width={270} height={480}>
+          <div style={{ width: '100%', height: '100%' }}>
+            <HeatTemplate scale={0.7}/>
+          </div>
+        </DCArtboard>
+        <DCArtboard id="v-45" label="Heat · 4:5 Feed" width={384} height={480}>
+          <div style={{ width: '100%', height: '100%' }}>
+            <HeatTemplate scale={1.0}/>
+          </div>
+        </DCArtboard>
+        <DCArtboard id="v-iridescent-45" label="Iridescent · 4:5 Feed" width={384} height={480}>
+          <div style={{ width: '100%', height: '100%' }}>
+            <IridescentTemplate scale={1.0}/>
+          </div>
+        </DCArtboard>
+      </DCSection>
+    </DesignCanvas>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

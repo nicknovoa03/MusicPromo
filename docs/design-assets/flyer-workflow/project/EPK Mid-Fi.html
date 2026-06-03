@@ -1,0 +1,612 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Song Press Kit Mid-Fi — Details / Vision / Preview</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ionicons@7.4.0/dist/ionicons/ionicons.css" />
+<script type="module" src="https://cdn.jsdelivr.net/npm/ionicons@7.4.0/dist/ionicons/ionicons.esm.js"></script>
+<link rel="stylesheet" href="colors_and_type.css" />
+<style>
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: #000; font-family: var(--font-ui); }
+
+.container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 24px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+}
+
+/* iOS phone frame */
+.phone-frame {
+  background: #000;
+  border-radius: 44px;
+  padding: 10px;
+  box-shadow: 0 0 0 1px #333, 0 20px 60px rgba(0, 0, 0, 0.8);
+  aspect-ratio: 390/844;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+.notch {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 120px;
+  height: 28px;
+  background: #000;
+  border-radius: 0 0 18px 18px;
+  z-index: 10;
+}
+
+.screen {
+  flex: 1;
+  border-radius: 38px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--light-bg);
+  color: var(--light-text);
+}
+
+.status-bar {
+  height: 44px;
+  background: var(--light-surface);
+  border-bottom: 1px solid var(--light-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.status-left { }
+.status-right { display: flex; gap: 6px; }
+
+.screen-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.screen-label {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: #6B6F7A;
+  padding: 24px 20px 16px;
+  border-bottom: 1px solid #ddd;
+}
+
+/* Nav header (iOS style) */
+.nav-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: var(--light-surface);
+  border-bottom: 1px solid var(--light-border);
+  height: 50px;
+}
+
+.back-btn {
+  background: none;
+  border: none;
+  font-size: 18px;
+  color: var(--accent-primary);
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+}
+
+.nav-title {
+  flex: 1;
+  font: 600 16px/1 var(--font-ui);
+  color: var(--light-text);
+}
+
+.step-badge {
+  font: 500 12px/1 var(--font-ui);
+  color: var(--light-text-secondary);
+}
+
+/* Scrollable body */
+.scrollable-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Form controls */
+.form-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field-label {
+  font: 700 11px/1 var(--font-ui);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--light-text-secondary);
+}
+
+.photo-picker {
+  aspect-ratio: 1;
+  border: 2px dashed var(--light-border);
+  border-radius: 14px;
+  background: var(--light-surface-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.photo-picker ion-icon {
+  font-size: 36px;
+  color: var(--light-text-secondary);
+  opacity: 0.5;
+}
+
+.photo-picker-label {
+  font-size: 12px;
+  color: var(--light-text-secondary);
+}
+
+.link-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--light-border);
+  border-radius: 10px;
+  background: var(--light-surface);
+  font: 400 13px/1 var(--font-ui);
+  color: var(--light-text);
+  cursor: pointer;
+}
+
+.link-row ion-icon {
+  font-size: 16px;
+}
+
+.text-input,
+.textarea-input {
+  padding: 10px 12px;
+  border: 1px solid var(--light-border);
+  border-radius: 10px;
+  background: var(--light-surface);
+  font: 400 16px/1 var(--font-ui);
+  color: var(--light-text);
+  font-family: var(--font-ui);
+}
+
+.text-input::placeholder,
+.textarea-input::placeholder {
+  color: var(--light-text-secondary);
+}
+
+.textarea-input {
+  resize: none;
+  min-height: 120px;
+  padding: 12px;
+}
+
+.char-counter {
+  text-align: right;
+  font-size: 11px;
+  color: var(--light-text-secondary);
+  font-weight: 500;
+  margin-top: 4px;
+}
+
+.char-counter.warning {
+  color: var(--warning);
+}
+
+.track-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--light-border);
+  border-radius: 10px;
+  background: var(--light-surface);
+}
+
+.track-thumb {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: repeating-linear-gradient(45deg, #F2F0EA 0 6px, #fff 6px 7px);
+  flex-shrink: 0;
+}
+
+.track-name {
+  font: 600 13px/1 var(--font-ui);
+  color: var(--light-text);
+}
+
+/* CTA footer */
+.cta-footer {
+  padding: 12px 16px 24px;
+  border-top: 1px solid var(--light-border);
+  background: var(--light-surface);
+  display: grid;
+  gap: 8px;
+}
+
+.btn-primary {
+  padding: 12px 16px;
+  background: var(--accent-primary);
+  color: var(--accent-on-primary);
+  border: 0;
+  border-radius: 10px;
+  font: 700 16px/1 var(--font-ui);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.btn-primary:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.btn-primary ion-icon {
+  font-size: 18px;
+}
+
+/* Dark theme for Preview */
+.screen.dark {
+  background: #000;
+  color: #fff;
+}
+
+.screen.dark .nav-header {
+  background: #000;
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+.screen.dark .nav-title {
+  color: #fff;
+}
+
+.screen.dark .step-badge {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.preview-body {
+  flex: 1;
+  padding: 12px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.slide-canvas {
+  flex: 1;
+  border-radius: 14px;
+  overflow: hidden;
+  position: relative;
+  background: #1a1a1a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.slide-cover {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, #1a4d2e 0%, #0d2818 100%);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 14px;
+  box-sizing: border-box;
+}
+
+.slide-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.25), rgba(0, 0, 0, 0.55));
+  pointer-events: none;
+}
+
+.slide-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 100%;
+}
+
+.slide-artist {
+  font: 700 10px/1 var(--font-ui);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.slide-title {
+  font: 800 26px/1.1 var(--font-display);
+  letter-spacing: -0.03em;
+  color: #fff;
+  line-height: 1;
+}
+
+.slide-socials {
+  display: flex;
+  gap: 6px;
+  margin-top: auto;
+}
+
+.social-icon {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+}
+
+.dots-nav {
+  display: flex;
+  justify-content: center;
+  gap: 5px;
+  padding: 8px 0;
+}
+
+.dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.dot.active {
+  width: 14px;
+  background: rgba(255, 255, 255, 0.85);
+}
+
+.nudge-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.nudge-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.nudge-text {
+  flex: 1;
+}
+
+.nudge-action {
+  font-weight: 700;
+  color: #fff;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0;
+  background: none;
+  border: none;
+}
+
+.cta-footer.dark {
+  background: #000;
+  border-top-color: rgba(255, 255, 255, 0.1);
+  padding: 12px 16px 24px;
+}
+
+.btn-export {
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--accent-primary);
+  color: var(--accent-on-primary);
+  border: 0;
+  border-radius: 10px;
+  font: 700 16px/1 var(--font-ui);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.btn-export ion-icon {
+  font-size: 18px;
+}
+
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- DETAILS SCREEN                                                  -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <div class="phone-frame">
+    <div class="notch"></div>
+    <div class="screen">
+      <div class="status-bar">
+        <div class="status-left">9:41</div>
+        <div class="status-right">● ●</div>
+      </div>
+      
+      <div class="nav-header">
+        <button class="back-btn"><ion-icon name="chevron-back-outline"></ion-icon></button>
+        <div class="nav-title">New Press Kit</div>
+        <div class="step-badge">1 of 3</div>
+      </div>
+
+      <div class="scrollable-body">
+        <div class="form-section">
+          <div class="field-label">Artist Name</div>
+          <input type="text" class="text-input" placeholder="Your artist name" />
+        </div>
+
+        <div class="form-section">
+          <div class="field-label">Track Artwork</div>
+          <div class="photo-picker">
+            <ion-icon name="image-outline"></ion-icon>
+            <div class="photo-picker-label">Tap to add artwork</div>
+          </div>
+        </div>
+
+        <div class="link-row">
+          <ion-icon name="link-outline"></ion-icon>
+          <span>Link to existing Music Promo</span>
+        </div>
+
+        <div class="form-section">
+          <div class="field-label">Track Title</div>
+          <input type="text" class="text-input" placeholder="e.g. Midnight Drive" />
+        </div>
+      </div>
+
+      <div class="cta-footer">
+        <button class="btn-primary" disabled>
+          Next
+          <ion-icon name="arrow-forward-outline"></ion-icon>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- VISION SCREEN                                                   -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <div class="phone-frame">
+    <div class="notch"></div>
+    <div class="screen">
+      <div class="status-bar">
+        <div class="status-left">9:41</div>
+        <div class="status-right">● ●</div>
+      </div>
+      
+      <div class="nav-header">
+        <button class="back-btn"><ion-icon name="chevron-back-outline"></ion-icon></button>
+        <div class="nav-title">Vision</div>
+        <div class="step-badge">2 of 3</div>
+      </div>
+
+      <div class="scrollable-body">
+        <div class="track-badge">
+          <div class="track-thumb"></div>
+          <div style="flex: 1">
+            <div class="track-name">Midnight Drive</div>
+            <div style="font-size: 11px; color: rgba(17, 19, 26, 0.55); margin-top: 2px">by Artist Name</div>
+          </div>
+        </div>
+
+        <div style="background: #F2F0EA; padding: 10px 12px; border-radius: 10px; font-size: 12px; line-height: 1.5; color: #6B6F7A">
+          <strong style="color: #11131A; display: block; margin-bottom: 4px">Tip:</strong>
+          Tell the story of why you made this track. What inspired it? What mood should listeners feel?
+        </div>
+
+        <div class="form-section">
+          <div class="field-label">Vision / Concept</div>
+          <textarea class="textarea-input" placeholder="What's the story behind this track?"></textarea>
+          <div class="char-counter">280</div>
+        </div>
+      </div>
+
+      <div class="cta-footer">
+        <button class="btn-primary" disabled>
+          Next
+          <ion-icon name="arrow-forward-outline"></ion-icon>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- PREVIEW SCREEN                                                  -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <div class="phone-frame">
+    <div class="notch"></div>
+    <div class="screen dark">
+      <div class="status-bar" style="background: #000; border-bottom-color: rgba(255,255,255,0.1)">
+        <div class="status-left" style="color: #fff">9:41</div>
+        <div class="status-right" style="color: #fff">● ●</div>
+      </div>
+      
+      <div class="nav-header" style="background: #000; border-bottom-color: rgba(255,255,255,0.1)">
+        <button class="back-btn" style="color: var(--accent-primary)"><ion-icon name="chevron-back-outline"></ion-icon></button>
+        <div class="nav-title" style="color: #fff">Preview</div>
+        <div class="step-badge" style="color: rgba(255,255,255,0.55)">Cover</div>
+      </div>
+
+      <div class="preview-body">
+        <div class="slide-canvas">
+          <div class="slide-cover">
+            <div class="slide-overlay"></div>
+            <div class="slide-content">
+              <div class="slide-artist">Artist Name</div>
+              <div>
+                <div class="slide-title">Midnight<br>Drive</div>
+                <div class="slide-socials" title="Pulled from profile social links">
+                  <div class="social-icon"></div>
+                  <div class="social-icon"></div>
+                  <div class="social-icon"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="dots-nav">
+          <div class="dot active"></div>
+          <div class="dot"></div>
+          <div class="dot"></div>
+          <div class="dot"></div>
+        </div>
+
+        <div class="nudge-card">
+          <div class="nudge-icon">◐</div>
+          <div class="nudge-text">Add a bio and social links to complete your press kit</div>
+          <button class="nudge-action">Edit</button>
+        </div>
+      </div>
+
+      <div class="cta-footer dark">
+        <button class="btn-export">
+          <ion-icon name="share-social-outline"></ion-icon>
+          Export Carousel
+        </button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

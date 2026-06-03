@@ -1,0 +1,91 @@
+<!doctype html><html><head><meta charset="utf-8">
+<link rel="stylesheet" href="../colors_and_type.css">
+<style>
+body{margin:0;padding:18px;background:#fff;font-family:Inter,system-ui;color:#11131A}
+.h2{font-size:11px;letter-spacing:.16em;text-transform:uppercase;font-weight:700;color:#6B6F7A;margin:0 0 14px}
+.group{margin-bottom:24px}
+.name{font-weight:700;font-size:13.5px;margin-bottom:2px}
+.mood{font-size:11px;color:#6B6F7A;margin-bottom:10px}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.swatch{width:64px;display:flex;flex-direction:column;gap:4px}
+.chip{height:64px;border-radius:10px;border:1px solid rgba(0,0,0,.08)}
+.lbl{font-family:ui-monospace,Menlo,monospace;font-size:9px;color:#6B6F7A;line-height:1.2}
+.role{display:inline-block;font-size:9px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#6B6F7A;margin-bottom:6px}
+.note{font-size:11px;color:#6B6F7A;line-height:1.55;margin-top:14px;border-top:1px solid rgba(0,0,0,.08);padding-top:10px}
+</style></head><body>
+
+<div class="h2">Flyer · Per-Template Palettes</div>
+
+<div class="group">
+  <div class="name">Heat</div>
+  <div class="mood">Dark radial warm + single yellow accent</div>
+
+  <div class="role">Background gradient</div>
+  <div class="row">
+    <div class="swatch"><div class="chip" style="background:radial-gradient(ellipse at 50% 40%,#6a5a18 0%,#3a1a18 65%,#1a0808 100%)"></div><div class="lbl">default</div></div>
+    <div class="swatch"><div class="chip" style="background:radial-gradient(ellipse at 50% 40%,#2A4A6B 0%,#0F1A2E 70%,#04080F 100%)"></div><div class="lbl">cold heat</div></div>
+    <div class="swatch"><div class="chip" style="background:radial-gradient(ellipse at 50% 40%,#5E1B3A 0%,#2A0B1D 65%,#0F040A 100%)"></div><div class="lbl">plum</div></div>
+    <div class="swatch"><div class="chip" style="background:radial-gradient(ellipse at 50% 40%,#3D5A2F 0%,#1B2A15 65%,#0A1006 100%)"></div><div class="lbl">moss</div></div>
+  </div>
+
+  <div class="role">Accent</div>
+  <div class="row">
+    <div class="swatch"><div class="chip" style="background:#FFD936"></div><div class="lbl">#FFD936</div></div>
+    <div class="swatch"><div class="chip" style="background:#FF6B35"></div><div class="lbl">#FF6B35</div></div>
+    <div class="swatch"><div class="chip" style="background:#FF3D7F"></div><div class="lbl">#FF3D7F</div></div>
+    <div class="swatch"><div class="chip" style="background:#C8FF4D"></div><div class="lbl">#C8FF4D</div></div>
+  </div>
+
+  <div class="role">Ink</div>
+  <div class="row">
+    <div class="swatch"><div class="chip" style="background:#FFFFFF"></div><div class="lbl">white</div></div>
+  </div>
+</div>
+
+<div class="group">
+  <div class="name">Iridescent</div>
+  <div class="mood">Pastel multi-stop gradient + pure black ink</div>
+
+  <div class="role">Background gradient</div>
+  <div class="row">
+    <div class="swatch"><div class="chip" style="background:linear-gradient(135deg,#ffcce7 0%,#ffe09e 18%,#c6f0d4 35%,#b3d9ff 55%,#d6b3ff 75%,#ffc8d8 100%)"></div><div class="lbl">default</div></div>
+    <div class="swatch"><div class="chip" style="background:linear-gradient(135deg,#e0f7ff 0%,#d4f0a0 30%,#fff5b3 60%,#ffd2a0 100%)"></div><div class="lbl">citrus</div></div>
+    <div class="swatch"><div class="chip" style="background:linear-gradient(135deg,#1a0f2e 0%,#3d2563 25%,#8d3a8d 55%,#d65a8a 85%,#ffaa66 100%)"></div><div class="lbl">night</div></div>
+    <div class="swatch"><div class="chip" style="background:linear-gradient(135deg,#f0e4d3 0%,#e8d4b8 50%,#d4b08a 100%)"></div><div class="lbl">paper</div></div>
+  </div>
+
+  <div class="role">Ink (foreground)</div>
+  <div class="row">
+    <div class="swatch"><div class="chip" style="background:#000000"></div><div class="lbl">#000000</div></div>
+    <div class="swatch"><div class="chip" style="background:#FFFFFF;border:1px solid rgba(0,0,0,.12)"></div><div class="lbl">#FFFFFF</div></div>
+    <div class="swatch"><div class="chip" style="background:#1a0f2e"></div><div class="lbl">deep plum</div></div>
+  </div>
+
+  <div class="role">No accent</div>
+  <div class="row">
+    <div class="lbl" style="font-size:11px;font-family:Inter">— Iridescent has no separate accent. The gradient is the accent.</div>
+  </div>
+</div>
+
+<div class="group">
+  <div class="name">Vintage</div>
+  <div class="mood">Earthy radial + dark brown ink · no accent</div>
+
+  <div class="role">Background</div>
+  <div class="row">
+    <div class="swatch"><div class="chip" style="background:radial-gradient(ellipse at 30% 30%,#c89568 0%,#a8856a 30%,#888070 55%,#6a7560 80%,#4a5450 100%)"></div><div class="lbl">sand→moss</div></div>
+    <div class="swatch"><div class="chip" style="background:radial-gradient(ellipse at 30% 30%,#d9b88f 0%,#b89870 40%,#7a6850 100%)"></div><div class="lbl">sepia</div></div>
+    <div class="swatch"><div class="chip" style="background:radial-gradient(ellipse at 30% 30%,#a8a48c 0%,#7a7660 40%,#3e3a28 100%)"></div><div class="lbl">olive</div></div>
+    <div class="swatch"><div class="chip" style="background:radial-gradient(ellipse at 30% 30%,#d4a4a0 0%,#8a5e58 40%,#3a2118 100%)"></div><div class="lbl">rust</div></div>
+  </div>
+
+  <div class="role">Ink</div>
+  <div class="row">
+    <div class="swatch"><div class="chip" style="background:#1a0e08"></div><div class="lbl">#1a0e08</div></div>
+    <div class="swatch"><div class="chip" style="background:#fff5e6"></div><div class="lbl">#fff5e6</div></div>
+  </div>
+</div>
+
+<div class="note">Six swatches max per palette in the editor — three backgrounds visible at once, the rest scroll horizontally. <strong>No hex input, no eyedropper.</strong> Curation is the product.</div>
+
+</body></html>

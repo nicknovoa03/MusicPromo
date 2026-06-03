@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Flyer Design System</title>
+<link rel="stylesheet" href="colors_and_type.css">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Caveat:wght@700&display=swap" rel="stylesheet">
+<style>
+  html, body { background: #FBFAF7; margin: 0; padding: 0; color: #11131A; font-family: var(--font-ui); }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 48px 32px 80px; }
+
+  .eyebrow { font-size: 11px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; color: #6B6F7A; margin: 0 0 12px; }
+  h1 { font: 800 38px/1.05 var(--font-ui); letter-spacing: -.025em; margin: 0 0 14px; }
+  .lede { font: 400 17px/1.55 var(--font-ui); color: #2A2D36; margin: 0 0 6px; max-width: 64ch; }
+  .sub { font: 400 14.5px/1.55 var(--font-ui); color: #6B6F7A; margin: 0 0 32px; max-width: 64ch; }
+
+  h2 { font: 700 22px/1.2 var(--font-ui); letter-spacing: -.01em; margin: 44px 0 14px; padding-top: 22px; border-top: 1px solid rgba(0,0,0,.08); }
+  h3 { font: 700 15px/1.25 var(--font-ui); margin: 22px 0 8px; }
+  p, li { font: 400 14.5px/1.6 var(--font-ui); color: #1B1E26; max-width: 64ch; }
+  p { margin: 0 0 12px; }
+  ul { padding-left: 18px; margin: 0 0 14px; }
+
+  code { font-family: var(--font-mono); font-size: 13px; background: rgba(0,0,0,.05); padding: 1px 5px; border-radius: 3px; color: #11131A; }
+  strong { color: #11131A; }
+  em { color: #2A2D36; }
+
+  table { border-collapse: collapse; width: 100%; margin: 8px 0 18px; font-size: 13.5px; line-height: 1.5; }
+  th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid rgba(0,0,0,.08); vertical-align: top; }
+  th { background: #F2F0EA; font-weight: 700; font-size: 11.5px; letter-spacing: .04em; text-transform: uppercase; color: #6B6F7A; }
+  td code { white-space: nowrap; }
+
+  .callout {
+    background: #11131A; color: #F2F0EA; padding: 18px 20px; border-radius: 10px; margin: 18px 0 14px;
+    font: 400 14px/1.55 var(--font-ui); max-width: 64ch;
+  }
+  .callout strong { color: #FFD936; }
+
+  .pillrow { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0 18px; }
+  .pillrow .pill { font: 600 11.5px/1 var(--font-ui); background: #F2F0EA; padding: 6px 10px; border-radius: 999px; color: #11131A; }
+
+  .nope { display: flex; flex-direction: column; gap: 8px; margin: 8px 0 18px; }
+  .nope-row { display: flex; gap: 10px; align-items: flex-start; }
+  .nope-row .x { color: #C62828; font-weight: 800; flex-shrink: 0; width: 16px; }
+
+  .footer-meta { margin-top: 60px; padding-top: 20px; border-top: 1px solid rgba(0,0,0,.08); font-size: 11.5px; color: #6B6F7A; line-height: 1.5; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="eyebrow">MusicPromo · Workflow Reference</div>
+  <h1>Flyer Design System</h1>
+  <p class="lede">A reference for the <strong>Show Flyer</strong> workflow inside MusicPromo — the third creation flow, slotted next to Music Promo (video) and Song Press Kit (carousel).</p>
+  <p class="sub">This document layers on top of the main MusicPromo system (<code>README.md</code> + <code>colors_and_type.css</code>). Chrome, voice, iconography, spacing, and motion are inherited unchanged. What's new is the <strong>flyer artifact itself</strong> and the small set of editor surfaces that produce it.</p>
+
+  <h2>What a flyer is</h2>
+  <p>A flyer is a <strong>single, square-ish artwork</strong> announcing a live show. It exports two ways:</p>
+  <table>
+    <thead><tr><th>Output</th><th>Aspect</th><th>Use</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Video</strong> (MP4)</td><td>9:16 / 4:5</td><td>Story or Reel with a short audio bed and subtle motion (grain shimmer, ticker)</td></tr>
+      <tr><td><strong>Image</strong> (PNG)</td><td>9:16 / 4:5</td><td>Static feed post, screenshot for DMs, print poster source</td></tr>
+    </tbody>
+  </table>
+  <p>The flyer carries the <strong>show's identity, not the app's</strong>. It's a designed poster — bold typography, textured surfaces, a single decisive accent. The MusicPromo wordmark appears once, small, in a corner. Everything else is the artist's.</p>
+
+  <h2>Required fields</h2>
+  <p>A flyer is generated from a fixed schema. Every template renders the same fields — visual treatment changes, data doesn't.</p>
+  <table>
+    <thead><tr><th>Field</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>eventName</code></td><td>✓</td><td>1–3 words is the sweet spot. Long names auto-scale.</td></tr>
+      <tr><td><code>date</code></td><td>✓</td><td>Always uppercase, weekday + month abbrev (<code>SAT APR 25</code>).</td></tr>
+      <tr><td><code>time</code></td><td>✓</td><td><code>4PM – 8PM</code> style. Em dash between, no leading zeros.</td></tr>
+      <tr><td><code>venue</code></td><td>✓</td><td>Free-form, single line.</td></tr>
+      <tr><td><code>city</code></td><td>–</td><td><code>City, ST</code> — appended after venue if present.</td></tr>
+      <tr><td><code>lineup</code></td><td>–</td><td>Object containing up to 10 performers plus layout controls. See <strong>Lineup system</strong> section. Drops off the layout entirely if <code>items</code> is empty.</td></tr>
+      <tr><td><code>eyebrow</code></td><td>–</td><td>Category tag (<code>ROOFTOP DAY PARTY</code>). All caps, letter-spaced.</td></tr>
+      <tr><td><code>tagline</code></td><td>–</td><td>Genre line (<code>house / disco / grooves</code>). Lowercase, slash-separated.</td></tr>
+      <tr><td><code>age</code></td><td>–</td><td><code>18+</code>, <code>21+</code>. Renders as a stamp, never inline.</td></tr>
+      <tr><td><code>photo</code></td><td>–</td><td>User-supplied artwork. Replaces the textured background.</td></tr>
+      <tr><td><code>audio</code></td><td>–</td><td>10–30s clip for video export. No effect on the image export.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout"><strong>Defaults &gt; placeholders.</strong> Every field has a sensible default render when empty. The flyer should always look complete, even partially filled.</div>
+
+  <h2>Lineup system</h2>
+  <p>The lineup is the most dynamic part of the flyer. It is a self-contained visual block — <code>LineupBlock</code> — that every template declares a zone for. Templates position and size the zone; the block fills it. This keeps lineup logic in one place and makes new templates trivial to add.</p>
+
+  <h3>Schema</h3>
+  <table>
+    <thead><tr><th>Property</th><th>Type</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>items</code></td><td><code>LineupItem[]</code></td><td>0–10 performers, in display order.</td></tr>
+      <tr><td><code>showSetTimes</code></td><td><code>boolean</code></td><td>Controlled by a toggle in the Text tab. When off, times are stored but invisible.</td></tr>
+      <tr><td><code>layout</code></td><td><code>LineupLayout</code></td><td>One of four variants (see below). Auto-suggested from count; user can override.</td></tr>
+      <tr><td><code>introLabel</code></td><td><code>string | null</code></td><td>Label rendered above the block: <code>SOUNDS BY</code>, <code>MUSIC BY</code>, <code>DJ SET BY</code>, <code>FEATURING</code>, <code>WITH</code>, or a custom value. Null hides the label.</td></tr>
+    </tbody>
+  </table>
+
+  <p>Each <code>LineupItem</code>:</p>
+  <table>
+    <thead><tr><th>Property</th><th>Type</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>name</code></td><td><code>string</code></td><td>Performer name. Always uppercase on the flyer.</td></tr>
+      <tr><td><code>headliner</code></td><td><code>boolean</code></td><td>At most one per flyer. Name renders in the template's display font, scaled to fill its slot. All others use the standard lineup face.</td></tr>
+      <tr><td><code>setTime</code></td><td><code>string | null</code></td><td>Start-only, no leading zero, uppercase single-letter suffix — <code>9PM</code>, <code>11PM</code>, <code>2AM</code>. Only visible when <code>showSetTimes</code> is true.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Intro label</h3>
+  <p>The intro label sits above the lineup block in the LABEL style (all caps, letter-spaced, muted). It contextualises the list without adding a heading. For single-performer flyers, this is the primary framing device — the performer name becomes display-size and the label does the explaining.</p>
+  <p>The field is fully free-text — the user types whatever they want. Five presets are offered as a starting point, but the custom input is always first-class, not a fallback:</p>
+  <ul>
+    <li><code>SOUNDS BY</code></li>
+    <li><code>MUSIC BY</code></li>
+    <li><code>DJ SET BY</code></li>
+    <li><code>FEATURING</code></li>
+    <li><code>WITH</code></li>
+  </ul>
+  <p>The picker UI shows these as tappable pills. Tapping a pill fills the text field; the user can then edit it freely. There is no restriction on what this label says.</p>
+
+  <div class="callout">
+    <strong>Single-performer rule.</strong> When <code>items.length === 1</code>, the layout prop is ignored. The name renders at display scale in the template's headline font, with <code>introLabel</code> above it. The flyer reads like a headliner announcement — not a list of one.
+  </div>
+
+  <h3>Layout variants</h3>
+  <table>
+    <thead><tr><th>Layout</th><th>Best for</th><th>Behavior</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Grid 2-col</strong></td><td>2–4 acts, compact</td><td>Two columns; time stacked above name in accent color.</td></tr>
+      <tr><td><strong>Column</strong></td><td>3–8 acts</td><td>Single column; name on the left, time flush right.</td></tr>
+      <tr><td><strong>Festival</strong></td><td>6–10 acts, schedule-style</td><td>Full-width rows with hairline dividers. Most data-dense.</td></tr>
+      <tr><td><strong>Spotlight</strong></td><td>1 headliner + supports</td><td>Headliner name large on top (display type); supporting acts in 2-col below at reduced size.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Auto-suggested layout by count</h3>
+  <table>
+    <thead><tr><th>Count</th><th>Default layout</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>0</td><td>—</td><td>Block hidden entirely. No empty-state shown in the artifact.</td></tr>
+      <tr><td>1</td><td>Single (display)</td><td>Layout overridden. Intro label + display-scale name.</td></tr>
+      <tr><td>2–4</td><td>Grid 2-col</td><td>Headliner (if any) spans both columns at the top.</td></tr>
+      <tr><td>5–8</td><td>Column</td><td>Headliner row is bolder; same column structure.</td></tr>
+      <tr><td>9–10</td><td>Festival</td><td>Most compact. Set times fit in a right-aligned column.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Headliner treatment</h3>
+  <p><strong>Equal billing is the default.</strong> When no headliner is set, all names render at the same weight and scale — position in the list and set times are the only hierarchy signals. This is intentional: not every show has a headliner, and the system should never pressure a user to designate one.</p>
+  <p>Set times naturally do this work when equal billing is preferred. A closer at 11PM reads differently from an opener at 7PM without any name needing to be called out. This is the preferred pattern for multi-act lineups where all acts are peers.</p>
+  <p>If the user <em>does</em> want to call out a headliner, they opt in via ⋯ → Set as headliner on any row. Rules:</p>
+  <ul>
+    <li>At most one headliner per flyer — setting a new one clears the previous.</li>
+    <li>Name renders in the template's <strong>display font</strong> (Anton / Bebas Neue / Pinyon Script) at a larger scale than the supporting acts.</li>
+    <li>In Grid and Column layouts, the headliner row is visually separated — full width, display type — with supporting acts in the standard lineup face below.</li>
+    <li>Headliner can be cleared at any time (⋯ → Remove headliner) — the flyer reverts to equal billing instantly.</li>
+  </ul>
+
+  <h3>Set times toggle</h3>
+  <p>A binary toggle in the Text tab, below the lineup list. When toggled off, the <code>setTime</code> values are preserved in the data — they just don't render. This lets a user build the schedule privately, then reveal it by toggling on. When on, times appear in the template's accent color above (Grid) or right-aligned beside (Column / Festival) each name.</p>
+
+  <h3>Editor UX for the lineup</h3>
+  <ul>
+    <li><strong>Add</strong> — "Add performer" row at the bottom of the list; dashed border, + icon, same height as a real row.</li>
+    <li><strong>Reorder</strong> — drag handle (⠿) on the left of each row. Long-press to activate drag. Reorder is position-in-list order, not time order — the user controls it.</li>
+    <li><strong>Delete</strong> — swipe-left reveals a red trash pill; or tap ⋯ → Remove.</li>
+    <li><strong>Set headliner</strong> — tap ⋯ → Set as headliner. Row gains a star badge on the right.</li>
+    <li><strong>Set time input</strong> — inline text input on each row, visible only when the set-times toggle is on. Placeholder: <code>9PM</code>.</li>
+    <li><strong>Intro label</strong> — tapping the label above the list opens a sheet: five preset pills + a custom text field.</li>
+  </ul>
+
+  <h3>What modular means in practice</h3>
+  <p>A template declares a lineup zone as a rectangular area with a max width and a vertical position. The <code>LineupBlock</code> component receives the <code>lineup</code> object and fills that zone — it never bleeds outside it. When space is tight (small poster preview, 10-act festival layout), the block scales its internal type sizes uniformly so it always fits without truncating names.</p>
+  <p>This means: adding a new template requires no lineup code. Changing the layout variant in the editor hot-swaps the block in the live preview instantly. Exporting always uses the same block — no separate render path.</p>
+
+  <h2>Voice for flyer copy</h2>
+  <p>Inherits the MusicPromo voice (operational, no fluff, no emoji), with two flyer-specific rules:</p>
+  <ul>
+    <li><strong>Type does the shouting, not punctuation.</strong> Never an exclamation point on a flyer.</li>
+    <li><strong>Abbreviate dates and times.</strong> <code>THURS MAY 14</code>, <code>8PM – 12AM</code> — never <code>Thursday, May 14th 2026</code>.</li>
+  </ul>
+
+  <table>
+    <thead><tr><th>Surface</th><th>Pattern</th><th>Example</th></tr></thead>
+    <tbody>
+      <tr><td>Eyebrow</td><td>All caps + interpunct</td><td><code>HAPPY HOUR · 4–7PM</code></td></tr>
+      <tr><td>Title</td><td>1–3 short words, display</td><td><code>DISCO</code>, <code>NIGHT FEVER</code></td></tr>
+      <tr><td>Subtitle</td><td>Lowercase, script or italic</td><td><code>at dusk</code>, <code>highland basement party</code></td></tr>
+      <tr><td>Tagline</td><td>Lowercase, slashes</td><td><code>house / disco / grooves</code></td></tr>
+      <tr><td>Footer</td><td>Caps + pipe separators</td><td><code>SAT APR 25  |  4PM–8PM  |  NEON GROTTO</code></td></tr>
+      <tr><td>Empty state</td><td>Imperative, single line</td><td><code>Add a date to keep going.</code></td></tr>
+    </tbody>
+  </table>
+
+  <h2>Templates</h2>
+  <p>Three templates ship with the feature. They are deliberately different visual grammars — picking one is a stylistic commitment, not a color choice. Users retune <em>inside</em> a template; they don't morph between them.</p>
+
+  <table>
+    <thead><tr><th>Template</th><th>Mood</th><th>Type</th><th>Color</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Heat</strong></td><td>Textured, late-night, halftone</td><td>Anton + Caveat + Inter</td><td>Dark radial + one warm accent</td></tr>
+      <tr><td><strong>Iridescent</strong></td><td>Bright, holographic, sticker-pack</td><td>Bebas Neue + Anton + Inter</td><td>Pastel gradient + pure black ink</td></tr>
+      <tr><td><strong>Vintage</strong></td><td>Warm grain, '70s-era, soft</td><td>Pinyon Script + Anton + Inter</td><td>Earthy radial + dark brown ink</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Heuristic — which template</h3>
+  <ul>
+    <li>Late-night DJ set, club, party → <strong>Heat</strong></li>
+    <li>Bright daytime event, pool, festival → <strong>Iridescent</strong></li>
+    <li>Acoustic, lounge, listening room → <strong>Vintage</strong></li>
+  </ul>
+
+  <h3>Every template guarantees</h3>
+  <ul>
+    <li>Renders the same field schema</li>
+    <li>Watermark in the bottom-right, small, low-contrast</li>
+    <li>Works at 9:16 and 4:5 without re-layout (linear scale)</li>
+    <li>Safe area of 5% on every edge for Story chrome</li>
+  </ul>
+
+  <h2>Editor anatomy</h2>
+  <p>The editor is <strong>always dark</strong>, regardless of system theme. It's where the artifact is born — the editorial theme is part of the artifact's voice.</p>
+  <ol>
+    <li><strong>Nav (44pt)</strong> — Close (×) · project name (centered, muted) · <code>Export</code> pill. No back chevron.</li>
+    <li><strong>Preview area</strong> — Centered live render. Aspect badge top-right. The one place in the app where drop shadow is allowed (it's a screen-within-a-screen).</li>
+    <li><strong>Template rail</strong> — Horizontal scroll · Heat / Iridescent / Vintage. Active pill is white-on-black.</li>
+    <li><strong>Tabs (5)</strong> — Text · Colors · Fonts · Photo · Audio. 2px white underline marks active.</li>
+    <li><strong>Tab content</strong> — Scrolls inside the sheet, never the preview.</li>
+  </ol>
+
+  <h3>Tab contracts</h3>
+  <table>
+    <thead><tr><th>Tab</th><th>What's inside</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Text</strong></td><td>Per-slot inputs: eyebrow, title, subtitle, lineup, footer. Selected slot mirrored in preview with a yellow ring.</td></tr>
+      <tr><td><strong>Colors</strong></td><td>Two palettes side-by-side: BACKGROUND (6 swatches) + ACCENT (6 swatches). Active wears a white ring.</td></tr>
+      <tr><td><strong>Fonts</strong></td><td>Display pair + Script pair, rendering "DISCO" or "at dusk" in each candidate.</td></tr>
+      <tr><td><strong>Photo</strong></td><td>Drop zone. Replaces the textured background. Includes opacity slider (0–60%) and "Remove photo".</td></tr>
+      <tr><td><strong>Audio</strong></td><td>Waveform with two yellow trim handles. Selection caps at 30s.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout"><strong>Preview ⇄ Edit linkage.</strong> Tapping any text in the preview jumps to Text tab with that slot focused. Long-press a colored region → Colors tab. The preview is interactive — not just a render.</div>
+
+  <h2>Export sheet</h2>
+  <p>A separate full-screen dark sheet reached via the <code>Export</code> pill.</p>
+  <ol>
+    <li>Centered re-render of the flyer (~180×320)</li>
+    <li><strong>Format</strong> — Video MP4 (default) · Image PNG. Radio-style cards.</li>
+    <li><strong>Aspect</strong> — 9:16 Story · 4:5 Post. Segmented toggle.</li>
+    <li><strong>Share to Instagram</strong> — gradient pill <code>#F58529 → #DD2A7B → #8134AF</code>. The only branded gradient in the app, justified because it's IG's identity, not ours.</li>
+    <li><strong>Save to Camera Roll</strong> — outline pill.</li>
+  </ol>
+
+  <h2>What this system is <em>not</em></h2>
+  <div class="nope">
+    <div class="nope-row"><span class="x">✗</span><span><strong>Not a free editor (v1).</strong> No drag-handles, no z-index, no "add layer." Templates are the layout — users edit content within slots, not the slots themselves. A zone-based editor is a later-phase consideration.</span></div>
+    <div class="nope-row"><span class="x">✗</span><span><strong>Not a color picker.</strong> Curated swatches only. Six per palette. No hex input, no eyedropper.</span></div>
+    <div class="nope-row"><span class="x">✗</span><span><strong>Not a font store.</strong> Three display faces, three script faces. Body is always Inter.</span></div>
+    <div class="nope-row"><span class="x">✗</span><span><strong>Not infinite.</strong> Ten performers max, four layout variants, one intro label, one headliner. One photo slot, one audio slot. Anything else is out of scope.</span></div>
+  </div>
+
+  <h2>Open questions</h2>
+  <ul>
+    <li><strong>Auto-generate from track data?</strong> If a user has a Music Promo for the same show, the flyer should pull artist / artwork / date metadata. Today they retype.</li>
+    <li><strong>Multi-date / tour mode?</strong> Currently single-event. A 4-stop tour would need a new template.</li>
+    <li><strong>QR ticketing.</strong> A separate slot, or part of the photo? TBD.</li>
+    <li><strong>Story stickers (location, music link).</strong> Out of scope for v1 — IG/TikTok add these post-export.</li>
+    <li><strong>Zone-based layout editor.</strong> A structured middle ground between template-locked and fully free — predefined snap zones, field-to-slot swapping. Deferred; revisit after v1 ships and user feedback clarifies what constraints feel limiting.</li>
+  </ul>
+
+  <div class="footer-meta">Companion files: <code>colors_and_type.css</code> · <code>preview/flyer-*.html</code> specimens · <code>Flyer Mid-Fi.html</code> · <code>Flyer Workflow Design.html</code></div>
+</div>
+</body>
+</html>

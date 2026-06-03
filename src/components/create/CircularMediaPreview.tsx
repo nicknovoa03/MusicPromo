@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { Animated, Easing, Image, StyleSheet, View } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { colors } from "@/constants/tokens";
+import { imageSourceFromUri } from "@/lib/mediaUri";
 
 interface CircularMediaPreviewProps {
   imageUri?: string | null;
@@ -68,7 +69,7 @@ export function CircularMediaPreview({
       `${normalizedRotationStartDeg + rotationDelta}deg`,
     ],
   });
-  const source = useMemo(() => (imageUri ? { uri: imageUri } : null), [imageUri]);
+  const source = useMemo(() => imageSourceFromUri(imageUri), [imageUri]);
 
   return (
     <Animated.View

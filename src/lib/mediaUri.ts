@@ -1,3 +1,4 @@
+import { Platform } from "react-native";
 import * as FileSystem from "expo-file-system/legacy";
 
 const URI_SCHEME_REGEX = /^[a-z][a-z0-9+.-]*:\/\//i;
@@ -74,4 +75,31 @@ export function normalizeOptionalMediaUri(
 ): string | undefined {
   const normalized = normalizeMediaUri(uri);
   return normalized || undefined;
+}
+
+/** True for on-device paths (file:// or absolute paths) that browsers cannot load. */
+export function isLocalFileUri(uri?: string | null): boolean {
+  const normalized = normalizeMediaUri(uri);
+  if (!normalized) return false;
+  if (normalized.startsWith("file://")) return true;
+  return normalized.startsWith("/") && !normalized.startsWith("//");
+}
+
+/**
+ * URI safe to pass to React Native `Image` on the current platform.
+ * On web, local file paths return "" so callers show fallback UI instead of
+ * triggering "Not allowed to load local resource" console errors.
+ */
+export function uriForImageSource(uri?: string | null): string {
+  const normalized = normalizeMediaUri(uri);
+  if (!normalized) return "";
+  if (Platform.OS === "web" && isLocalFileUri(normalized)) return "";
+  return normalized;
+}
+
+export function imageSourceFromUri(
+  uri?: string | null,
+): { uri: string } | null {
+  const safe = uriForImageSource(uri);
+  return safe ? { uri: safe } : null;
 }

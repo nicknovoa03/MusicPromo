@@ -145,6 +145,8 @@ export default function TabsLayout() {
     didBootstrapPush.current = true;
 
     (async () => {
+      if (Platform.OS === "web") return;
+
       let shouldContinue = true;
       let convexToken: string | null = null;
       try {
@@ -198,7 +200,7 @@ export default function TabsLayout() {
   ]);
 
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (Platform.OS === "web" || !isAuthenticated) return;
 
     const handleTapped = (response: NotificationResponse) => {
       track("notification_tapped", {

@@ -1,0 +1,94 @@
+<!doctype html><html><head><meta charset="utf-8">
+<link rel="stylesheet" href="../colors_and_type.css">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Caveat:wght@400;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;padding:18px;background:#F6F4EE;font-family:Inter,system-ui;color:#11131A}
+.h2{font-size:11px;letter-spacing:.16em;text-transform:uppercase;font-weight:700;color:#6B6F7A;margin:0 0 14px}
+.layout{display:grid;grid-template-columns:240px 1fr;gap:32px;align-items:start}
+.frame{aspect-ratio:9/16;border-radius:12px;overflow:hidden;position:relative;background:#000}
+.heat{width:100%;height:100%;position:relative;color:#fff;
+  background:radial-gradient(ellipse at 50% 40%,#6a5a18 0%,#3a1a18 65%,#1a0808 100%)}
+.heat::after{content:"";position:absolute;inset:0;background-image:radial-gradient(circle at 1px 1px,rgba(0,0,0,.4) 1px,transparent 1.5px);background-size:4px 4px;opacity:.5;mix-blend-mode:multiply}
+.heat-badge{position:absolute;top:10px;right:-6px;transform:rotate(8deg);background:#FFD936;color:#000;padding:4px 9px;font-size:7px;font-weight:800;letter-spacing:.5px;font-style:italic;z-index:2}
+.heat-inner{position:relative;z-index:1;padding:22px 14px 22px;height:100%;box-sizing:border-box;text-align:center;display:flex;flex-direction:column}
+.heat-main{flex:1;display:flex;flex-direction:column;justify-content:center;text-align:center}
+.eb{font-size:7px;letter-spacing:2px;font-weight:700;color:#FFD936;margin-bottom:6px}
+.tt{font-family:Anton,sans-serif;font-size:54px;line-height:.85;letter-spacing:-1px;font-weight:900}
+.sub{font-family:Caveat,cursive;font-size:28px;font-weight:700;font-style:italic;margin-top:-2px}
+.tg{font-size:7px;color:#FFD936;margin-top:2px;letter-spacing:1px}
+.lu{display:grid;grid-template-columns:1fr 1fr;gap:10px 10px;margin-top:16px}
+.tm{font-size:7px;color:#FFD936;font-weight:600}
+.ac{font-family:Anton,sans-serif;font-size:13px;letter-spacing:.5px}
+.ft{margin-top:auto;font-size:7px;letter-spacing:1px;font-weight:600;border-top:1px solid rgba(255,217,54,.3);padding-top:9px}
+.wm{position:absolute;bottom:6px;right:6px;font-size:6px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:rgba(255,255,255,.55);z-index:3}
+
+/* annotation grid */
+.notes{display:flex;flex-direction:column;gap:14px}
+.row{display:grid;grid-template-columns:54px 1fr;gap:14px;align-items:start}
+.tag{font-size:10px;font-weight:800;background:#11131A;color:#fff;border-radius:4px;padding:3px 0;text-align:center;letter-spacing:.5px;font-family:ui-monospace,Menlo,monospace}
+.k{font-weight:700;font-size:12.5px;margin-bottom:2px}
+.v{font-size:11.5px;color:#6B6F7A;line-height:1.5}
+.v code{font-family:ui-monospace,Menlo,monospace;background:rgba(0,0,0,.05);padding:1px 4px;border-radius:3px;color:#11131A}
+</style></head><body>
+
+<div class="h2">Flyer · Anatomy (Heat shown — same slots for every template)</div>
+
+<div class="layout">
+  <div class="frame">
+    <div class="heat">
+      <div class="heat-badge">HAPPY HOUR · 4–7PM</div>
+      <div class="heat-inner">
+        <div class="heat-main">
+          <div class="eb">ROOFTOP DAY PARTY</div>
+          <div class="tt">DISCO</div>
+          <div class="sub">at dusk</div>
+          <div class="tg">house / disco / grooves</div>
+          <div class="lu">
+            <div><div class="tm">4PM</div><div class="ac">MARLEY MAC</div></div>
+            <div><div class="tm">5PM</div><div class="ac">KIWI</div></div>
+            <div><div class="tm">6PM</div><div class="ac">SHELZ</div></div>
+            <div><div class="tm">7PM</div><div class="ac">DH(A)D</div></div>
+          </div>
+        </div>
+        <div class="ft">SAT APR 25  |  4PM–8PM  |  NEON GROTTO ROOFTOP</div>
+      </div>
+      <div class="wm">MusicPromo</div>
+    </div>
+  </div>
+
+  <div class="notes">
+    <div class="row">
+      <div class="tag">A</div>
+      <div><div class="k">Badge · optional</div><div class="v">Stamped corner element. Italic, rotated, accent-on-black. Used for happy-hour callouts, age limits, "presented by". Drops off when empty.</div></div>
+    </div>
+    <div class="row">
+      <div class="tag">B</div>
+      <div><div class="k">Eyebrow · optional</div><div class="v">One field, three faces: Heat eyebrow (accent caps) · Iridescent presenter · Vintage overline (script). Template-specific default when empty.</div></div>
+    </div>
+    <div class="row">
+      <div class="tag">C</div>
+      <div><div class="k">Title · required</div><div class="v">The display headline. Anton 96px at full size, single word or two-line wrap. Auto-shrinks past 6 characters.</div></div>
+    </div>
+    <div class="row">
+      <div class="tag">D</div>
+      <div><div class="k">Event subtitle · optional</div><div class="v">Below the title on <strong>all</strong> templates. Medium Inter, centered, lowercase-friendly. Draft field <code>flyerSubtitle</code> — hidden when empty. Distinct from Heat's script word split and from the tagline.</div></div>
+    </div>
+    <div class="row">
+      <div class="tag">E</div>
+      <div><div class="k">Tagline · optional</div><div class="v">Genre line. Heat: accent, lowercase slashes. Vintage: uppercase below lineup. Not the event subtitle.</div></div>
+    </div>
+    <div class="row">
+      <div class="tag">F</div>
+      <div><div class="k">Lineup · 0–10 acts</div><div class="v">Modular <code>FlyerLineupBlock</code>. Layouts: <code>grid</code> (full-width 2-col), <code>column</code>, <code>festival</code>, <code>spotlight</code> (1-row pill). Auto-suggested from count; user override in Text tab. Intro label + set-times toggle. Drops off when empty.</div></div>
+    </div>
+    <div class="row">
+      <div class="tag">G</div>
+      <div><div class="k">Footer · required</div><div class="v">Date · Time · Venue (template-specific layout). Hairline rule on Heat.</div></div>
+    </div>
+    <div class="row">
+      <div class="tag">H</div>
+      <div><div class="k">Watermark · always</div><div class="v"><code>MusicPromo</code> bottom-right, low-contrast.</div></div>
+    </div>
+  </div>
+</div>
+</body></html>

@@ -29,7 +29,7 @@ import {
   loadExpoSwiftUIModifiersModule,
   loadExpoSwiftUIModule,
 } from "@/lib/iosNativeUi";
-import { normalizeMediaUri } from "@/lib/mediaUri";
+import { normalizeMediaUri, uriForImageSource } from "@/lib/mediaUri";
 import { getLocalArtistProfile } from "@/lib/localProfile";
 import { encodeUriParam } from "@/lib/uri";
 import { useLocalSession } from "@/providers/localSession";
@@ -45,6 +45,13 @@ import {
   resolveTemplateId,
 } from "@/lib/templates";
 import { ProjectThumbnail } from "@/components/ProjectThumbnail";
+import { getSpkResumeRoute } from "@/lib/spkDraft";
+import { getFlyerProjectResumeNavigation } from "@/lib/flyerDraft";
+import {
+  filterProjectsForLaunchScope,
+  isMusicPromoOnlyLaunch,
+  MUSIC_PROMO_CREATE_ROUTE,
+} from "@/lib/launchScope";
 
 type Project = Doc<"projects"> | LocalProject;
 type ProjectAction = "duplicate" | "delete";
@@ -73,6 +80,8 @@ function normalizeAvatarUri(value: string | null | undefined): string | null {
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
 }
+
+
 
 let hasWarnedHapticsUnavailable = false;
 
@@ -286,8 +295,10 @@ const longPressProjectIdRef = useRef<string | null>(null);
   }, [convex, isLocalGuest, refreshLocalProjects]);
 
   const profileAvatarUri = useMemo(() => {
-    if (isLocalGuest) return normalizeAvatarUri(localAvatarUrl);
-    return normalizeAvatarUri(convexUser?.avatarImageUrl ?? convexUser?.avatarUrl);
+    const raw = isLocalGuest
+      ? normalizeAvatarUri(localAvatarUrl)
+      : normalizeAvatarUri(convexUser?.avatarImageUrl ?? convexUser?.avatarUrl);
+    return uriForImageSource(raw) || null;
   }, [convexUser?.avatarImageUrl, convexUser?.avatarUrl, isLocalGuest, localAvatarUrl]);
 
   useEffect(() => {
@@ -302,6 +313,10 @@ const longPressProjectIdRef = useRef<string | null>(null);
       const stageBackgroundUri = normalizeMediaUri(
         parseTemplateTweaksParam(project.templateTweaks)?.stageBackgroundImageUri ??
           null,
+      );
+      const prefetchablePhotoUri = uriForImageSource(project.photoUri);
+      const prefetchableStageUri = uriForImageSource(
+        parseTemplateTweaksParam(project.templateTweaks)?.stageBackgroundImageUri,
       );
       if (longPressProjectIdRef.current === projectKey) {
         longPressProjectIdRef.current = null;
@@ -319,11 +334,39 @@ const longPressProjectIdRef = useRef<string | null>(null);
       }
       if (deletingProjectId === projectKey) return;
       track("project_reopened", { projectId: projectKey });
-      if (projectPhotoUri) {
-        void Image.prefetch(projectPhotoUri).catch(() => {});
+      if (prefetchablePhotoUri) {
+        void Image.prefetch(prefetchablePhotoUri).catch(() => {});
       }
-      if (stageBackgroundUri) {
-        void Image.prefetch(stageBackgroundUri).catch(() => {});
+      if (prefetchableStageUri) {
+        void Image.prefetch(prefetchableStageUri).catch(() => {});
+      }
+
+      if (
+        !isMusicPromoOnlyLaunch() &&
+        ((!isLocalProject(project) && project.type === "spk") ||
+          (isLocalProject(project) && project.type === "spk"))
+      ) {
+        const { pathname, params } = getSpkResumeRoute(
+          project as Parameters<typeof getSpkResumeRoute>[0],
+          projectKey,
+          isLocalProject(project),
+        );
+        router.push({ pathname: pathname as any, params });
+        return;
+      }
+
+      if (
+        !isMusicPromoOnlyLaunch() &&
+        ((!isLocalProject(project) && project.type === "flyer") ||
+          (isLocalProject(project) && project.type === "flyer"))
+      ) {
+        const { pathname, params } = getFlyerProjectResumeNavigation(
+          project,
+          projectKey,
+          isLocalProject(project),
+        );
+        router.push({ pathname: pathname as any, params });
+        return;
       }
 
       if (isLocalProject(project)) {
@@ -531,10 +574,12 @@ const longPressProjectIdRef = useRef<string | null>(null);
     return () => { cancelled = true; };
   }, [stableProjects]);
 
-  const visibleProjects = useMemo(
-    () => stableProjects.filter((p) => !brokenProjectIds.has(getProjectId(p))),
-    [stableProjects, brokenProjectIds],
-  );
+  const visibleProjects = useMemo(() => {
+    const accessible = stableProjects.filter(
+      (p) => !brokenProjectIds.has(getProjectId(p)),
+    );
+    return filterProjectsForLaunchScope(accessible);
+  }, [stableProjects, brokenProjectIds]);
 
   const isLoading = isLocalGuest
     ? localProjects === null
@@ -613,6 +658,12 @@ const longPressProjectIdRef = useRef<string | null>(null);
       const canRenderNativeProjectGestures =
         canUseNativeProjectGestures && expoSwiftUI && !isSelectionMode && !isDeleting;
       const isRNCardGestureOwner = !canRenderNativeProjectGestures;
+      const isSpkProject =
+        (!isLocalProject(item) && item.type === "spk") ||
+        (isLocalProject(item) && item.type === "spk");
+      const isFlyerProject =
+        (!isLocalProject(item) && item.type === "flyer") ||
+        (isLocalProject(item) && item.type === "flyer");
       const cardContent = (
         <View style={styles.cardContent}>
           <ProjectThumbnail
@@ -626,7 +677,15 @@ const longPressProjectIdRef = useRef<string | null>(null);
               {title}
             </Text>
             <Text style={[styles.cardDate, { color: homeTextSecondaryColor }]}>
-              {formatDate(item.createdAt)}
+              {isSpkProject
+                ? item.status === "draft"
+                  ? "Song Press Kit · Draft"
+                  : "Song Press Kit"
+                : isFlyerProject
+                  ? item.status === "draft"
+                    ? "Event Flyer · Draft"
+                    : "Event Flyer"
+                  : formatDate(item.createdAt)}
             </Text>
           </View>
         </View>
@@ -775,7 +834,11 @@ const longPressProjectIdRef = useRef<string | null>(null);
             accessibilityRole="button"
           >
             <Image
-              source={profileAvatarUri && !avatarError ? { uri: profileAvatarUri } : require("../../assets/defaults/MusicPromo-DefaultAvatar.jpg")}
+              source={
+                profileAvatarUri && !avatarError
+                  ? { uri: profileAvatarUri }
+                  : require("../../assets/defaults/MusicPromo-DefaultAvatar.jpg")
+              }
               style={styles.avatarImage}
               onError={() => setAvatarError(true)}
             />
@@ -958,7 +1021,13 @@ const longPressProjectIdRef = useRef<string | null>(null);
             { backgroundColor: fabBackgroundColor },
             pressed && styles.fabPressed,
           ]}
-          onPress={() => router.push("/create/picker" as const)}
+          onPress={() =>
+            router.push(
+              (isMusicPromoOnlyLaunch()
+                ? MUSIC_PROMO_CREATE_ROUTE
+                : "/create/type-picker") as any,
+            )
+          }
           accessibilityLabel="Create new project"
           accessibilityRole="button"
         >

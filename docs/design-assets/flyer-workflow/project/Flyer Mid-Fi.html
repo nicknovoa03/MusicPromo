@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Show Flyer Mid-Fi — Picker / Editor / Export</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ionicons@7.4.0/dist/ionicons/ionicons.css" />
+<script type="module" src="https://cdn.jsdelivr.net/npm/ionicons@7.4.0/dist/ionicons/ionicons.esm.js"></script>
+<link rel="stylesheet" href="colors_and_type.css" />
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Caveat:wght@700&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: #000; font-family: var(--font-ui); }
+
+.container {
+  max-width: 1400px; margin: 0 auto; padding: 24px;
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px;
+}
+
+/* iOS phone frame */
+.phone-frame {
+  background: #000; border-radius: 44px; padding: 10px;
+  box-shadow: 0 0 0 1px #333, 0 20px 60px rgba(0,0,0,.8);
+  aspect-ratio: 390/844; display: flex; flex-direction: column;
+  overflow: hidden; position: relative;
+}
+.notch{
+  position:absolute;top:8px;left:50%;transform:translateX(-50%);
+  width:120px;height:28px;background:#000;border-radius:0 0 18px 18px;z-index:10;
+}
+.screen{
+  flex:1;border-radius:38px;overflow:hidden;display:flex;flex-direction:column;
+  background:var(--light-bg);color:var(--light-text);
+}
+.screen.dark{ background:#0E1014; color:#fff; }
+
+.status-bar{
+  height:44px;background:var(--light-surface);border-bottom:1px solid var(--light-border);
+  display:flex;align-items:center;justify-content:space-between;padding:0 16px;
+  font-size:13px;font-weight:600;
+}
+.screen.dark .status-bar{ background:#0E1014; border-bottom-color:rgba(255,255,255,.08); color:#fff; }
+
+/* Nav header */
+.nav{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 14px;height:50px;
+  background:var(--light-surface);border-bottom:1px solid var(--light-border);
+}
+.screen.dark .nav{ background:#0E1014; border-bottom-color:rgba(255,255,255,.08); }
+.nav-cancel{
+  background:none;border:none;font-size:15px;color:var(--light-text);cursor:pointer;padding:0;
+}
+.screen.dark .nav-cancel{ color:#fff; font-size:22px; }
+.nav-title{font:600 15px/1 var(--font-ui);color:var(--light-text);}
+.screen.dark .nav-title{ color:rgba(255,255,255,.55); font-weight:500; font-size:13px; }
+.nav-next{
+  background:var(--light-text);color:var(--light-surface);border:none;border-radius:16px;
+  padding:6px 14px;font:700 14px/1 var(--font-ui);cursor:pointer;
+}
+.screen.dark .nav-next{ background:#fff; color:#000; }
+
+/* PICKER (light) */
+.body{flex:1;overflow-y:auto;padding:14px 16px 28px;display:flex;flex-direction:column;gap:12px}
+.tile{
+  background:var(--light-surface);border:1px solid var(--light-border);border-radius:14px;
+  padding:14px;display:flex;align-items:center;gap:12px;
+}
+.tile-ic{
+  width:44px;height:44px;border-radius:10px;background:var(--light-surface-muted);
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
+}
+.tile-ic ion-icon{font-size:22px;color:var(--light-text)}
+.tile-title{font:600 14px/1.2 var(--font-ui);}
+.tile-sub{font:400 12px/1.3 var(--font-ui);color:var(--light-text-secondary);margin-top:2px;}
+.tile-plus{margin-left:auto;font-size:22px;color:var(--light-text-secondary);font-weight:300}
+
+.section-label{
+  font:700 10px/1 var(--font-ui);letter-spacing:.16em;text-transform:uppercase;
+  color:var(--light-text-secondary);margin:6px 4px 0;
+}
+
+.field-group{
+  background:var(--light-surface);border:1px solid var(--light-border);border-radius:14px;overflow:hidden;
+}
+.field-row{
+  padding:13px 14px;display:flex;justify-content:space-between;align-items:center;
+  border-bottom:1px solid var(--light-border);font-size:14px;
+}
+.field-row:last-child{border-bottom:none}
+.field-row .l{font-weight:500}
+.field-row .v{color:var(--light-text)}
+.field-row .v.empty{color:var(--light-text-secondary)}
+
+.hint{font-size:11.5px;color:var(--light-text-secondary);line-height:1.5;padding:0 4px}
+
+/* EDITOR (dark) */
+.editor-prv{
+  flex:1;display:flex;align-items:center;justify-content:center;
+  padding:8px 24px 0;position:relative;
+}
+.ar-badge{
+  position:absolute;top:6px;right:20px;background:rgba(255,255,255,.1);
+  padding:3px 8px;border-radius:6px;font-size:10px;font-weight:600;letter-spacing:.5px;color:#fff;
+}
+.poster{
+  width:200px;height:356px;border-radius:10px;overflow:hidden;
+  box-shadow:0 12px 40px rgba(0,0,0,.55);position:relative;color:#fff;text-align:center;
+  background:radial-gradient(ellipse at 50% 40%,#6a5a18 0%,#3a1a18 65%,#1a0808 100%);
+  display:flex;flex-direction:column;padding:30px 12px 14px;
+}
+.poster::after{content:"";position:absolute;inset:0;background-image:radial-gradient(circle at 1px 1px,rgba(0,0,0,.4) 1px,transparent 1.5px);background-size:4px 4px;opacity:.5;mix-blend-mode:multiply}
+.poster > *{position:relative;z-index:1}
+.poster-badge{
+  position:absolute;top:12px;right:-6px;transform:rotate(8deg);background:#FFD936;
+  color:#000;font-size:8px;font-weight:800;font-style:italic;padding:3px 7px;letter-spacing:.5px;
+  z-index:2;
+}
+.p-eb{font-size:7.5px;letter-spacing:2px;font-weight:700;color:#FFD936;margin-bottom:6px}
+.p-tt{font-family:Anton;font-size:48px;line-height:.85;letter-spacing:-1px}
+.p-ss{font-family:Caveat;font-size:24px;font-style:italic;font-weight:700;margin-top:-2px}
+.p-tg{font-size:8px;color:#FFD936;margin-top:2px;letter-spacing:1px}
+.p-lu{display:grid;grid-template-columns:1fr 1fr;gap:8px 8px;margin-top:14px}
+.p-tm{font-size:7px;color:#FFD936;font-weight:600}
+.p-ac{font-family:Anton;font-size:12px;letter-spacing:.5px}
+.p-ft{margin-top:auto;font-size:6.5px;letter-spacing:1px;font-weight:600;border-top:1px solid rgba(255,217,54,.3);padding-top:7px}
+.p-wm{position:absolute;bottom:5px;right:5px;font-size:6px;font-weight:700;letter-spacing:.5px;color:rgba(255,255,255,.55);z-index:3}
+
+.sheet{background:#181B22;border-top-left-radius:18px;border-top-right-radius:18px;padding:12px 0 24px}
+.sheet-section{padding:0 16px 10px}
+.sheet-label{font-size:10px;color:rgba(255,255,255,.55);letter-spacing:.5px;font-weight:600;margin-bottom:6px}
+.tpl-rail{display:flex;gap:6px;overflow-x:auto}
+.tpl-pill{padding:6px 12px;border-radius:16px;font-size:12px;font-weight:600;
+  border:1px solid rgba(255,255,255,.1);color:#fff;white-space:nowrap;flex-shrink:0}
+.tpl-pill.active{background:#fff;color:#000;border-color:transparent}
+
+.tabs{display:flex;gap:2px;padding:10px 16px 0;border-top:1px solid rgba(255,255,255,.08)}
+.tab{flex:1;padding:8px 0;text-align:center;font-size:12px;font-weight:600;
+  color:rgba(255,255,255,.55);border-bottom:2px solid transparent}
+.tab.active{color:#fff;border-bottom-color:#fff}
+
+.swatch-row{padding:10px 16px 0;display:flex;gap:8px;overflow-x:auto}
+.sw{width:36px;height:36px;border-radius:50%;flex-shrink:0;border:2px solid rgba(255,255,255,.12)}
+.sw.active{border-color:#fff;box-shadow:0 0 0 1.5px rgba(255,255,255,.2)}
+
+/* EXPORT */
+.export-prv{padding:18px 0 18px;display:flex;justify-content:center}
+.export-prv .poster{width:160px;height:285px;padding:24px 10px 11px}
+.export-prv .p-tt{font-size:38px}
+.export-prv .p-ss{font-size:18px}
+.export-prv .p-lu{display:none}
+
+.export-body{padding:0 16px;flex:1;display:flex;flex-direction:column}
+.sec-l{font:700 10px/1 var(--font-ui);letter-spacing:.16em;text-transform:uppercase;color:rgba(255,255,255,.55);margin-bottom:8px}
+.fmt-card{
+  background:#181B22;border:1px solid rgba(255,255,255,.08);border-radius:12px;
+  padding:13px;display:flex;align-items:center;gap:12px;margin-bottom:8px;
+}
+.fmt-card.active{border-color:#fff;border-width:2px;padding:12px}
+.fmt-ic{width:36px;height:36px;border-radius:8px;background:#23262F;
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#fff}
+.fmt-ic ion-icon{font-size:18px}
+.fmt-info{flex:1}
+.fmt-title{font:600 13px/1 var(--font-ui)}
+.fmt-sub{font:400 11px/1.3 var(--font-ui);color:rgba(255,255,255,.55);margin-top:3px}
+.fmt-radio{width:20px;height:20px;border-radius:50%;border:2px solid rgba(255,255,255,.2);flex-shrink:0}
+.fmt-radio.on{background:#fff;border-color:#fff;display:flex;align-items:center;justify-content:center;color:#000;font-size:12px;font-weight:800}
+
+.aspect{display:flex;gap:8px;margin-top:6px;margin-bottom:18px}
+.aspect-btn{flex:1;padding:10px 0;border-radius:10px;text-align:center;font:600 13px/1 var(--font-ui);
+  background:#181B22;color:#fff;border:1px solid rgba(255,255,255,.08)}
+.aspect-btn.active{background:#fff;color:#000;border:none}
+
+.share-ig{
+  width:100%;padding:12px 0;border-radius:11px;border:none;color:#fff;
+  background:linear-gradient(90deg,#F58529 0%,#DD2A7B 50%,#8134AF 100%);
+  font:700 14px/1 var(--font-ui);margin-bottom:8px;
+  display:flex;align-items:center;justify-content:center;gap:6px;
+}
+.share-tt{
+  width:100%;padding:11px 0;border-radius:11px;background:transparent;color:#fff;
+  border:1.5px solid rgba(255,255,255,.15);font:700 14px/1 var(--font-ui);
+  display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:8px;
+}
+.saved-msg{text-align:center;font-size:11px;color:rgba(255,255,255,.5)}
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- ───────────────────── PICKER ──────────────────── -->
+  <div class="phone-frame">
+    <div class="notch"></div>
+    <div class="screen">
+      <div class="status-bar"><div>9:41</div><div>● ●</div></div>
+      <div class="nav">
+        <button class="nav-cancel">Cancel</button>
+        <div class="nav-title">New Flyer</div>
+        <button class="nav-next">Next</button>
+      </div>
+
+      <div class="body">
+        <div class="tile">
+          <div class="tile-ic"><ion-icon name="musical-note-outline"></ion-icon></div>
+          <div>
+            <div class="tile-title">Add Audio</div>
+            <div class="tile-sub">Optional · 10–30 sec clip</div>
+          </div>
+          <div class="tile-plus">+</div>
+        </div>
+
+        <div class="tile">
+          <div class="tile-ic"><ion-icon name="image-outline"></ion-icon></div>
+          <div>
+            <div class="tile-title">Add Photo</div>
+            <div class="tile-sub">Custom artwork · optional</div>
+          </div>
+          <div class="tile-plus">+</div>
+        </div>
+
+        <div class="section-label">Event Details</div>
+        <div class="field-group">
+          <div class="field-row"><div class="l">Event Name</div><div class="v">Disco at Dusk</div></div>
+          <div class="field-row"><div class="l">Date</div><div class="v">Sat, Apr 25</div></div>
+          <div class="field-row"><div class="l">Time</div><div class="v">4PM – 8PM</div></div>
+          <div class="field-row"><div class="l">Venue</div><div class="v">Neon Grotto Rooftop</div></div>
+          <div class="field-row"><div class="l">City</div><div class="v empty">Austin, TX</div></div>
+        </div>
+
+        <div class="hint">You'll pick a template and customize colors, fonts, and layout on the next screen.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ───────────────────── EDITOR ──────────────────── -->
+  <div class="phone-frame">
+    <div class="notch"></div>
+    <div class="screen dark">
+      <div class="status-bar"><div>9:41</div><div>● ●</div></div>
+      <div class="nav">
+        <button class="nav-cancel">×</button>
+        <div class="nav-title">Disco at Dusk</div>
+        <button class="nav-next">Export</button>
+      </div>
+
+      <div class="editor-prv">
+        <div class="poster">
+          <div class="poster-badge">HAPPY HOUR · 4–7PM</div>
+          <div class="p-eb">ROOFTOP DAY PARTY</div>
+          <div class="p-tt">DISCO</div>
+          <div class="p-ss">at dusk</div>
+          <div class="p-tg">house / disco / grooves</div>
+          <div class="p-lu">
+            <div><div class="p-tm">4PM</div><div class="p-ac">MARLEY MAC</div></div>
+            <div><div class="p-tm">5PM</div><div class="p-ac">KIWI</div></div>
+            <div><div class="p-tm">6PM</div><div class="p-ac">SHELZ</div></div>
+            <div><div class="p-tm">7PM</div><div class="p-ac">DH(A)D</div></div>
+          </div>
+          <div class="p-ft">SAT APR 25 · NEON GROTTO</div>
+          <div class="p-wm">MusicPromo</div>
+        </div>
+      </div>
+
+      <div class="sheet">
+        <div class="sheet-section">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <div class="sheet-label" style="margin-bottom:0">TEMPLATE</div>
+            <div style="display:flex;gap:4px">
+              <div style="padding:4px 10px;border-radius:8px;background:#fff;color:#000;font:700 11px/1 var(--font-ui);letter-spacing:.02em">9:16</div>
+              <div style="padding:4px 10px;border-radius:8px;background:rgba(255,255,255,.1);color:rgba(255,255,255,.55);font:600 11px/1 var(--font-ui);letter-spacing:.02em">4:5</div>
+            </div>
+          </div>
+          <div class="tpl-rail">
+            <div class="tpl-pill active">Heat</div>
+            <div class="tpl-pill">Iridescent</div>
+            <div class="tpl-pill">Vintage</div>
+          </div>
+        </div>
+        <div class="tabs">
+          <div class="tab">Text</div>
+          <div class="tab active">Colors</div>
+          <div class="tab">Fonts</div>
+          <div class="tab">Photo</div>
+          <div class="tab">Audio</div>
+        </div>
+        <div style="padding:12px 16px 4px">
+          <div class="sheet-label">BACKGROUND</div>
+        </div>
+        <div class="swatch-row">
+          <div class="sw active" style="background:radial-gradient(ellipse,#6a5a18,#3a1a18,#1a0808)"></div>
+          <div class="sw" style="background:radial-gradient(ellipse,#2A4A6B,#0F1A2E)"></div>
+          <div class="sw" style="background:radial-gradient(ellipse,#5E1B3A,#2A0B1D)"></div>
+          <div class="sw" style="background:linear-gradient(135deg,#ffcce7,#b3d9ff)"></div>
+          <div class="sw" style="background:#000"></div>
+        </div>
+        <div style="padding:14px 16px 4px">
+          <div class="sheet-label">ACCENT</div>
+        </div>
+        <div class="swatch-row">
+          <div class="sw active" style="background:#FFD936"></div>
+          <div class="sw" style="background:#FF6B35"></div>
+          <div class="sw" style="background:#FF3D7F"></div>
+          <div class="sw" style="background:#C8FF4D"></div>
+          <div class="sw" style="background:#fff"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ───────────────────── EXPORT ──────────────────── -->
+  <div class="phone-frame">
+    <div class="notch"></div>
+    <div class="screen dark">
+      <div class="status-bar"><div>9:41</div><div>● ●</div></div>
+      <div class="nav">
+        <button class="nav-cancel">×</button>
+        <div class="nav-title" style="color:#fff;font-weight:600;font-size:15px">Export</div>
+        <div style="width:40px"></div>
+      </div>
+
+      <div class="export-prv">
+        <div class="poster">
+          <div class="poster-badge">HAPPY HOUR</div>
+          <div class="p-eb">ROOFTOP DAY PARTY</div>
+          <div class="p-tt">DISCO</div>
+          <div class="p-ss">at dusk</div>
+          <div class="p-ft" style="margin-top:auto">SAT APR 25 · NEON GROTTO</div>
+          <div class="p-wm">MusicPromo</div>
+        </div>
+      </div>
+
+      <div class="export-body">
+        <div class="sec-l">Format</div>
+        <div class="fmt-card active">
+          <div class="fmt-ic"><ion-icon name="film-outline"></ion-icon></div>
+          <div class="fmt-info">
+            <div class="fmt-title">Video · MP4</div>
+            <div class="fmt-sub">With audio · 8 seconds</div>
+          </div>
+          <div class="fmt-radio on">✓</div>
+        </div>
+        <div class="fmt-card">
+          <div class="fmt-ic"><ion-icon name="image-outline"></ion-icon></div>
+          <div class="fmt-info">
+            <div class="fmt-title">Image · PNG</div>
+            <div class="fmt-sub">Static · print-ready</div>
+          </div>
+          <div class="fmt-radio"></div>
+        </div>
+
+        <div style="height:16px"></div>
+
+        <button class="share-ig"><ion-icon name="logo-instagram"></ion-icon> Share to Instagram</button>
+        <button class="share-tt"><ion-icon name="share-outline"></ion-icon> Save to Camera Roll</button>
+        <div class="saved-msg">Watermark stays. Everything else is yours.</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

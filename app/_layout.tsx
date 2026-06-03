@@ -1,21 +1,20 @@
-import { useCallback, useEffect, useMemo } from "react";
-import { Image, StyleSheet } from "react-native";
-import { Redirect, Stack, useSegments } from "expo-router";
-import { ClerkProvider, ClerkLoaded, useAuth } from "@clerk/clerk-expo";
+import { useCallback, useEffect, useMemo, type ReactNode } from "react";
+import { Image, Platform, StyleSheet } from "react-native";
+import { Redirect, Stack, usePathname, useSegments } from "expo-router";
+import { ClerkProvider, useAuth } from "@clerk/clerk-expo";
 import { ConvexProviderWithAuth } from "convex/react";
 import { PostHogProvider } from "posthog-react-native";
 import { StatusBar } from "expo-status-bar";
 import { useColorScheme } from "react-native";
-import {
-  SafeAreaProvider,
-  initialWindowMetrics,
-} from "react-native-safe-area-context";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import { AppLoadingGate } from "@/components/AppLoadingGate";
 import { tokenCache } from "@/lib/clerk";
 import { convex } from "@/lib/convex";
 import {
   LocalSessionProvider,
   useLocalSession,
 } from "@/providers/localSession";
+import { WebFlyerDevRoot } from "@/providers/WebFlyerDevRoot";
 
 const clerkPublishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
 if (!clerkPublishableKey) {
@@ -23,6 +22,32 @@ if (!clerkPublishableKey) {
 }
 const posthogApiKey = process.env.EXPO_PUBLIC_POSTHOG_API_KEY;
 const posthogHost = process.env.EXPO_PUBLIC_POSTHOG_HOST;
+
+function getInitialWebPathname(): string | null {
+  if (Platform.OS !== "web" || typeof globalThis.location?.pathname !== "string") {
+    return null;
+  }
+  return globalThis.location.pathname;
+}
+
+function isFlyerWebPath(pathname: string | null): boolean {
+  const path = pathname ?? getInitialWebPathname();
+  return Boolean(
+    path && (path === "/create/flyer" || path.startsWith("/create/flyer/")),
+  );
+}
+
+/** Opt-in dev preview on web only (`?flyerPreview=1`). Normal flyer flow uses Clerk. */
+function isFlyerWebPreviewMode(pathname: string | null): boolean {
+  if (!__DEV__ || Platform.OS !== "web" || !isFlyerWebPath(pathname)) {
+    return false;
+  }
+  const search =
+    typeof globalThis.location?.search === "string"
+      ? globalThis.location.search
+      : "";
+  return search.includes("flyerPreview=1");
+}
 
 function AuthGate() {
   const { isSignedIn, isLoaded } = useAuth();
@@ -36,7 +61,7 @@ function AuthGate() {
   }, [isSignedIn, isLocalGuest, clearLocalSession]);
 
   if (!isLoaded || !isHydrated) {
-    return null;
+    return <AppLoadingGate label="Starting MusicPromo…" />;
   }
 
   const hasSession = Boolean(isSignedIn) || isLocalGuest;
@@ -123,33 +148,36 @@ function AppWithProviders() {
   );
 }
 
+function withPostHog(children: ReactNode) {
+  if (!posthogApiKey || !posthogHost) {
+    return children;
+  }
+
+  return (
+    <PostHogProvider apiKey={posthogApiKey} options={{ host: posthogHost }}>
+      {children}
+    </PostHogProvider>
+  );
+}
+
 export default function RootLayout() {
-  const posthogEnabled = posthogApiKey && posthogHost;
+  const pathname = usePathname();
+
+  if (isFlyerWebPreviewMode(pathname)) {
+    return withPostHog(<WebFlyerDevRoot />);
+  }
 
   const inner = (
-    <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+    <SafeAreaProvider>
       <LocalSessionProvider>
         <ClerkProvider publishableKey={clerkPublishableKey} tokenCache={tokenCache}>
-          <ClerkLoaded>
-            <AppWithProviders />
-          </ClerkLoaded>
+          <AppWithProviders />
         </ClerkProvider>
       </LocalSessionProvider>
     </SafeAreaProvider>
   );
 
-  if (posthogEnabled) {
-    return (
-      <PostHogProvider
-        apiKey={posthogApiKey}
-        options={{ host: posthogHost }}
-      >
-        {inner}
-      </PostHogProvider>
-    );
-  }
-
-  return inner;
+  return withPostHog(inner);
 }
 
 const styles = StyleSheet.create({

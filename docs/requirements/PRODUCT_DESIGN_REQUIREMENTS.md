@@ -5,8 +5,8 @@
 - Product name: MusicPromo
 - Doc owner: Nick
 - Stakeholders: Nick (sole developer / product owner)
-- Last updated (YYYY-MM-DD): 2026-04-28
-- Version: 1.9 (Artist discovery / online profiles planned)
+- Last updated (YYYY-MM-DD): 2026-05-19
+- Version: 1.10 (Show Flyer in progress)
 - Links: GitHub repo at `/home/nick/MusicPromo`
 
 ## 1) Product Summary
@@ -772,6 +772,16 @@ Primary reference: Meta's Edits app. Secondary: Spotify (legacy profile patterns
 - Re-evaluate local Remotion viability with explicit pass/fail gates
 - If Remotion remains blocked on-device, continue with maintained local FFmpeg backend behind renderer abstraction
 - Migrate additional templates and prove fast new-template onboarding
+
+### Phase 8: Song Press Kit
+- See `docs/requirements/SONG_PRESS_KIT_REQUIREMENTS.md`
+
+### Show Flyer (in progress)
+- Third Create-tab project type: event details → template editor → image/video export
+- Three templates (Heat, Iridescent, Vintage), modular lineup, optional event subtitle on all templates
+- Editor preview always **4:5**; export aspect ratio (9:16 or 4:5) chosen on export screen only
+- Full spec: `docs/requirements/SHOW_FLYER_REQUIREMENTS.md`
+- Design reference: `docs/design-assets/flyer-workflow/`
 
 ### Phase 7: Artist Discovery + Online Profiles (Post-Phase 6 or parallel product-track spike)
 - Reframe MusicPromo from a local promo maker into a lightweight artist presence platform while preserving the current create/export core

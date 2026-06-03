@@ -1,15 +1,22 @@
 import { useMemo, useState } from "react";
-import { View, Image, StyleSheet } from "react-native";
+import { View, Image, StyleSheet, Text } from "react-native";
+import { useFonts } from "expo-font";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import type { Doc } from "../../convex/_generated/dataModel";
-import type { LocalProject } from "@/lib/localProjects";
-import { normalizeMediaUri } from "@/lib/mediaUri";
+import { isLocalProject, type LocalProject } from "@/lib/localProjects";
+import { uriForImageSource } from "@/lib/mediaUri";
+import {
+  convexProjectToFlyerDraft,
+  localProjectToFlyerDraft,
+} from "@/lib/flyerDraft";
 import {
   getTemplateDefinition,
   parseTemplateTweaksParam,
   resolveTemplateId,
 } from "@/lib/templates";
-import { colors } from "@/constants/tokens";
+import { FlyerPreviewFrame } from "@/components/flyer/FlyerPreviewFrame";
+import { FLYER_FONT_SOURCES } from "@/lib/flyerFonts";
+import { colors, radius } from "@/constants/tokens";
 
 type Project = Doc<"projects"> | LocalProject;
 
@@ -25,8 +32,49 @@ let _cachedThumbnailWidth = 0;
 
 export function ProjectThumbnail({ project, title, surfaceColor, fallbackIconColor }: Props) {
   const [thumbnailSize, setThumbnailSize] = useState(_cachedThumbnailWidth);
-  const photoUri = normalizeMediaUri(project.photoUri);
-  const fallbackPreviewUri = normalizeMediaUri(project.exportedVideoUri);
+  const photoUri = uriForImageSource(project.photoUri);
+  const fallbackPreviewUri = uriForImageSource(project.exportedVideoUri);
+
+  const isSpk = project.type === "spk";
+  const isFlyer = project.type === "flyer";
+
+  if (isSpk) {
+    return (
+      <View
+        style={[styles.thumbnail, { backgroundColor: "#0A0A0A" }]}
+        onLayout={(event) => {
+          const nextSize = Math.round(event.nativeEvent.layout.width);
+          if (nextSize !== _cachedThumbnailWidth) _cachedThumbnailWidth = nextSize;
+          setThumbnailSize((current) => (current === nextSize ? current : nextSize));
+        }}
+      >
+        {photoUri ? (
+          <Image source={{ uri: photoUri }} style={styles.thumbnailImage} resizeMode="cover" />
+        ) : (
+          <Ionicons name="layers-outline" size={30} color={fallbackIconColor} />
+        )}
+        <View style={styles.spkBadge}>
+          <Text style={styles.spkBadgeText}>SPK</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (isFlyer) {
+    return (
+      <FlyerProjectThumbnail
+        project={project}
+        thumbnailSize={thumbnailSize}
+        fallbackPreviewUri={fallbackPreviewUri}
+        fallbackIconColor={fallbackIconColor}
+        onLayout={(nextSize) => {
+          if (nextSize !== _cachedThumbnailWidth) _cachedThumbnailWidth = nextSize;
+          setThumbnailSize((current) => (current === nextSize ? current : nextSize));
+        }}
+      />
+    );
+  }
+
   const templateId = resolveTemplateId(project.templateId);
   const templateTweaks = useMemo(
     () => parseTemplateTweaksParam(project.templateTweaks),
@@ -81,6 +129,61 @@ export function ProjectThumbnail({ project, title, surfaceColor, fallbackIconCol
   );
 }
 
+type FlyerProjectThumbnailProps = {
+  project: Project;
+  thumbnailSize: number;
+  fallbackPreviewUri: string | null;
+  fallbackIconColor: string;
+  onLayout: (size: number) => void;
+};
+
+function FlyerProjectThumbnail({
+  project,
+  thumbnailSize,
+  fallbackPreviewUri,
+  fallbackIconColor,
+  onLayout,
+}: FlyerProjectThumbnailProps) {
+  const [fontsLoaded] = useFonts(FLYER_FONT_SOURCES);
+  const flyerDraft = useMemo(
+    () =>
+      isLocalProject(project)
+        ? localProjectToFlyerDraft(project)
+        : convexProjectToFlyerDraft(project),
+    [project],
+  );
+  const aspectRatio = flyerDraft.aspectRatio ?? "9:16";
+  const photoUri = uriForImageSource(project.photoUri);
+
+  return (
+    <View
+      style={[styles.thumbnail, { backgroundColor: "#111" }]}
+      onLayout={(event) => {
+        onLayout(Math.round(event.nativeEvent.layout.width));
+      }}
+    >
+      {thumbnailSize > 0 && fontsLoaded ? (
+        <FlyerPreviewFrame
+          draft={flyerDraft}
+          aspectRatio={aspectRatio}
+          maxWidth={thumbnailSize}
+          maxHeight={thumbnailSize}
+        />
+      ) : photoUri ? (
+        <Image source={{ uri: photoUri }} style={styles.thumbnailImage} resizeMode="cover" />
+      ) : fallbackPreviewUri ? (
+        <Image
+          source={{ uri: fallbackPreviewUri }}
+          style={styles.thumbnailImage}
+          resizeMode="cover"
+        />
+      ) : (
+        <Ionicons name="calendar-outline" size={30} color={fallbackIconColor} />
+      )}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   thumbnail: {
     width: "100%",
@@ -88,10 +191,27 @@ const styles = StyleSheet.create({
     backgroundColor: colors.light.surface,
     alignItems: "center",
     justifyContent: "center",
+    borderRadius: radius.lg,
     overflow: "hidden",
   },
   thumbnailImage: {
     width: "100%",
     height: "100%",
+  },
+  spkBadge: {
+    position: "absolute",
+    top: 8,
+    left: 8,
+    backgroundColor: "#11131A",
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 999,
+  },
+  spkBadgeText: {
+    fontSize: 8,
+    fontWeight: "800",
+    color: "#FFFFFF",
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
   },
 });

@@ -15,11 +15,34 @@ export default function CreateLayout() {
       }}
     >
       <Stack.Screen
+        name="type-picker"
+        options={{
+          contentStyle: {
+            backgroundColor: isDarkMode ? colors.dark.background : colors.light.background,
+          },
+        }}
+      />
+      <Stack.Screen
         name="picker"
         options={{
           contentStyle: {
             backgroundColor: isDarkMode ? colors.dark.background : colors.light.background,
           },
+        }}
+      />
+      <Stack.Screen
+        name="spk"
+        options={{
+          contentStyle: { backgroundColor: colors.dark.background },
+          gestureEnabled: false,
+          animation: "slide_from_right",
+        }}
+      />
+      <Stack.Screen
+        name="flyer"
+        options={{
+          gestureEnabled: false,
+          animation: "slide_from_right",
         }}
       />
       <Stack.Screen

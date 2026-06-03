@@ -49,6 +49,11 @@ import { getExpoPushTokenAsync } from "@/lib/notifications";
 import type { EventName } from "@/lib/analytics";
 import { useLocalSession } from "@/providers/localSession";
 import { persistPickedMediaFile, isLocalFileAccessible } from "@/lib/mediaStorage";
+import {
+  imageSourceFromUri,
+  isLocalFileUri,
+  uriForImageSource,
+} from "@/lib/mediaUri";
 import { sleep } from "@/lib/utils";
 import { ProjectThumbnail } from "@/components/ProjectThumbnail";
 import * as Sharing from "expo-sharing";
@@ -362,8 +367,8 @@ export default function ProfileScreen() {
     if (isProfileLoading) return;
     setArtistNameDraft(sourceArtistName);
     setBioDraft(sourceBio);
-    setHeroImageUrlDraft(sourceHeroImageUrl);
-    setAvatarImageUrlDraft(sourceAvatarImageUrl);
+    setHeroImageUrlDraft(uriForImageSource(sourceHeroImageUrl) || null);
+    setAvatarImageUrlDraft(uriForImageSource(sourceAvatarImageUrl) || null);
     setLinksDraft(sourceLinks);
   }, [isProfileLoading, sourceArtistName, sourceBio, sourceHeroImageUrl, sourceAvatarImageUrl, sourceLinks]);
 
@@ -836,6 +841,7 @@ export default function ProfileScreen() {
       // Fall back to null so the share card renders the default images instead of blank.
       const validateUri = async (url: string | null): Promise<string | null> => {
         if (!url) return null;
+        if (Platform.OS === "web" && isLocalFileUri(url)) return null;
         if (url.startsWith("file://") || url.startsWith("/")) {
           const info = await FileSystem.getInfoAsync(url).catch(() => ({ exists: false }));
           return info.exists ? url : null;
@@ -1028,9 +1034,9 @@ export default function ProfileScreen() {
                           accessibilityLabel="Edit profile picture"
                           accessibilityRole="button"
                         >
-                          {avatarImageUrlDraft ? (
+                          {imageSourceFromUri(avatarImageUrlDraft) ? (
                             <Image
-                              source={{ uri: avatarImageUrlDraft }}
+                              source={imageSourceFromUri(avatarImageUrlDraft)!}
                               style={styles.profileSettingsMediaImage}
                             />
                           ) : (
@@ -1072,9 +1078,9 @@ export default function ProfileScreen() {
                           accessibilityLabel="Edit banner picture"
                           accessibilityRole="button"
                         >
-                          {heroImageUrlDraft ? (
+                          {imageSourceFromUri(heroImageUrlDraft) ? (
                             <Image
-                              source={{ uri: heroImageUrlDraft }}
+                              source={imageSourceFromUri(heroImageUrlDraft)!}
                               style={styles.profileSettingsMediaImage}
                             />
                           ) : (
@@ -1266,7 +1272,10 @@ export default function ProfileScreen() {
         <View style={[styles.heroShell, { backgroundColor: profileBackgroundColor }]}>
           <View style={[styles.heroBanner, { height: heroBannerHeight }]}>
             <Image
-              source={heroImageUrlDraft ? { uri: heroImageUrlDraft } : require("../../assets/branding/MusicPromo-Banner.png")}
+              source={
+                imageSourceFromUri(heroImageUrlDraft) ??
+                require("../../assets/branding/MusicPromo-Banner.png")
+              }
               style={[styles.heroBannerImage, { width: windowWidth + 20 }]}
               resizeMode="cover"
               onError={() => setHeroImageUrlDraft(null)}
@@ -1290,7 +1299,10 @@ export default function ProfileScreen() {
               <View style={[styles.heroAvatarFrame, { backgroundColor: profileAvatarFrameColor }]}>
                 <View style={[styles.heroAvatar, { backgroundColor: profileAvatarBgColor }]}>
                   <Image
-                    source={avatarImageUrlDraft ? { uri: avatarImageUrlDraft } : require("../../assets/defaults/MusicPromo-DefaultAvatar.jpg")}
+                    source={
+                      imageSourceFromUri(avatarImageUrlDraft) ??
+                      require("../../assets/defaults/MusicPromo-DefaultAvatar.jpg")
+                    }
                     style={styles.heroAvatarImage}
                     onError={() => setAvatarImageUrlDraft(null)}
                   />

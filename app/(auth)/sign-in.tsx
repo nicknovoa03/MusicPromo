@@ -7,7 +7,9 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Platform,
 } from "react-native";
+import { useRouter } from "expo-router";
 import {
   isClerkAPIResponseError,
   useSSO,
@@ -25,6 +27,7 @@ import { isRunningInExpoGo } from "@/lib/runtimeEnvironment";
 WebBrowser.maybeCompleteAuthSession();
 
 export default function SignInScreen() {
+  const router = useRouter();
   const { startSSOFlow } = useSSO();
   const { signIn, setActive } = useSignIn();
   const { signUp } = useSignUp();
@@ -263,6 +266,22 @@ export default function SignInScreen() {
             <Text style={styles.guestButtonText}>Continue as Guest</Text>
           )}
         </Pressable>
+
+        {__DEV__ && Platform.OS === "web" ? (
+          <Pressable
+            style={({ pressed }) => [
+              styles.webDevButton,
+              pressed && styles.buttonPressed,
+            ]}
+            onPress={() =>
+              router.push("/create/flyer/details?flyerPreview=1")
+            }
+            accessibilityLabel="Open Event Flyer preview"
+            accessibilityRole="button"
+          >
+            <Text style={styles.webDevButtonText}>Preview Event Flyer (web)</Text>
+          </Pressable>
+        ) : null}
       </View>
     </View>
   );
@@ -343,5 +362,19 @@ const styles = StyleSheet.create({
   guestButtonText: {
     ...typography.button,
     color: colors.dark.textSecondary,
+  },
+  webDevButton: {
+    alignItems: "center",
+    justifyContent: "center",
+    height: 52,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+    marginTop: spacing.sm,
+  },
+  webDevButtonText: {
+    ...typography.button,
+    color: colors.dark.text,
+    fontSize: 15,
   },
 });

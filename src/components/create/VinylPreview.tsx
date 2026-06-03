@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { Animated, Easing, Image, StyleSheet, View } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { colors } from "@/constants/tokens";
+import { imageSourceFromUri } from "@/lib/mediaUri";
 import {
   getVinylCenterGeometry,
   getVinylEdgeGeometry,
@@ -173,10 +174,7 @@ export function VinylPreview({
   );
   const iconSize = Math.max(size * 0.2, 32);
   const centerIconSize = Math.max(Math.round(centerArtworkSize * 0.35), 14);
-  const artworkSource = useMemo(
-    () => (imageUri ? { uri: imageUri } : null),
-    [imageUri],
-  );
+  const artworkSource = useMemo(() => imageSourceFromUri(imageUri), [imageUri]);
 
   return (
     <View
