@@ -6,12 +6,13 @@
 - Doc owner: Nick
 - Created: 2026-06-02
 - Last updated: 2026-06-03
-- Status: **Foundation ready** — copy + primitives shipped; wizard route (Phase 2) next
+- Status: **Design handoff received** — Claude Design prototype in `docs/design-system/design_handoff_onboarding/`; Phase 2 = implement in RN
 - Routes: `/onboarding` (today); likely `/onboarding` stack with substeps after redesign
 - Related: `docs/requirements/PRODUCT_DESIGN_REQUIREMENTS.md`, `docs/release/app-store-v1-launch-scope.md`
 - Adopted UX decisions: [`ONBOARDING_RECOMMENDATIONS.md`](./ONBOARDING_RECOMMENDATIONS.md)
 - Design system (light, doc-first): [`../design-system/README.md`](../design-system/README.md)
 - Implementation notes: [`../design-assets/onboarding-workflow/`](../design-assets/onboarding-workflow/)
+- **Design handoff (Claude Design):** [`../design-system/design_handoff_onboarding/README.md`](../design-system/design_handoff_onboarding/README.md)
 - Implementation today: `app/onboarding.tsx` (carousel only), `app/(tabs)/profile.tsx` (full profile editor)
 - Profile persistence: `convex/users.updateProfile`, `src/lib/localProfile.ts` (guest)
 

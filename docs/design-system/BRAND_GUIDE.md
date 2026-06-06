@@ -99,6 +99,8 @@ Existing **dark** editor / export / share screens stay as-is in the app; dark th
 
 ## 10. Related docs
 
+- [BRAND_GUIDE_WORKFLOW.md](./BRAND_GUIDE_WORKFLOW.md) — how to create a brand guide (intake + prompts)
 - [DESIGN_SYSTEM.md](./DESIGN_SYSTEM.md) — tokens & layout
 - [COMPONENTS.md](./COMPONENTS.md) — UI building blocks
+- [CLAUDE_DESIGN_HANDOFF.md](./CLAUDE_DESIGN_HANDOFF.md) — wireframes → code
 - [ONBOARDING_REQUIREMENTS.md](../requirements/ONBOARDING_REQUIREMENTS.md)

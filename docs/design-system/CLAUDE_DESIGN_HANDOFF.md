@@ -1,6 +1,8 @@
 # Claude Design → Coding Agent Handoff
 
-A general workflow for solo devs: **spec + design system → wireframes in Claude Design → implementation in your coding agent** (Cursor, Codex, etc.). No Figma required.
+A general workflow for solo devs: **brand guide → design system → screen spec → wireframes in Claude Design → implementation in your coding agent** (Cursor, Codex, etc.). No Figma required.
+
+**No brand guide yet?** Start with [BRAND_GUIDE_WORKFLOW.md](./BRAND_GUIDE_WORKFLOW.md).
 
 ## Three layers
 
@@ -102,7 +104,7 @@ List any ambiguities before writing code.
 
 > I don’t wireframe in Figma first. I write a one-page spec, run it through Claude Design for structured wireframes, then hand the same spec + output to my coding agent. The trick is forcing **components, states, and tokens** — not “make it pretty.”
 
-Optional carousel hook: **Spec → Claude Design → Coding agent → Ship.**
+Optional carousel hook: **Brand guide → Tokens → Spec → Claude Design → Coding agent → Ship.**
 
 ---
 
@@ -115,5 +117,7 @@ For this repo’s onboarding flow, attach:
 - `docs/requirements/ONBOARDING_REQUIREMENTS.md`
 - `docs/design-assets/onboarding-workflow/copy.md`
 - `src/components/onboarding/` and `ShareCardPreview.tsx` as reference
+
+**Output lives in:** [`design_handoff_onboarding/README.md`](./design_handoff_onboarding/README.md) (HTML/React prototype — recreate in RN, don’t paste).
 
 See also [`../design-assets/onboarding-workflow/README.md`](../design-assets/onboarding-workflow/README.md).

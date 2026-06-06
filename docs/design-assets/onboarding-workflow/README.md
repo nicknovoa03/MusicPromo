@@ -35,6 +35,8 @@ onboarding-workflow/
 
 **Copy:** [`copy.md`](./copy.md) · **Code mirror:** `src/constants/onboardingCopy.ts`
 
+**Claude Design handoff (wireframes + prototype):** [`../../design-system/design_handoff_onboarding/README.md`](../../design-system/design_handoff_onboarding/README.md) — open `MusicPromo Onboarding.html` in a browser to preview.
+
 ## Inspiration
 
 `docs/design-inspiration/onboarding/` — reference screenshots only.

@@ -8,11 +8,13 @@
 |-----------|------|
 | Any new screen | [DESIGN_SYSTEM.md](./DESIGN_SYSTEM.md) + [COMPONENTS.md](./COMPONENTS.md) |
 | Copy / tone / logo | [BRAND_GUIDE.md](./BRAND_GUIDE.md) |
+| **Creating** a brand guide | [BRAND_GUIDE_WORKFLOW.md](./BRAND_GUIDE_WORKFLOW.md) |
 | Claude Design → code handoff | [CLAUDE_DESIGN_HANDOFF.md](./CLAUDE_DESIGN_HANDOFF.md) |
 | A specific feature | `docs/requirements/<FEATURE>_REQUIREMENTS.md` |
 
 ## Workflow (doc + code)
 
+0. **No brand guide yet?** Start with [BRAND_GUIDE_WORKFLOW.md](./BRAND_GUIDE_WORKFLOW.md) → then tokens → then [CLAUDE_DESIGN_HANDOFF.md](./CLAUDE_DESIGN_HANDOFF.md).
 1. **Check** `COMPONENTS.md` — reuse before inventing.
 2. **Style** with `colors`, `typography`, `spacing`, `radius` from `@/constants/tokens`.
 3. **Interact** with `pressScaleStyle` from `@/lib/pressFeedback` on primary taps.
@@ -35,6 +37,7 @@ If doc and code disagree: **update the doc or fix the code** — don’t leave t
 | Doc | Purpose |
 |-----|---------|
 | [BRAND_GUIDE.md](./BRAND_GUIDE.md) | Voice, logo, photography, do/don’t |
+| [BRAND_GUIDE_WORKFLOW.md](./BRAND_GUIDE_WORKFLOW.md) | Intake + prompts to create a brand guide |
 | [DESIGN_SYSTEM.md](./DESIGN_SYSTEM.md) | Colors, type, space, motion, light-first rules |
 | [COMPONENTS.md](./COMPONENTS.md) | Component catalog + code paths |
 | [CLAUDE_DESIGN_HANDOFF.md](./CLAUDE_DESIGN_HANDOFF.md) | General prompts: Claude Design wireframes → coding agent |
@@ -43,7 +46,7 @@ If doc and code disagree: **update the doc or fix the code** — don’t leave t
 
 | Feature | Requirements | Design assets |
 |---------|--------------|---------------|
-| Onboarding | [ONBOARDING_REQUIREMENTS.md](../requirements/ONBOARDING_REQUIREMENTS.md) | [onboarding-workflow/](../design-assets/onboarding-workflow/) |
+| Onboarding | [ONBOARDING_REQUIREMENTS.md](../requirements/ONBOARDING_REQUIREMENTS.md) | [onboarding-workflow/](../design-assets/onboarding-workflow/) · [Claude Design handoff](./design_handoff_onboarding/README.md) |
 | Product (full) | [PRODUCT_DESIGN_REQUIREMENTS.md](../requirements/PRODUCT_DESIGN_REQUIREMENTS.md) §9 | [design-inspiration/](../design-inspiration/) |
 
 ## Code = enforced template

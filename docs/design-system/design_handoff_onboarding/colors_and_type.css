@@ -1,0 +1,283 @@
+/* ===========================================================================
+ * MusicPromo — design tokens
+ * ---------------------------------------------------------------------------
+ * Reverse-engineered from `constants/tokens` usages in app/. Values are
+ * accurate to the call sites; replace with source-of-truth tokens when the
+ * file is attached.
+ * =========================================================================*/
+
+/* Inter @font-face is declared once by the root stylesheet (../colors_and_type.css).
+ * No duplicate @font-face here — when this handoff bundle is opened standalone the
+ * UI falls back to the native system sans stack, which is fine for dev reference. */
+
+:root {
+  /* ---------- LIGHT (app chrome default) -------------------------------- */
+  --light-bg:              #FBFAF7;
+  --light-surface:         #FFFFFF;
+  --light-surface-muted:   #F2F0EA;
+  --light-text:            #11131A;
+  --light-text-secondary:  #6B6F7A;
+  --light-border:          rgba(17, 19, 26, 0.10);
+
+  /* ---------- DARK (editorial + system dark mode) ----------------------- */
+  --dark-bg:               #0E1014;
+  --dark-surface:          #181B22;
+  --dark-surface-muted:    #23262F;
+  --dark-text:             #FFFFFF;
+  --dark-text-secondary:   rgba(255, 255, 255, 0.55);
+  --dark-border:           rgba(255, 255, 255, 0.10);
+
+  /* ---------- ACCENT ---------------------------------------------------- */
+  --accent-primary:        #3A5DFF;        /* primary CTAs */
+  --accent-primary-muted:  rgba(58, 93, 255, 0.14);
+  --accent-on-primary:     #FFFFFF;
+  --accent-fill:           #11131A;        /* dark-on-light "Pick a photo" button */
+  --accent-on-fill:        #FFFFFF;
+  --accent-fab:            #11131A;
+  --accent-fab-icon:       #FFFFFF;
+  --accent-on-dark:        #FFFFFF;
+
+  /* ---------- BRAND tints (light surface accents) ----------------------- */
+  --brand-tint-soft:       #EAF1FF;
+  --brand-tint-strong:     #B7CCFF;
+
+  /* ---------- SEMANTIC -------------------------------------------------- */
+  --destructive:           #C62828;
+  --warning:               #FF6B6B;         /* counter < 30 chars */
+  --success:               #1EA672;
+
+  /* ---------- OVERLAY --------------------------------------------------- */
+  --overlay-light:         rgba(0, 0, 0, 0.30);
+  --overlay-light-strong:  rgba(0, 0, 0, 0.56);
+  --overlay-dark:          rgba(0, 0, 0, 0.60);
+  --overlay-cover-darken:  rgba(0, 0, 0, 0.45); /* EPK cover slide overlay */
+
+  /* ---------- SPACING --------------------------------------------------- */
+  --space-xs:  4px;
+  --space-sm:  8px;
+  --space-md:  16px;
+  --space-lg:  24px;
+  --space-xl:  32px;
+  --space-xxl: 48px;
+
+  /* ---------- RADIUS ---------------------------------------------------- */
+  --radius-sm:   8px;
+  --radius-md:   12px;
+  --radius-lg:   20px;
+  --radius-full: 9999px;
+
+  /* iOS-edge artwork frame in media picker */
+  --radius-iphone-edge: 36px;
+
+  /* ---------- TYPE FAMILIES -------------------------------------------- */
+  --font-ui: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text",
+             "Helvetica Neue", system-ui, sans-serif;
+  /* Display = Inter at heavy weight + tight tracking (no separate display family) */
+  --font-display: "Inter", -apple-system, "SF Pro Display", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Monaco, monospace;
+
+  /* ---------- TYPE TOKENS (one-to-one with typography.* in tokens) ----- */
+  /* h1: large screen title — "Projects", "New Project"                   */
+  --type-h1-size:   30px;
+  --type-h1-line:   36px;
+  --type-h1-weight: 700;
+  --type-h1-track:  -0.02em;
+
+  /* h2: section heading — modal titles                                   */
+  --type-h2-size:   22px;
+  --type-h2-line:   28px;
+  --type-h2-weight: 700;
+  --type-h2-track:  -0.01em;
+
+  /* body: default UI copy                                                */
+  --type-body-size:   16px;
+  --type-body-line:   22px;
+  --type-body-weight: 400;
+
+  /* button: CTA + nav labels                                             */
+  --type-button-size:   16px;
+  --type-button-line:   20px;
+  --type-button-weight: 700;
+
+  /* caption: small meta, badges, dates                                   */
+  --type-caption-size:   12px;
+  --type-caption-line:   16px;
+  --type-caption-weight: 500;
+
+  /* label: uppercase section eyebrow                                     */
+  --type-label-size:   11px;
+  --type-label-line:   14px;
+  --type-label-weight: 700;
+  --type-label-track:  0.16em;
+
+  /* display: only used on EPK Track Details slide (slide 2)              */
+  --type-display-size:   88px;
+  --type-display-line:   88px;
+  --type-display-weight: 800;
+  --type-display-track:  -0.03em;
+
+  /* ---------- THEME (default light) ------------------------------------ */
+  --bg:              var(--light-bg);
+  --surface:         var(--light-surface);
+  --surface-muted:   var(--light-surface-muted);
+  --fg:              var(--light-text);
+  --fg-secondary:    var(--light-text-secondary);
+  --border:          var(--light-border);
+  color-scheme: light;
+}
+
+/* ---------- DARK THEME OVERRIDE -------------------------------------- */
+:root[data-theme="dark"],
+.theme-dark {
+  --bg:            var(--dark-bg);
+  --surface:       var(--dark-surface);
+  --surface-muted: var(--dark-surface-muted);
+  --fg:            var(--dark-text);
+  --fg-secondary:  var(--dark-text-secondary);
+  --border:        var(--dark-border);
+  color-scheme: dark;
+}
+
+/* Dark theming is opt-in via [data-theme="dark"] / .theme-dark above.
+ * (No prefers-color-scheme auto-switch: theme is selected explicitly so
+ *  always-light surfaces like onboarding stay light regardless of OS setting.) */
+
+/* ===========================================================================
+ * SEMANTIC TYPE CLASSES
+ * Use these classes anywhere you'd use the typography.* object in RN.
+ * =========================================================================*/
+
+html, body {
+  font-family: var(--font-ui);
+  color: var(--fg);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.h1 {
+  font: var(--type-h1-weight) var(--type-h1-size)/var(--type-h1-line) var(--font-ui);
+  letter-spacing: var(--type-h1-track);
+  color: var(--fg);
+  margin: 0;
+}
+
+.h2 {
+  font: var(--type-h2-weight) var(--type-h2-size)/var(--type-h2-line) var(--font-ui);
+  letter-spacing: var(--type-h2-track);
+  color: var(--fg);
+  margin: 0;
+}
+
+.body {
+  font: var(--type-body-weight) var(--type-body-size)/var(--type-body-line) var(--font-ui);
+  color: var(--fg);
+  margin: 0;
+}
+
+.body-secondary {
+  font: var(--type-body-weight) var(--type-body-size)/var(--type-body-line) var(--font-ui);
+  color: var(--fg-secondary);
+  margin: 0;
+}
+
+.button-label {
+  font: var(--type-button-weight) var(--type-button-size)/var(--type-button-line) var(--font-ui);
+  color: var(--fg);
+  margin: 0;
+}
+
+.caption {
+  font: var(--type-caption-weight) var(--type-caption-size)/var(--type-caption-line) var(--font-ui);
+  color: var(--fg-secondary);
+  margin: 0;
+}
+
+.label {
+  font: var(--type-label-weight) var(--type-label-size)/var(--type-label-line) var(--font-ui);
+  letter-spacing: var(--type-label-track);
+  text-transform: uppercase;
+  color: var(--fg-secondary);
+  margin: 0;
+}
+
+.display {
+  font: var(--type-display-weight) var(--type-display-size)/var(--type-display-line) var(--font-display);
+  letter-spacing: var(--type-display-track);
+  color: var(--fg);
+  margin: 0;
+}
+
+/* ===========================================================================
+ * PRIMITIVES
+ * =========================================================================*/
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  height: 52px;
+  padding: 0 var(--space-lg);
+  border-radius: var(--radius-md);
+  background: var(--accent-primary);
+  color: var(--accent-on-primary);
+  border: 0;
+  font: var(--type-button-weight) var(--type-button-size)/1 var(--font-ui);
+  cursor: pointer;
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+.btn-primary:disabled { opacity: 0.3; cursor: not-allowed; }
+.btn-primary:active { opacity: 0.85; transform: scale(0.985); }
+
+.btn-fill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 44px;
+  padding: 0 var(--space-lg);
+  border-radius: var(--radius-full);
+  background: var(--accent-fill);
+  color: var(--accent-on-fill);
+  border: 0;
+  font: var(--type-button-weight) var(--type-button-size)/1 var(--font-ui);
+  cursor: pointer;
+}
+.btn-fill:active { opacity: 0.85; transform: scale(0.985); }
+
+.btn-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  padding: 0 var(--space-md);
+  border-radius: var(--radius-full);
+  background: var(--accent-primary-muted);
+  color: var(--fg);
+  border: 0;
+  font: 700 12px/1 var(--font-ui);
+  cursor: pointer;
+}
+
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  border: 0;
+  cursor: pointer;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+}
+
+.hairline {
+  border-top: 1px solid var(--border);
+}

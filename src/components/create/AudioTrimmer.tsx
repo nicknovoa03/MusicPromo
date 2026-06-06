@@ -11,14 +11,6 @@ import {
   Modal,
 } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import Svg, {
-  Path,
-  Defs,
-  LinearGradient,
-  Stop,
-  ClipPath,
-  Rect,
-} from "react-native-svg";
 import { Picker } from "@react-native-picker/picker";
 import * as Haptics from "expo-haptics";
 import { colors, spacing, radius, typography } from "@/constants/tokens";
@@ -37,46 +29,25 @@ interface AudioTrimmerProps {
 }
 
 const WAVEFORM_BAR_COUNT = 100;
-const WAVEFORM_VISIBLE_SECONDS = 15;
-const TRACK_HEIGHT = 88;
-const UPPER_SECTION_H = 55;
-const CENTER_GAP_H = 3;
-const LOWER_SECTION_H = TRACK_HEIGHT - UPPER_SECTION_H - CENTER_GAP_H; // 30
-const UPPER_MAX_H = UPPER_SECTION_H - 4;  // 51px — leaves breathing room at top
-const LOWER_MAX_H = Math.round(LOWER_SECTION_H * 0.78); // 23px
+const TRACK_HEIGHT = 72;
+const TOP_SECTION_H = 38;
+const CENTER_GAP_H = 2;
+const REFLECT_SECTION_H = TRACK_HEIGHT - TOP_SECTION_H - CENTER_GAP_H;
+const TOP_MAX_H = TOP_SECTION_H - 4;
+const BAR_MIN_H = 3;
+const REFLECT_RATIO = 0.45;
+const AMP_EXPONENT = 0.55;
 const DURATION_WHEEL_HEIGHT = 190;
 const START_DRAG_SENSITIVITY = 0.62;
 const START_DRAG_DEADZONE_PX = 2;
 
-const WAVE_BASE_UPPER = UPPER_SECTION_H; // 55 — flat baseline for upper wave
-const WAVE_BASE_LOWER = UPPER_SECTION_H + CENTER_GAP_H; // 58 — flat baseline for lower wave
+const BAR_PLAYED = "#FFFFFF";
+const BAR_UNPLAYED = "rgba(255,255,255,0.32)";
+const REFLECT_PLAYED = "rgba(255,255,255,0.55)";
+const REFLECT_UNPLAYED = "rgba(255,255,255,0.12)";
 
-function buildWavePath(
-  amplitudes: number[],
-  width: number,
-  baseY: number,
-  dir: 1 | -1,
-): string {
-  if (!width || !amplitudes.length) return "";
-  const N = amplitudes.length;
-  const pts: [number, number][] = [
-    [0, baseY],
-    ...amplitudes.map((amp, i) => [((i + 0.5) / N) * width, baseY + dir * amp] as [number, number]),
-    [width, baseY],
-  ];
-  let d = `M ${pts[0][0]},${pts[0][1]}`;
-  for (let i = 1; i < pts.length; i++) {
-    const p0 = pts[Math.max(0, i - 2)];
-    const p1 = pts[i - 1];
-    const p2 = pts[i];
-    const p3 = pts[Math.min(pts.length - 1, i + 1)];
-    const cp1x = p1[0] + (p2[0] - p0[0]) / 6;
-    const cp1y = p1[1] + (p2[1] - p0[1]) / 6;
-    const cp2x = p2[0] - (p3[0] - p1[0]) / 6;
-    const cp2y = p2[1] - (p3[1] - p1[1]) / 6;
-    d += ` C ${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`;
-  }
-  return d + " Z";
+function barHeightFromAmp(amp: number): number {
+  return Math.max(BAR_MIN_H, Math.pow(amp, AMP_EXPONENT) * TOP_MAX_H);
 }
 
 function formatTime(sec: number): string {
@@ -123,7 +94,6 @@ export function AudioTrimmer({
   const [isDurationPickerVisible, setIsDurationPickerVisible] = useState(false);
   const [durationDraftSec, setDurationDraftSec] = useState(Math.round(currentDuration));
   const [trimProgressSec, setTrimProgressSec] = useState(0);
-  const [trackLayoutReady, setTrackLayoutReady] = useState(false);
   const [trackWidth, setTrackWidth] = useState(0);
   const [railWidth, setRailWidth] = useState(0);
   const lastProgressTickRef = useRef<number | null>(null);
@@ -162,7 +132,6 @@ export function AudioTrimmer({
 
   const onTrackLayout = useCallback((e: LayoutChangeEvent) => {
     setTrackWidth(e.nativeEvent.layout.width);
-    setTrackLayoutReady(true);
   }, []);
 
   const onRailLayout = useCallback((e: LayoutChangeEvent) => {
@@ -279,7 +248,6 @@ export function AudioTrimmer({
   const railThumbLeft = railWidth > 0 ? railProgress * railWidth : 0;
   const effectiveProgressRatio =
     currentDuration > 0 ? clamp(trimProgressSec / currentDuration, 0, 1) : 0;
-  const progressX = trackWidth * effectiveProgressRatio;
 
   const selectionWindowPan = useMemo(
     () =>
@@ -324,11 +292,8 @@ export function AudioTrimmer({
         const lo = Math.floor(srcIdx);
         const hi = Math.min(lo + 1, waveformData.length - 1);
         const frac = srcIdx - lo;
-        const amp = Math.pow(waveformData[lo] * (1 - frac) + waveformData[hi] * frac, 0.7);
-        return {
-          upperHeight: Math.max(6, amp * UPPER_MAX_H),
-          lowerHeight: Math.max(3, amp * LOWER_MAX_H),
-        };
+        const amp = waveformData[lo] * (1 - frac) + waveformData[hi] * frac;
+        return barHeightFromAmp(amp);
       });
     }
     return Array.from({ length: WAVEFORM_BAR_COUNT }, (_, i) => {
@@ -336,20 +301,9 @@ export function AudioTrimmer({
       const envelope = (Math.sin(phase) + 1) / 2;
       const texture = (Math.sin(i * 1.18 + 0.9) + 1) / 2;
       const amp = envelope * 0.8 + texture * 0.2;
-      return {
-        upperHeight: Math.max(6, amp * UPPER_MAX_H),
-        lowerHeight: Math.max(3, amp * LOWER_MAX_H),
-      };
+      return barHeightFromAmp(amp);
     });
   }, [waveformData, safeStart, safeDuration, currentDuration]);
-
-  const svgPaths = useMemo(() => {
-    if (!trackWidth) return null;
-    return {
-      upper: buildWavePath(waveformBars.map((b) => b.upperHeight), trackWidth, WAVE_BASE_UPPER, -1),
-      lower: buildWavePath(waveformBars.map((b) => b.lowerHeight), trackWidth, WAVE_BASE_LOWER, 1),
-    };
-  }, [waveformBars, trackWidth]);
 
   useEffect(() => {
     setTrimProgressSec(0);
@@ -551,45 +505,36 @@ export function AudioTrimmer({
         onLayout={onTrackLayout}
         {...selectionWindowPan.panHandlers}
       >
-        {trackLayoutReady && svgPaths && (
-          <Svg
-            width={trackWidth}
-            height={TRACK_HEIGHT}
-            style={StyleSheet.absoluteFillObject}
-            pointerEvents="none"
-          >
-            <Defs>
-              <LinearGradient id="wvUpperDim" x1="0" y1="0" x2="0" y2={WAVE_BASE_UPPER} gradientUnits="userSpaceOnUse">
-                <Stop offset="0" stopColor="#FFFFFF" stopOpacity="0.52" />
-                <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0.03" />
-              </LinearGradient>
-              <LinearGradient id="wvLowerDim" x1="0" y1={WAVE_BASE_LOWER} x2="0" y2={TRACK_HEIGHT} gradientUnits="userSpaceOnUse">
-                <Stop offset="0" stopColor="#FFFFFF" stopOpacity="0.10" />
-                <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0.01" />
-              </LinearGradient>
-              <LinearGradient id="wvUpperLit" x1="0" y1="0" x2="0" y2={WAVE_BASE_UPPER} gradientUnits="userSpaceOnUse">
-                <Stop offset="0" stopColor={colors.accent.primary} stopOpacity="0.95" />
-                <Stop offset="1" stopColor={colors.accent.primary} stopOpacity="0.10" />
-              </LinearGradient>
-              <LinearGradient id="wvLowerLit" x1="0" y1={WAVE_BASE_LOWER} x2="0" y2={TRACK_HEIGHT} gradientUnits="userSpaceOnUse">
-                <Stop offset="0" stopColor={colors.accent.primary} stopOpacity="0.30" />
-                <Stop offset="1" stopColor={colors.accent.primary} stopOpacity="0.02" />
-              </LinearGradient>
-              <ClipPath id="wvPlayedClip">
-                <Rect x="0" y="0" width={progressX} height={TRACK_HEIGHT} />
-              </ClipPath>
-            </Defs>
-            <Path d={svgPaths.upper} fill="url(#wvUpperDim)" />
-            <Path d={svgPaths.lower} fill="url(#wvLowerDim)" />
-            {progressX > 0 && (
-              <>
-                <Path d={svgPaths.upper} fill="url(#wvUpperLit)" clipPath="url(#wvPlayedClip)" />
-                <Path d={svgPaths.lower} fill="url(#wvLowerLit)" clipPath="url(#wvPlayedClip)" />
-              </>
-            )}
-          </Svg>
-        )}
+        <View style={styles.waveformStrip} pointerEvents="none">
+          {waveformBars.map((height, i) => {
+            const isPlayed = (i + 1) / WAVEFORM_BAR_COUNT <= effectiveProgressRatio;
+            const reflectHeight = Math.max(2, height * REFLECT_RATIO);
+            const barColor = isPlayed ? BAR_PLAYED : BAR_UNPLAYED;
+            const reflectColor = isPlayed ? REFLECT_PLAYED : REFLECT_UNPLAYED;
 
+            return (
+              <View key={`bar-${i}`} style={styles.barColumn}>
+                <View style={styles.topSection}>
+                  <View
+                    style={[
+                      styles.topBar,
+                      { height, backgroundColor: barColor },
+                    ]}
+                  />
+                </View>
+                <View style={styles.centerGap} />
+                <View style={styles.reflectSection}>
+                  <View
+                    style={[
+                      styles.reflectBar,
+                      { height: reflectHeight, backgroundColor: reflectColor },
+                    ]}
+                  />
+                </View>
+              </View>
+            );
+          })}
+        </View>
       </View>
     </View>
   );
@@ -752,40 +697,32 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     position: "relative",
   },
-  frameStrip: {
+  waveformStrip: {
     ...StyleSheet.absoluteFillObject,
-    overflow: "hidden",
-  },
-  frameStripContent: {
-    height: "100%",
     flexDirection: "row",
     alignItems: "stretch",
     gap: 1,
-    paddingHorizontal: 2,
+    paddingHorizontal: spacing.xs,
   },
   barColumn: {
     flex: 1,
     flexDirection: "column",
   },
-  upperSection: {
-    height: UPPER_SECTION_H,
+  topSection: {
+    height: TOP_SECTION_H,
     justifyContent: "flex-end",
   },
-  upperBar: {
-    backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: 1,
-    borderTopRightRadius: 1,
+  topBar: {
+    borderRadius: 1,
   },
   centerGap: {
     height: CENTER_GAP_H,
   },
-  lowerSection: {
-    height: LOWER_SECTION_H,
+  reflectSection: {
+    height: REFLECT_SECTION_H,
     justifyContent: "flex-start",
   },
-  lowerBar: {
-    backgroundColor: "#FFFFFF",
-    borderBottomLeftRadius: 1,
-    borderBottomRightRadius: 1,
+  reflectBar: {
+    borderRadius: 1,
   },
 });
