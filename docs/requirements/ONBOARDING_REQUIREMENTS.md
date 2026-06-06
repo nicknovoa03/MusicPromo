@@ -6,7 +6,7 @@
 - Doc owner: Nick
 - Created: 2026-06-02
 - Last updated: 2026-06-03
-- Status: **Design handoff received** — Claude Design prototype in `docs/design-system/design_handoff_onboarding/`; Phase 2 = implement in RN
+- Status: **Implemented** — `app/onboarding/` wizard; token/copy cleanup deferred
 - Routes: `/onboarding` (today); likely `/onboarding` stack with substeps after redesign
 - Related: `docs/requirements/PRODUCT_DESIGN_REQUIREMENTS.md`, `docs/release/app-store-v1-launch-scope.md`
 - Adopted UX decisions: [`ONBOARDING_RECOMMENDATIONS.md`](./ONBOARDING_RECOMMENDATIONS.md)

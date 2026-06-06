@@ -133,7 +133,9 @@ export const updateProfile = mutation({
     if (args.avatarImageUrl !== undefined) {
       const normalizedAvatarImageUrl = normalizeOptionalText(args.avatarImageUrl ?? "");
       updates.avatarImageUrl = normalizedAvatarImageUrl;
-      updates.avatarUrl = normalizedAvatarImageUrl;
+      if (normalizedAvatarImageUrl !== undefined) {
+        updates.avatarUrl = normalizedAvatarImageUrl;
+      }
     }
     if (args.heroImageUrl !== undefined) {
       const normalizedHeroImageUrl = normalizeOptionalText(args.heroImageUrl ?? "");

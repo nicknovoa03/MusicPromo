@@ -12,7 +12,8 @@ Code paths are relative to repo root. Add a row when you ship a reusable pattern
 |-----------|--------|--------------|------|-------|
 | Tab bar | shipped | Adaptive | `app/(tabs)/_layout.tsx` | Home, Create, Profile |
 | Sign-in screen | shipped | Light | `app/(auth)/sign-in.tsx` | Apple, Google, Guest |
-| Wizard shell | shipped (primitive) | **Light** | `src/components/onboarding/OnboardingWizardChrome.tsx` | Progress bar + step counter + Skip |
+| Onboarding wizard | shipped | **Light** | `app/onboarding/index.tsx` + `OnboardingWizard.tsx` | 6-step handoff flow |
+| Wizard shell (legacy primitive) | shipped | **Light** | `src/components/onboarding/OnboardingWizardChrome.tsx` | Superseded by `OnboardingWizard` |
 | Permission primer shell | shipped (primitive) | **Light** | `src/components/onboarding/PermissionPrimerScreen.tsx` | Shared by `perm-photos`, `perm-audio`, `perm-save` |
 | Story slide shell | shipped (primitive) | **Light** | `src/components/onboarding/OnboardingStorySlide.tsx` | Intro + finish slides |
 | Onboarding CTAs | shipped (primitive) | **Light** | `OnboardingPrimaryButton`, `OnboardingSecondaryButton` | Scale press |

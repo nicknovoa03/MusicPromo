@@ -45,6 +45,7 @@ import {
   type ProfileLinkPlatform,
 } from "@/lib/localProfile";
 import { clearLocalOnboardingCompleted } from "@/lib/onboarding";
+import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 import { getExpoPushTokenAsync } from "@/lib/notifications";
 import type { EventName } from "@/lib/analytics";
 import { useLocalSession } from "@/providers/localSession";
@@ -274,6 +275,25 @@ export default function ProfileScreen() {
   const [linksDraft, setLinksDraft] = useState<DraftProfileLink[]>([]);
   const [isProfileSettingsOpen, setIsProfileSettingsOpen] = useState(false);
   const [isClosingProfileSettings, setIsClosingProfileSettings] = useState(false);
+  const [showOnboardingPreview, setShowOnboardingPreview] = useState(false);
+  const [onboardingPreviewKey, setOnboardingPreviewKey] = useState(0);
+  const resetProfileSettingsModal = useCallback(() => {
+    profileSettingsTranslateX.setValue(windowWidth);
+    setIsClosingProfileSettings(false);
+    setIsProfileSettingsOpen(false);
+  }, [profileSettingsTranslateX, windowWidth]);
+
+  const openOnboardingPreview = useCallback(() => {
+    // Avoid stacking modals — a stuck settings sheet blocks Edit Profile afterward.
+    resetProfileSettingsModal();
+    setOnboardingPreviewKey((k) => k + 1);
+    setShowOnboardingPreview(true);
+  }, [resetProfileSettingsModal]);
+
+  const closeOnboardingPreview = useCallback(() => {
+    setShowOnboardingPreview(false);
+    resetProfileSettingsModal();
+  }, [resetProfileSettingsModal]);
   const profileSettingsTranslateX = useRef(new Animated.Value(windowWidth)).current;
   const [brokenProjectIds, setBrokenProjectIds] = useState<Set<string>>(new Set());
 
@@ -339,7 +359,7 @@ export default function ProfileScreen() {
 
   const sourceAvatarImageUrl = usesLocalProfile
     ? localArtistProfile.avatarImageUrl
-    : convexUser?.avatarImageUrl ?? convexUser?.avatarUrl ?? localArtistProfile.avatarImageUrl ?? null;
+    : convexUser?.avatarImageUrl ?? localArtistProfile.avatarImageUrl ?? null;
   const sourceHeroImageUrl = usesLocalProfile
     ? localArtistProfile.heroImageUrl
     : convexUser?.heroImageUrl ?? localArtistProfile.heroImageUrl ?? null;
@@ -773,7 +793,10 @@ export default function ProfileScreen() {
   const modalTopInset = Platform.OS === "ios" ? (insets.top > 0 ? insets.top : 44) : 0;
 
   const handleOpenProfileSettings = useCallback(() => {
-    if (isProfileSettingsOpen || isClosingProfileSettings) return;
+    if (isProfileSettingsOpen) return;
+    if (isClosingProfileSettings) {
+      setIsClosingProfileSettings(false);
+    }
     profileSettingsTranslateX.setValue(windowWidth);
     setIsProfileSettingsOpen(true);
     requestAnimationFrame(() => {
@@ -1210,6 +1233,25 @@ export default function ProfileScreen() {
                       <Text style={[styles.profileSettingsSectionLabelText, { color: profileTextSecondaryColor }]}>Account</Text>
                     </View>
 
+                    {__DEV__ ? (
+                      <Pressable
+                        style={({ pressed }) => [
+                          styles.profileSettingsRow,
+                          pressed && styles.actionRowPressed,
+                        ]}
+                        onPress={openOnboardingPreview}
+                        accessibilityLabel="Preview onboarding"
+                        accessibilityRole="button"
+                      >
+                        <View style={styles.actionRowLeft}>
+                          <Ionicons name="play-circle-outline" size={20} color={profileTextColor} />
+                          <Text style={[styles.actionText, { color: profileTextColor }]}>
+                            Preview onboarding
+                          </Text>
+                        </View>
+                      </Pressable>
+                    ) : null}
+
                     <Pressable
                       style={({ pressed }) => [
                         styles.profileSettingsRow,
@@ -1519,6 +1561,21 @@ export default function ProfileScreen() {
           ) : null}
         </View>
       </ScrollView>
+
+      {__DEV__ && showOnboardingPreview ? (
+        <Modal
+          visible
+          animationType="slide"
+          presentationStyle="fullScreen"
+          onRequestClose={closeOnboardingPreview}
+        >
+          <OnboardingWizard
+            key={onboardingPreviewKey}
+            previewMode
+            onPreviewClose={closeOnboardingPreview}
+          />
+        </Modal>
+      ) : null}
 
       {isShareCardVisible ? (
         <View style={styles.shareCardOffscreen} pointerEvents="none">

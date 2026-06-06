@@ -53,7 +53,7 @@ function AuthGate() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="(auth)" />
-      <Stack.Screen name="onboarding" options={{ gestureEnabled: false }} />
+      <Stack.Screen name="onboarding/index" options={{ gestureEnabled: false }} />
       <Stack.Screen
         name="create"
         options={{ gestureEnabled: false }}

@@ -292,8 +292,8 @@ const longPressProjectIdRef = useRef<string | null>(null);
 
   const profileAvatarUri = useMemo(() => {
     if (isLocalGuest) return normalizeAvatarUri(localAvatarUrl);
-    return normalizeAvatarUri(convexUser?.avatarImageUrl ?? convexUser?.avatarUrl);
-  }, [convexUser?.avatarImageUrl, convexUser?.avatarUrl, isLocalGuest, localAvatarUrl]);
+    return normalizeAvatarUri(convexUser?.avatarImageUrl);
+  }, [convexUser?.avatarImageUrl, isLocalGuest, localAvatarUrl]);
 
   useEffect(() => {
     setAvatarError(false);

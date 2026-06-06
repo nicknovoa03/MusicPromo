@@ -6,10 +6,10 @@ import {
 } from "./onboardingSteps";
 
 // Bump when onboarding content/flow changes. Existing users below this version see onboarding again.
-export const CURRENT_ONBOARDING_VERSION = 2;
+export const CURRENT_ONBOARDING_VERSION = 3;
 
-/** Set CURRENT_ONBOARDING_VERSION to this when the 6-step wizard ships. */
-export const NEXT_ONBOARDING_VERSION = 3;
+/** Previous carousel-only flow. */
+export const LEGACY_ONBOARDING_VERSION = 2;
 
 const LOCAL_ONBOARDING_KEY_PREFIX = "musicpromo:onboarding-complete";
 const LOCAL_ONBOARDING_STEP_KEY_PREFIX = "musicpromo:onboarding-step";

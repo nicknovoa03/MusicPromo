@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback, useEffect, useMemo } from "react";
+import { useRef, useState, useCallback, useEffect, useMemo, memo } from "react";
 import {
   View,
   StyleSheet,
@@ -50,6 +50,41 @@ function barHeightFromAmp(amp: number): number {
   return Math.max(BAR_MIN_H, Math.pow(amp, AMP_EXPONENT) * TOP_MAX_H);
 }
 
+type WaveformBarsProps = {
+  bars: number[];
+  progressRatio: number;
+};
+
+const WaveformBars = memo(function WaveformBars({ bars, progressRatio }: WaveformBarsProps) {
+  return (
+    <View style={styles.waveformStrip} pointerEvents="none">
+      {bars.map((height, i) => {
+        const isPlayed = (i + 1) / WAVEFORM_BAR_COUNT <= progressRatio;
+        const reflectHeight = Math.max(2, height * REFLECT_RATIO);
+        const barColor = isPlayed ? BAR_PLAYED : BAR_UNPLAYED;
+        const reflectColor = isPlayed ? REFLECT_PLAYED : REFLECT_UNPLAYED;
+
+        return (
+          <View key={`bar-${i}`} style={styles.barColumn}>
+            <View style={styles.topSection}>
+              <View style={[styles.topBar, { height, backgroundColor: barColor }]} />
+            </View>
+            <View style={styles.centerGap} />
+            <View style={styles.reflectSection}>
+              <View
+                style={[
+                  styles.reflectBar,
+                  { height: reflectHeight, backgroundColor: reflectColor },
+                ]}
+              />
+            </View>
+          </View>
+        );
+      })}
+    </View>
+  );
+});
+
 function formatTime(sec: number): string {
   const m = Math.floor(sec / 60);
   const s = Math.floor(sec % 60);
@@ -96,10 +131,14 @@ export function AudioTrimmer({
   const [trimProgressSec, setTrimProgressSec] = useState(0);
   const [trackWidth, setTrackWidth] = useState(0);
   const [railWidth, setRailWidth] = useState(0);
+  const trackWidthRef = useRef(0);
+  const railWidthRef = useRef(0);
   const lastProgressTickRef = useRef<number | null>(null);
   const didAutoPauseRef = useRef(false);
   const shouldAutoPauseRef = useRef(false);
   const lastHapticSecRef = useRef<number | null>(null);
+  const isTrimGestureActiveRef = useRef(false);
+  const lastAppliedTrimRef = useRef({ start: safeStart, end: safeEnd });
 
   const onTrimChangeRef = useRef(onTrimChange);
   const railGestureStartRef = useRef(safeStart);
@@ -119,23 +158,21 @@ export function AudioTrimmer({
   }, [onTrimChange]);
 
   useEffect(() => {
-    latestValuesRef.current = {
-      safeDuration,
-      safeStart,
-      currentDuration,
-      maxStart,
-      trackWidth,
-      railWidth,
-      selectionWidth: latestValuesRef.current.selectionWidth,
-    };
-  }, [safeDuration, safeStart, currentDuration, maxStart, trackWidth, railWidth]);
+    lastAppliedTrimRef.current = { start: safeStart, end: safeEnd };
+  }, [safeStart, safeEnd]);
 
   const onTrackLayout = useCallback((e: LayoutChangeEvent) => {
-    setTrackWidth(e.nativeEvent.layout.width);
+    const width = e.nativeEvent.layout.width;
+    if (Math.abs(width - trackWidthRef.current) < 0.5) return;
+    trackWidthRef.current = width;
+    setTrackWidth(width);
   }, []);
 
   const onRailLayout = useCallback((e: LayoutChangeEvent) => {
-    setRailWidth(e.nativeEvent.layout.width);
+    const width = e.nativeEvent.layout.width;
+    if (Math.abs(width - railWidthRef.current) < 0.5) return;
+    railWidthRef.current = width;
+    setRailWidth(width);
   }, []);
 
   const secToX = useCallback(
@@ -150,10 +187,25 @@ export function AudioTrimmer({
         0,
         Math.max(safeDuration - fixedDurationSec, 0),
       );
-      onTrimChangeRef.current(clampedStart, clampedStart + fixedDurationSec);
+      const clampedEnd = clampedStart + fixedDurationSec;
+      const last = lastAppliedTrimRef.current;
+      if (
+        Math.abs(clampedStart - last.start) < 0.02 &&
+        Math.abs(clampedEnd - last.end) < 0.02
+      ) {
+        return;
+      }
+      lastAppliedTrimRef.current = { start: clampedStart, end: clampedEnd };
+      onTrimChangeRef.current(clampedStart, clampedEnd);
     },
     [safeDuration],
   );
+
+  const endTrimGesture = useCallback(() => {
+    isTrimGestureActiveRef.current = false;
+    setTrimProgressSec((previous) => (previous === 0 ? previous : 0));
+    lastProgressTickRef.current = null;
+  }, []);
 
   const durationPickerOptions = useMemo(() => {
     const lower = Math.max(1, Math.round(Math.min(minDuration, safeDuration)));
@@ -215,6 +267,7 @@ export function AudioTrimmer({
         onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponder: () => true,
         onPanResponderGrant: () => {
+          isTrimGestureActiveRef.current = true;
           railGestureStartRef.current = latestValuesRef.current.safeStart;
         },
         onPanResponderMove: (
@@ -236,13 +289,23 @@ export function AudioTrimmer({
           const nextStart = clamp(railGestureStartRef.current + deltaSec, 0, latestMaxStart);
           applyStart(nextStart, latestCurrentDuration);
         },
+        onPanResponderRelease: endTrimGesture,
+        onPanResponderTerminate: endTrimGesture,
       }),
-    [applyStart],
+    [applyStart, endTrimGesture],
   );
 
   const selectionWidth = trackWidth > 0 ? trackWidth : Math.max(secToX(safeEnd) - secToX(safeStart), 96);
-  // Keep selectionWidth in the ref so the gesture handler always has the latest value
-  latestValuesRef.current.selectionWidth = selectionWidth;
+
+  latestValuesRef.current = {
+    safeDuration,
+    safeStart,
+    currentDuration,
+    maxStart,
+    trackWidth,
+    railWidth,
+    selectionWidth,
+  };
 
   const railProgress = maxStart > 0 ? safeStart / maxStart : 0;
   const railThumbLeft = railWidth > 0 ? railProgress * railWidth : 0;
@@ -255,6 +318,7 @@ export function AudioTrimmer({
         onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponder: () => true,
         onPanResponderGrant: () => {
+          isTrimGestureActiveRef.current = true;
           selectionGestureStartRef.current = latestValuesRef.current.safeStart;
         },
         onPanResponderMove: (
@@ -279,8 +343,10 @@ export function AudioTrimmer({
           );
           applyStart(nextStart, latestCurrentDuration);
         },
+        onPanResponderRelease: endTrimGesture,
+        onPanResponderTerminate: endTrimGesture,
       }),
-    [applyStart],
+    [applyStart, endTrimGesture],
   );
 
   const waveformBars = useMemo(() => {
@@ -306,7 +372,8 @@ export function AudioTrimmer({
   }, [waveformData, safeStart, safeDuration, currentDuration]);
 
   useEffect(() => {
-    setTrimProgressSec(0);
+    if (isTrimGestureActiveRef.current) return;
+    setTrimProgressSec((previous) => (previous === 0 ? previous : 0));
     lastProgressTickRef.current = null;
     didAutoPauseRef.current = false;
     shouldAutoPauseRef.current = false;
@@ -327,7 +394,7 @@ export function AudioTrimmer({
   // Reset visual progress when playback stops so there's no stale position on next play.
   useEffect(() => {
     if (isPlaying) return;
-    setTrimProgressSec(0);
+    setTrimProgressSec((previous) => (previous === 0 ? previous : 0));
     lastProgressTickRef.current = null;
   }, [isPlaying]);
 
@@ -335,7 +402,7 @@ export function AudioTrimmer({
   // Guard: ignore updates while stopped — status callbacks can arrive during async play setup
   // (before isPlaying=true) and would cause a stale-position jump on the first frame.
   useEffect(() => {
-    if (!isPlaying) return;
+    if (!isPlaying || isTrimGestureActiveRef.current) return;
     if (typeof playbackProgressSec !== "number" || !Number.isFinite(playbackProgressSec)) return;
     const clamped = clamp(playbackProgressSec, 0, currentDuration);
     setTrimProgressSec(clamped);
@@ -505,36 +572,7 @@ export function AudioTrimmer({
         onLayout={onTrackLayout}
         {...selectionWindowPan.panHandlers}
       >
-        <View style={styles.waveformStrip} pointerEvents="none">
-          {waveformBars.map((height, i) => {
-            const isPlayed = (i + 1) / WAVEFORM_BAR_COUNT <= effectiveProgressRatio;
-            const reflectHeight = Math.max(2, height * REFLECT_RATIO);
-            const barColor = isPlayed ? BAR_PLAYED : BAR_UNPLAYED;
-            const reflectColor = isPlayed ? REFLECT_PLAYED : REFLECT_UNPLAYED;
-
-            return (
-              <View key={`bar-${i}`} style={styles.barColumn}>
-                <View style={styles.topSection}>
-                  <View
-                    style={[
-                      styles.topBar,
-                      { height, backgroundColor: barColor },
-                    ]}
-                  />
-                </View>
-                <View style={styles.centerGap} />
-                <View style={styles.reflectSection}>
-                  <View
-                    style={[
-                      styles.reflectBar,
-                      { height: reflectHeight, backgroundColor: reflectColor },
-                    ]}
-                  />
-                </View>
-              </View>
-            );
-          })}
-        </View>
+        <WaveformBars bars={waveformBars} progressRatio={effectiveProgressRatio} />
       </View>
     </View>
   );
