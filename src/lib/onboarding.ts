@@ -24,6 +24,55 @@ type OnboardingLocalOptions = {
   localGuest?: boolean;
 };
 
+export type OnboardingCompletionCache = {
+  userId: string | null | undefined;
+  isLocalGuest: boolean;
+  completed: boolean;
+};
+
+// Survive remount so tabs don't flash the loading gate; must stay in sync with writes.
+let onboardingCompletionCache: OnboardingCompletionCache | null = null;
+
+function normalizeCacheUserId(clerkUserId?: string | null) {
+  return clerkUserId ?? null;
+}
+
+function matchesOnboardingSession(
+  cache: OnboardingCompletionCache,
+  clerkUserId?: string | null,
+  options?: OnboardingLocalOptions,
+) {
+  return (
+    cache.userId === normalizeCacheUserId(clerkUserId) &&
+    cache.isLocalGuest === Boolean(options?.localGuest)
+  );
+}
+
+export function getCachedOnboardingCompletion(
+  clerkUserId?: string | null,
+  options?: OnboardingLocalOptions,
+): OnboardingCompletionCache | null {
+  if (
+    onboardingCompletionCache &&
+    matchesOnboardingSession(onboardingCompletionCache, clerkUserId, options)
+  ) {
+    return onboardingCompletionCache;
+  }
+  return null;
+}
+
+export function setCachedOnboardingCompletion(
+  clerkUserId: string | null | undefined,
+  isLocalGuest: boolean,
+  completed: boolean,
+) {
+  onboardingCompletionCache = {
+    userId: normalizeCacheUserId(clerkUserId),
+    isLocalGuest,
+    completed,
+  };
+}
+
 function resolveLocalOnboardingKey(
   clerkUserId?: string | null,
   options?: OnboardingLocalOptions
@@ -69,6 +118,11 @@ export async function setLocalOnboardingCompleted(
 
   try {
     await AsyncStorage.setItem(key, String(CURRENT_ONBOARDING_VERSION));
+    setCachedOnboardingCompletion(
+      clerkUserId,
+      Boolean(options?.localGuest),
+      true,
+    );
     return true;
   } catch (error) {
     console.warn("Failed to persist local onboarding completion state:", error);
@@ -85,6 +139,11 @@ export async function clearLocalOnboardingCompleted(
 
   try {
     await AsyncStorage.removeItem(key);
+    setCachedOnboardingCompletion(
+      clerkUserId,
+      Boolean(options?.localGuest),
+      false,
+    );
     return true;
   } catch (error) {
     console.warn("Failed to clear local onboarding completion state:", error);

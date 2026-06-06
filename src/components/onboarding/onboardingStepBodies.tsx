@@ -1,4 +1,4 @@
-import { useRef, type ReactNode, type RefObject } from "react";
+import { useMemo, useRef, type ReactNode, type RefObject } from "react";
 import {
   Dimensions,
   Image,
@@ -7,10 +7,12 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
   type StyleProp,
   type ViewStyle,
 } from "react-native";
+import { Image as ExpoImage } from "expo-image";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import {
   BIO_MAX_LENGTH,
@@ -23,9 +25,51 @@ import type { OnboardingProfileDraft } from "./OnboardingWizard";
 
 export const ONBOARDING_BIO_INPUT_ACCESSORY_ID = "onboardingBioAccessory";
 
-const SCREEN_WIDTH = Dimensions.get("window").width;
-const POSTER_WIDTH = Math.min(236, Math.round(SCREEN_WIDTH * 0.58));
-const POSTER_HEIGHT = Math.round(POSTER_WIDTH * (312 / 176));
+/** Pre-cropped/resized from the editor screenshot — fast decode at display size */
+export const onboardingEditorPreviewImage = require("../../../assets/onboarding/Onboarding-Editor-Preview.jpg");
+const editorPreviewAsset = Image.resolveAssetSource(onboardingEditorPreviewImage);
+const EDITOR_PREVIEW_ASSET_ASPECT =
+  editorPreviewAsset.height / editorPreviewAsset.width;
+
+export function preloadOnboardingEditorPreview(): Promise<boolean> {
+  return ExpoImage.prefetch(onboardingEditorPreviewImage)
+    .then(() => true)
+    .catch(() => false);
+}
+
+const VALUE_STEP_PREVIEW_MAX_WIDTH = 248;
+const VALUE_STEP_PREVIEW_WIDTH_RATIO = 0.6;
+const VALUE_STEP_PREVIEW_HEIGHT_BUDGET = 470;
+
+function getEditorPreviewDimensions(
+  screenWidth: number,
+  maxFrameHeight?: number,
+) {
+  let width = Math.min(
+    VALUE_STEP_PREVIEW_MAX_WIDTH,
+    Math.round(screenWidth * VALUE_STEP_PREVIEW_WIDTH_RATIO),
+  );
+  let frameHeight = Math.round(width * EDITOR_PREVIEW_ASSET_ASPECT);
+
+  if (maxFrameHeight && frameHeight > maxFrameHeight) {
+    frameHeight = Math.max(Math.round(maxFrameHeight), 140);
+    width = Math.max(160, Math.round(frameHeight / EDITOR_PREVIEW_ASSET_ASPECT));
+    frameHeight = Math.round(width * EDITOR_PREVIEW_ASSET_ASPECT);
+  }
+
+  return {
+    width,
+    frameHeight,
+  };
+}
+
+function getValueStepEditorPreviewDimensions(
+  windowWidth: number,
+  windowHeight: number,
+) {
+  const maxFrameHeight = Math.max(140, windowHeight - VALUE_STEP_PREVIEW_HEIGHT_BUDGET);
+  return getEditorPreviewDimensions(windowWidth, maxFrameHeight);
+}
 
 function StepHead({
   kicker,
@@ -98,33 +142,48 @@ function HelperNote({
 }
 
 export function StepValueBody() {
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+
+  const preview = useMemo(
+    () => getValueStepEditorPreviewDimensions(windowWidth, windowHeight),
+    [windowWidth, windowHeight],
+  );
+
   return (
-    <CompactStep>
+    <CompactStep style={styles.valueStep}>
       <StepHead
         centered
         kicker={copy.value.eyebrow}
         title={copy.value.title}
         body={copy.value.body}
+        style={styles.valueStepHead}
       />
-      <View style={styles.posterWrap}>
+      <View style={styles.valuePosterSlot}>
         <View
           style={[
-            styles.poster,
+            styles.editorPreviewFrame,
             theme.shadow.poster,
-            { width: POSTER_WIDTH, height: POSTER_HEIGHT },
+            {
+              width: preview.width,
+              height: preview.frameHeight,
+            },
           ]}
         >
-          <StripeFill dark />
-          <Text style={styles.posterTag}>{copy.value.posterTag}</Text>
-          <View style={styles.posterPlay}>
-            <Ionicons name="play" size={22} color={theme.cardDark} style={{ marginLeft: 3 }} />
-          </View>
-          <View style={styles.posterFooter}>
-            <View style={styles.posterAvatar}>
-              <Ionicons name="person" size={14} color={theme.textSecondary} />
-            </View>
-            <Text style={styles.posterName}>{copy.value.posterName}</Text>
-          </View>
+          <ExpoImage
+            source={onboardingEditorPreviewImage}
+            style={[
+              styles.editorPreviewImage,
+              {
+                width: preview.width,
+                height: preview.frameHeight,
+              },
+            ]}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+            priority="high"
+            transition={0}
+            accessibilityLabel="MusicPromo editor preview"
+          />
         </View>
       </View>
     </CompactStep>
@@ -144,7 +203,7 @@ export function StepFlowBody() {
 
   return (
     <CompactStep style={[styles.flowStep, { minHeight: flowBlockHeight }]}>
-      <View style={[styles.flowStepHead, styles.stepHeadCentered]}>
+      <View style={[styles.stepHead, styles.stepHeadCentered, styles.flowStepHead]}>
         <StepKicker centered>{copy.flow.eyebrow}</StepKicker>
         <Text style={[styles.h1, styles.textCenter]}>{titleLead},</Text>
         <Text style={[styles.h1, styles.textCenter, styles.flowHeadLine]}>{titleTail}</Text>
@@ -364,8 +423,29 @@ export function StepReadyBody() {
 const styles = StyleSheet.create({
   compactStep: {
     width: "100%",
+    alignSelf: "stretch",
+  },
+  valueStep: {
+    flex: 1,
+    justifyContent: "flex-start",
+    alignItems: "center",
+  },
+  valueStepHead: {
+    flexShrink: 0,
+    paddingTop: spacing.md,
+  },
+  valuePosterSlot: {
+    flex: 1,
+    width: "100%",
+    minHeight: 120,
+    alignItems: "center",
+    justifyContent: "flex-start",
+    paddingTop: spacing.md,
+    paddingBottom: spacing.lg,
+    overflow: "visible",
   },
   stepHead: {
+    width: "100%",
     paddingHorizontal: spacing.lg,
     paddingTop: 0,
   },
@@ -376,6 +456,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   h1: {
+    width: "100%",
     marginTop: 8,
     fontSize: 28,
     lineHeight: 33,
@@ -387,6 +468,7 @@ const styles = StyleSheet.create({
     marginTop: 0,
   },
   bodySecondary: {
+    width: "100%",
     marginTop: 10,
     fontSize: 16,
     lineHeight: 23,
@@ -395,66 +477,21 @@ const styles = StyleSheet.create({
   posterWrap: {
     alignItems: "center",
     paddingHorizontal: spacing.md,
-    paddingTop: 16,
+    paddingTop: spacing.md,
     paddingBottom: 0,
   },
-  poster: {
+  editorPreviewFrame: {
     borderRadius: 22,
     overflow: "hidden",
     backgroundColor: theme.cardDark,
   },
-  posterTag: {
-    position: "absolute",
-    top: 12,
-    right: 12,
-    fontSize: 10,
-    letterSpacing: 0.4,
-    color: "rgba(255,255,255,0.6)",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    backgroundColor: "rgba(14,16,20,0.5)",
-    borderRadius: 4,
-  },
-  posterPlay: {
-    position: "absolute",
-    left: "50%",
-    top: "42%",
-    marginLeft: -26,
-    marginTop: -26,
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: "rgba(255,255,255,0.92)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  posterFooter: {
-    position: "absolute",
-    left: 14,
-    right: 14,
-    bottom: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  posterAvatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: "rgba(255,255,255,0.2)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  posterName: {
-    fontSize: 15,
-    fontWeight: "800",
-    color: "#fff",
+  editorPreviewImage: {
+    backgroundColor: theme.cardDark,
   },
   flowStep: {
     justifyContent: "center",
   },
   flowStepHead: {
-    paddingHorizontal: spacing.md,
     marginBottom: spacing.md,
   },
   flowHeadLine: {
@@ -462,8 +499,9 @@ const styles = StyleSheet.create({
   },
   flowStack: {
     flex: 1,
+    width: "100%",
     gap: spacing.md,
-    marginHorizontal: spacing.lg,
+    paddingHorizontal: spacing.lg,
     minHeight: 300,
     justifyContent: "center",
   },
@@ -506,6 +544,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   permTile: {
+    alignSelf: "stretch",
     marginHorizontal: spacing.lg,
     marginTop: 20,
     height: 210,
@@ -548,6 +587,7 @@ const styles = StyleSheet.create({
     height: 320,
   },
   helperNote: {
+    alignSelf: "stretch",
     marginHorizontal: spacing.lg,
     marginTop: spacing.md,
     flexDirection: "column",

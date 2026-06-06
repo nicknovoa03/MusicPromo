@@ -278,6 +278,7 @@ export default function ProfileScreen() {
   const [showOnboardingPreview, setShowOnboardingPreview] = useState(false);
   const [onboardingPreviewKey, setOnboardingPreviewKey] = useState(0);
   const resetProfileSettingsModal = useCallback(() => {
+    profileSettingsTranslateX.stopAnimation();
     profileSettingsTranslateX.setValue(windowWidth);
     setIsClosingProfileSettings(false);
     setIsProfileSettingsOpen(false);
@@ -982,6 +983,7 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     if (!isProfileSettingsOpen) {
+      profileSettingsTranslateX.stopAnimation();
       profileSettingsTranslateX.setValue(windowWidth);
     }
   }, [isProfileSettingsOpen, profileSettingsTranslateX, windowWidth]);

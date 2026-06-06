@@ -6,6 +6,7 @@ import { useAuth } from "@clerk/clerk-expo";
 import { useConvexAuth, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
+import { preloadOnboardingEditorPreview } from "@/components/onboarding/onboardingStepBodies";
 import { onboardingCopy } from "@/constants/onboardingCopy";
 import { onboardingTheme } from "@/constants/onboardingTheme";
 import { spacing } from "@/constants/tokens";
@@ -23,6 +24,10 @@ export default function OnboardingScreen() {
 
   const [localVersion, setLocalVersion] = useState(0);
   const [localReady, setLocalReady] = useState(false);
+
+  useEffect(() => {
+    void preloadOnboardingEditorPreview();
+  }, []);
 
   useEffect(() => {
     let active = true;

@@ -15,6 +15,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { Image as ExpoImage } from "expo-image";
 import * as Haptics from "expo-haptics";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -54,6 +55,8 @@ import { sleep } from "@/lib/utils";
 import { FooterFade, ProgressSegments } from "./OnboardingVisuals";
 import {
   ONBOARDING_BIO_INPUT_ACCESSORY_ID,
+  onboardingEditorPreviewImage,
+  preloadOnboardingEditorPreview,
   StepFlowBody,
   StepPermAudioBody,
   StepPermPhotosBody,
@@ -135,6 +138,7 @@ export function OnboardingWizard({ previewMode = false, onPreviewClose }: Props)
   }, []);
 
   const isProfileStep = stepId === "profile-setup";
+  const isValueStep = stepId === "value";
 
   const scrollFieldIntoView = useCallback(
     (fieldRef: RefObject<View | null>) => {
@@ -250,6 +254,10 @@ export function OnboardingWizard({ previewMode = false, onPreviewClose }: Props)
     if (!isHydrated || previewMode) return;
     void setLocalOnboardingStep(stepId, userId, { localGuest: isLocalGuest });
   }, [stepId, isHydrated, previewMode, userId, isLocalGuest]);
+
+  useEffect(() => {
+    void preloadOnboardingEditorPreview();
+  }, []);
 
   useEffect(() => {
     if (stepId === "perm-photos" || stepId === "perm-audio") {
@@ -561,6 +569,13 @@ export function OnboardingWizard({ previewMode = false, onPreviewClose }: Props)
 
   return (
     <SafeAreaView style={styles.root} edges={["top"]}>
+      <ExpoImage
+        source={onboardingEditorPreviewImage}
+        style={styles.preloadHidden}
+        cachePolicy="memory-disk"
+        priority="high"
+        transition={0}
+      />
       <View style={styles.header}>
         <View style={styles.headerSide}>
           {!isFirst ? (
@@ -573,16 +588,18 @@ export function OnboardingWizard({ previewMode = false, onPreviewClose }: Props)
               <Ionicons name="chevron-back" size={22} color={theme.text} />
             </Pressable>
           ) : (
-            <View style={styles.headerSpacer} />
+            <View style={styles.headerSlot} />
           )}
         </View>
-        <Text style={styles.progress}>
-          {stepIndex + 1}
-          <Text style={styles.progressMuted}>
-            {" "}
-            {copy.progressOf} {ONBOARDING_STEP_COUNT}
+        <View style={styles.headerCenter}>
+          <Text style={styles.progress}>
+            {stepIndex + 1}
+            <Text style={styles.progressMuted}>
+              {" "}
+              {copy.progressOf} {ONBOARDING_STEP_COUNT}
+            </Text>
           </Text>
-        </Text>
+        </View>
         <View style={[styles.headerSide, styles.headerSideEnd]}>
           {previewMode ? (
             <Pressable
@@ -605,11 +622,13 @@ export function OnboardingWizard({ previewMode = false, onPreviewClose }: Props)
               <Text style={styles.skip}>{copy.skip}</Text>
             </Pressable>
           ) : (
-            <View style={styles.headerSpacer} />
+            <View style={styles.headerSlot} />
           )}
         </View>
       </View>
-      <ProgressSegments current={stepIndex + 1} total={ONBOARDING_STEP_COUNT} />
+      <View style={styles.progressSegmentsWrap}>
+        <ProgressSegments current={stepIndex + 1} total={ONBOARDING_STEP_COUNT} />
+      </View>
 
       <KeyboardAvoidingView
         style={styles.main}
@@ -622,13 +641,19 @@ export function OnboardingWizard({ previewMode = false, onPreviewClose }: Props)
           style={styles.main}
           contentContainerStyle={[
             styles.scrollContent,
+            isValueStep && styles.scrollContentValue,
             stepId === "flow" && styles.scrollContentFlow,
-            stepId !== "profile-setup" && stepId !== "flow" && styles.scrollContentCentered,
+            !isValueStep &&
+              stepId !== "profile-setup" &&
+              stepId !== "flow" &&
+              styles.scrollContentCentered,
             isProfileStep &&
               isKeyboardVisible && {
                 paddingBottom: keyboardHeight + (Platform.OS === "ios" ? 44 : 0) + spacing.xl,
               },
           ]}
+          scrollEnabled={!isValueStep}
+          bounces={!isValueStep}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode={isProfileStep ? "interactive" : "none"}
           onScroll={(event) => {
@@ -713,6 +738,14 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: theme.bg,
   },
+  preloadHidden: {
+    position: "absolute",
+    top: -200,
+    left: -200,
+    width: 48,
+    height: 48,
+    opacity: 0,
+  },
   loading: {
     flex: 1,
     backgroundColor: theme.bg,
@@ -740,18 +773,26 @@ const styles = StyleSheet.create({
     columnGap: spacing.sm,
   },
   headerSide: {
-    width: 40,
+    width: 76,
     alignItems: "flex-start",
+    justifyContent: "center",
   },
   headerSideEnd: {
-    width: 56,
-    minWidth: 56,
-    flexShrink: 0,
     alignItems: "flex-end",
   },
-  headerSpacer: {
+  headerCenter: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerSlot: {
     width: 36,
     height: 36,
+  },
+  progressSegmentsWrap: {
+    width: "100%",
+    alignItems: "center",
+    paddingHorizontal: spacing.lg,
   },
   backBtn: {
     width: 36,
@@ -765,7 +806,6 @@ const styles = StyleSheet.create({
     ...theme.shadow.card,
   },
   progress: {
-    flex: 1,
     textAlign: "center",
     fontSize: 13,
     fontWeight: "600",
@@ -785,6 +825,10 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     paddingBottom: spacing.sm,
+  },
+  scrollContentValue: {
+    flex: 1,
+    paddingBottom: spacing.xs,
   },
   scrollContentCentered: {
     justifyContent: "center",

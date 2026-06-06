@@ -14,8 +14,6 @@ export const onboardingCopy = {
     title: "Turn one photo and one track into a promo in seconds",
     body: "Drop in a photo, add an audio clip, and MusicPromo builds a vertical promo video. No editor to fight.",
     cta: "Get started",
-    posterTag: "9:16",
-    posterName: "Your name",
   },
   flow: {
     eyebrow: "Simple flow",

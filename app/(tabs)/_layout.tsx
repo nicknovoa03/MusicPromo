@@ -19,7 +19,12 @@ import type { NotificationResponse } from "expo-notifications";
 import { api } from "../../convex/_generated/api";
 import { colors, typography } from "@/constants/tokens";
 import type { EventName } from "@/lib/analytics";
-import { getLocalOnboardingCompleted } from "@/lib/onboarding";
+import { preloadOnboardingEditorPreview } from "@/components/onboarding/onboardingStepBodies";
+import {
+  getCachedOnboardingCompletion,
+  getLocalOnboardingCompleted,
+  setCachedOnboardingCompletion,
+} from "@/lib/onboarding";
 import { useLocalSession } from "@/providers/localSession";
 import {
   handleInitialNotificationTap,
@@ -32,13 +37,6 @@ function extractNotificationType(data: unknown) {
   const type = (data as { type?: unknown }).type;
   return typeof type === "string" ? type : "unknown";
 }
-
-// Survive remount (e.g. returning from editor) so the loading gate doesn't flash.
-let _cachedOnboardingSession: {
-  userId: string | null | undefined;
-  isLocalGuest: boolean;
-  completed: boolean;
-} | null = null;
 
 export default function TabsLayout() {
   const router = useRouter();
@@ -55,12 +53,9 @@ export default function TabsLayout() {
   const didBootstrapPush = useRef(false);
   const hasWarnedMissingConvexToken = useRef(false);
   const previousPathnameRef = useRef<string | null>(null);
-  const cachedOnboarding =
-    _cachedOnboardingSession !== null &&
-    _cachedOnboardingSession.userId === userId &&
-    _cachedOnboardingSession.isLocalGuest === isLocalGuest
-      ? _cachedOnboardingSession
-      : null;
+  const cachedOnboarding = getCachedOnboardingCompletion(userId, {
+    localGuest: isLocalGuest,
+  });
   const [localOnboardingReady, setLocalOnboardingReady] = useState(() => cachedOnboarding !== null);
   const [localOnboardingCompleted, setLocalOnboardingCompleted] = useState(() => cachedOnboarding?.completed ?? false);
   const isDarkMode = colorScheme === "dark";
@@ -91,16 +86,18 @@ export default function TabsLayout() {
   }, [hasSession]);
 
   useEffect(() => {
-    if (
-      _cachedOnboardingSession !== null &&
-      _cachedOnboardingSession.userId === userId &&
-      _cachedOnboardingSession.isLocalGuest === isLocalGuest
-    ) {
-      return;
-    }
+    if (!hasSession) return;
+    void preloadOnboardingEditorPreview();
+  }, [hasSession]);
 
+  useEffect(() => {
     let isActive = true;
-    setLocalOnboardingReady(false);
+    const hasCachedSession = getCachedOnboardingCompletion(userId, {
+      localGuest: isLocalGuest,
+    });
+    if (!hasCachedSession) {
+      setLocalOnboardingReady(false);
+    }
 
     (async () => {
       try {
@@ -108,7 +105,7 @@ export default function TabsLayout() {
           localGuest: isLocalGuest,
         });
         if (!isActive) return;
-        _cachedOnboardingSession = { userId, isLocalGuest, completed };
+        setCachedOnboardingCompletion(userId, isLocalGuest, completed);
         setLocalOnboardingCompleted(completed);
       } catch (error) {
         console.warn("Failed to read onboarding state:", error);

@@ -106,6 +106,7 @@ export function FlowStage({ index }: FlowStageProps) {
 
 const styles = StyleSheet.create({
   kicker: {
+    width: "100%",
     fontSize: 13,
     fontWeight: "600",
     letterSpacing: -0.1,
@@ -117,7 +118,8 @@ const styles = StyleSheet.create({
   progressRow: {
     flexDirection: "row",
     gap: 5,
-    paddingHorizontal: spacing.lg,
+    width: "100%",
+    maxWidth: 360,
     paddingBottom: spacing.sm,
   },
   progressSegment: {
