@@ -6,7 +6,7 @@
 - Doc owner: Nick
 - Created: 2026-06-02
 - Last updated: 2026-06-03
-- Status: **Design in progress** — UI views to be designed externally, then implemented in app
+- Status: **Foundation ready** — copy + primitives shipped; wizard route (Phase 2) next
 - Routes: `/onboarding` (today); likely `/onboarding` stack with substeps after redesign
 - Related: `docs/requirements/PRODUCT_DESIGN_REQUIREMENTS.md`, `docs/release/app-store-v1-launch-scope.md`
 - Adopted UX decisions: [`ONBOARDING_RECOMMENDATIONS.md`](./ONBOARDING_RECOMMENDATIONS.md)

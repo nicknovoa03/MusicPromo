@@ -12,9 +12,10 @@ Code paths are relative to repo root. Add a row when you ship a reusable pattern
 |-----------|--------|--------------|------|-------|
 | Tab bar | shipped | Adaptive | `app/(tabs)/_layout.tsx` | Home, Create, Profile |
 | Sign-in screen | shipped | Light | `app/(auth)/sign-in.tsx` | Apple, Google, Guest |
-| Wizard shell | planned | **Light** | `app/onboarding/*` | Progress bar + step counter + Skip |
-| Permission primer shell | planned | **Light** | TBD | Shared by `perm-photos`, `perm-audio` |
-| Story slide shell | planned | **Light** | TBD | Intro + finish slides |
+| Wizard shell | shipped (primitive) | **Light** | `src/components/onboarding/OnboardingWizardChrome.tsx` | Progress bar + step counter + Skip |
+| Permission primer shell | shipped (primitive) | **Light** | `src/components/onboarding/PermissionPrimerScreen.tsx` | Shared by `perm-photos`, `perm-audio`, `perm-save` |
+| Story slide shell | shipped (primitive) | **Light** | `src/components/onboarding/OnboardingStorySlide.tsx` | Intro + finish slides |
+| Onboarding CTAs | shipped (primitive) | **Light** | `OnboardingPrimaryButton`, `OnboardingSecondaryButton` | Scale press |
 
 ---
 
@@ -52,7 +53,7 @@ Code paths are relative to repo root. Add a row when you ship a reusable pattern
 | Project thumbnail | shipped | Light | `src/components/ProjectThumbnail.tsx` | Template stage preview |
 | Project grid skeleton | shipped | Light | `src/components/ProjectGridSkeleton.tsx` | 2-column shimmer |
 | Media picker card | shipped | Light | `app/create/picker.tsx` | Audio + photo stacks |
-| Share card preview | shipped | Dark profile | `app/(tabs)/profile.tsx` | `ViewShot` export; reuse in onboarding |
+| Share card preview | shipped | Dark card | `src/components/ShareCardPreview.tsx` | Profile export + onboarding mini preview |
 | Empty state (Home) | shipped | Light | `app/(tabs)/index.tsx` | Icon + title + subtitle |
 
 ---

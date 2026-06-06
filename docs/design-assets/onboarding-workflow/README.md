@@ -29,9 +29,11 @@ Use this folder for notes or screenshots from device previews if helpful:
 ```
 onboarding-workflow/
   README.md
-  copy.md            ← final strings per step ID
+  copy.md            ← final strings per step ID (source for onboardingCopy.ts)
   previews/          ← optional simulator screenshots
 ```
+
+**Copy:** [`copy.md`](./copy.md) · **Code mirror:** `src/constants/onboardingCopy.ts`
 
 ## Inspiration
 

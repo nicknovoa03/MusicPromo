@@ -1,0 +1,60 @@
+/** Mirrors docs/design-assets/onboarding-workflow/copy.md */
+export const onboardingCopy = {
+  loading: "Preparing your workspace…",
+  skip: "Skip",
+  next: "Next",
+  continue: "Continue",
+  notNow: "Not now",
+  startCreating: "Start Creating",
+  skipProfile: "Skip for now",
+  alreadyGranted: "You're all set",
+  photosDenied: "Photos access is off. Open Settings to allow access.",
+  openSettings: "Open Settings",
+
+  value: {
+    eyebrow: "Fast start",
+    title: "Turn a photo and a track into a promo in seconds",
+    body: "Pick cover art, add audio, export a social-ready clip — no timeline editor.",
+  },
+  flow: {
+    eyebrow: "Simple flow",
+    title: "Pick, trim, export, share",
+    body: "Four steps, under a minute. Built for releases, not editing courses.",
+    chips: ["Pick", "Trim", "Export", "Share"] as const,
+  },
+  permPhotos: {
+    title: "Allow access to your photos",
+    body: "MusicPromo needs your photo library for profile banner and cover art. We only access files you choose.",
+    bullet: "You choose every file",
+  },
+  permAudio: {
+    title: "Access your audio files",
+    body: "Choose MP3, WAV, or M4A from your device. You stay in control — we only use the file you select.",
+    bullet: "You choose every file",
+  },
+  permSave: {
+    title: "Save to your camera roll",
+    body: "MusicPromo saves exported videos to your camera roll so you can share them.",
+    bullet: "You control when exports are saved",
+  },
+  profileSetup: {
+    title: "Set up your artist profile",
+    subtitle: "Used on your share card",
+    guestHelper: "Sign in later to sync your profile across devices.",
+    artistNameLabel: "Artist name",
+    artistNamePlaceholder: "Your artist name",
+    bioLabel: "Bio (optional)",
+    bioPlaceholder: "A short line about you or your music",
+    addPhoto: "Add photo",
+    changeBanner: "Change banner",
+    previewLabel: "Preview",
+    emptyPromos: "Your promos will show here",
+    saveError: "Couldn't save your profile. Try again.",
+    photoDenied: "Photo access is off. Open Settings to add images.",
+  },
+  ready: {
+    eyebrow: "You're set",
+    title: "You're set",
+    body: "Your profile is ready. Create your first promo whenever you want.",
+  },
+} as const;

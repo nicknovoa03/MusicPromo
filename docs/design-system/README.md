@@ -8,6 +8,7 @@
 |-----------|------|
 | Any new screen | [DESIGN_SYSTEM.md](./DESIGN_SYSTEM.md) + [COMPONENTS.md](./COMPONENTS.md) |
 | Copy / tone / logo | [BRAND_GUIDE.md](./BRAND_GUIDE.md) |
+| Claude Design → code handoff | [CLAUDE_DESIGN_HANDOFF.md](./CLAUDE_DESIGN_HANDOFF.md) |
 | A specific feature | `docs/requirements/<FEATURE>_REQUIREMENTS.md` |
 
 ## Workflow (doc + code)
@@ -36,6 +37,7 @@ If doc and code disagree: **update the doc or fix the code** — don’t leave t
 | [BRAND_GUIDE.md](./BRAND_GUIDE.md) | Voice, logo, photography, do/don’t |
 | [DESIGN_SYSTEM.md](./DESIGN_SYSTEM.md) | Colors, type, space, motion, light-first rules |
 | [COMPONENTS.md](./COMPONENTS.md) | Component catalog + code paths |
+| [CLAUDE_DESIGN_HANDOFF.md](./CLAUDE_DESIGN_HANDOFF.md) | General prompts: Claude Design wireframes → coding agent |
 
 ## Feature design handoffs
 
