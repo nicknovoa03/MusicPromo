@@ -36,6 +36,7 @@ import {
   getIOSNativeUIPhase5Availability,
   loadExpoSwiftUIModule,
 } from "@/lib/iosNativeUi";
+import { pressScaleStyle, PRESS_SCALE_SUBTLE } from "@/lib/pressFeedback";
 
 type Tab = "photo" | "audio";
 type LoadingTarget = Tab | null;
@@ -464,7 +465,10 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
       <View style={[styles.header, { borderBottomColor: pickerBorderColor }]}>
         <Pressable
           onPress={handleCancel}
-          style={styles.headerAction}
+          style={({ pressed }) => [
+            styles.headerAction,
+            pressScaleStyle(pressed, PRESS_SCALE_SUBTLE),
+          ]}
           accessibilityLabel="Cancel"
           accessibilityRole="button"
         >
@@ -477,7 +481,11 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
 
         <Pressable
           onPress={handleAdd}
-          style={[styles.headerAction, styles.headerActionRight]}
+          style={({ pressed }) => [
+            styles.headerAction,
+            styles.headerActionRight,
+            bothSelected && pressScaleStyle(pressed),
+          ]}
           disabled={!bothSelected}
           accessibilityLabel={bothSelected ? "Continue to editor" : "Add media"}
           accessibilityRole="button"
@@ -577,7 +585,11 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
                 </View>
                 <Pressable
                   onPress={pickAudio}
-                  style={[styles.selectionAction, { backgroundColor: selectionActionBackgroundColor }]}
+                  style={({ pressed }) => [
+                    styles.selectionAction,
+                    { backgroundColor: selectionActionBackgroundColor },
+                    pressScaleStyle(pressed, PRESS_SCALE_SUBTLE),
+                  ]}
                   disabled={isPickingPhoto || isPickingAudio}
                   accessibilityLabel="Change audio"
                   accessibilityRole="button"
@@ -591,7 +603,7 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
               style={({ pressed }) => [
                 styles.pickArea,
                 styles.pickAreaAudio,
-                pressed && styles.pickAreaPressed,
+                pressScaleStyle(pressed),
               ]}
               onPress={pickAudio}
               disabled={isPickingPhoto || isPickingAudio}
@@ -658,7 +670,11 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
                 </View>
                 <Pressable
                   onPress={pickPhoto}
-                  style={[styles.selectionAction, { backgroundColor: selectionActionBackgroundColor }]}
+                  style={({ pressed }) => [
+                    styles.selectionAction,
+                    { backgroundColor: selectionActionBackgroundColor },
+                    pressScaleStyle(pressed, PRESS_SCALE_SUBTLE),
+                  ]}
                   disabled={isPickingPhoto || isPickingAudio}
                   accessibilityLabel="Change photo"
                   accessibilityRole="button"
@@ -672,7 +688,7 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
               <Pressable
                 style={({ pressed }) => [
                   styles.pickArea,
-                  pressed && styles.pickAreaPressed,
+                  pressScaleStyle(pressed),
                 ]}
                 onPress={pickPhoto}
                 disabled={isPickingPhoto || isPickingAudio}
@@ -719,7 +735,7 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
                       borderColor: quickFillBorderColor,
                       backgroundColor: quickFillBackgroundColor,
                     },
-                    pressed && styles.quickFillCardPressed,
+                    pressScaleStyle(pressed),
                   ]}
                   onPress={handleUseArtworkAsPhoto}
                   disabled={isPickingPhoto || isPickingAudio}
@@ -831,9 +847,6 @@ const styles = StyleSheet.create({
   },
   pickAreaAudio: {
     paddingBottom: spacing.md,
-  },
-  pickAreaPressed: {
-    opacity: 0.82,
   },
   pickIcon: {
     width: 64,
@@ -964,9 +977,6 @@ const styles = StyleSheet.create({
     borderColor: colors.brand.tintStrong,
     backgroundColor: colors.brand.tintSoft,
     padding: spacing.sm,
-  },
-  quickFillCardPressed: {
-    opacity: 0.88,
   },
   quickFillArtwork: {
     width: 52,

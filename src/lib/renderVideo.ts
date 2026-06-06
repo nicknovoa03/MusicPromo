@@ -21,7 +21,11 @@ import {
   GRAPHIC_POP_GLOW_HEX,
   GRAPHIC_POP_STAGE_BACKGROUND_HEX,
 } from "@/lib/graphicPopTemplateSpec";
-import { isBetaWatermarkEnabled } from "@/lib/betaWatermark";
+import {
+  isBetaWatermarkEnabled,
+  resolveWatermarkInsetPx,
+  resolveWatermarkLogoWidthPx,
+} from "@/lib/betaWatermark";
 import { isRunningInExpoGo } from "@/lib/runtimeEnvironment";
 import { normalizeMediaUri } from "@/lib/mediaUri";
 import {
@@ -376,12 +380,12 @@ function buildWatermarkFilterGraph(params: {
     return [`${inputLabel}scale=iw:ih:out_color_matrix=bt709:out_range=full,format=yuv420p[out]`];
   }
 
-  const watermarkWidth = Math.round(width * 0.13);
-  const inset = Math.max(8, Math.round(width * 0.03));
+  const watermarkWidth = resolveWatermarkLogoWidthPx(width);
+  const inset = resolveWatermarkInsetPx(width);
 
   return [
     `${watermarkInputLabel}format=rgba,scale=${watermarkWidth}:-1[watermark_scaled]`,
-    `${inputLabel}[watermark_scaled]overlay=x=(W-w)/2:y=${inset}:format=auto:eof_action=repeat[watermark_out]`,
+    `${inputLabel}[watermark_scaled]overlay=x=(W-w)/2:y=H-h-${inset}:format=auto:eof_action=repeat[watermark_out]`,
     "[watermark_out]scale=iw:ih:out_color_matrix=bt709:out_range=full,format=yuv420p[out]",
   ];
 }

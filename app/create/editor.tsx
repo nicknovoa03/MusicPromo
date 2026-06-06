@@ -31,6 +31,7 @@ import { Audio, type AVPlaybackStatus } from "expo-av";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
+import { pressScaleStyle, PRESS_SCALE_SUBTLE } from "@/lib/pressFeedback";
 import { AudioTrimmer } from "@/components/create/AudioTrimmer";
 import { useWaveformData } from "@/lib/useWaveformData";
 import { type AspectRatio } from "@/components/create/AspectRatioToggle";
@@ -1642,7 +1643,10 @@ export default function EditorScreen() {
         <View style={[styles.headerSide, styles.headerSideLeft]}>
           <Pressable
             onPress={handleCloseEditor}
-            style={styles.headerButton}
+            style={({ pressed }) => [
+              styles.headerButton,
+              pressScaleStyle(pressed, PRESS_SCALE_SUBTLE),
+            ]}
             accessibilityLabel="Go back"
             accessibilityRole="button"
           >
@@ -1652,7 +1656,10 @@ export default function EditorScreen() {
 
         <Pressable
           onPress={handleOpenProjectNameModal}
-          style={styles.headerTitleButton}
+          style={({ pressed }) => [
+            styles.headerTitleButton,
+            pressScaleStyle(pressed, PRESS_SCALE_SUBTLE),
+          ]}
           accessibilityLabel="Edit project name"
           accessibilityRole="button"
         >
@@ -1672,7 +1679,7 @@ export default function EditorScreen() {
             style={({ pressed }) => [
               styles.exportButton,
               !canExport && styles.exportButtonDisabled,
-              pressed && canExport && styles.exportButtonPressed,
+              canExport && pressScaleStyle(pressed),
             ]}
             disabled={!canExport}
             accessibilityLabel="Export video"
@@ -1799,7 +1806,7 @@ export default function EditorScreen() {
               onPress={handleOpenTemplateCustomize}
               style={({ pressed }) => [
                 styles.previewTemplateButton,
-                pressed && styles.previewTemplateButtonPressed,
+                pressScaleStyle(pressed, PRESS_SCALE_SUBTLE),
               ]}
               accessibilityLabel="Open template settings"
               accessibilityRole="button"
@@ -1814,7 +1821,7 @@ export default function EditorScreen() {
               styles.previewTrimToggleButton,
               styles.previewTrimToggleButtonRight,
               isTrimPanelVisible && styles.previewTrimToggleButtonActive,
-              pressed && styles.previewTrimToggleButtonPressed,
+              pressScaleStyle(pressed, PRESS_SCALE_SUBTLE),
             ]}
             accessibilityLabel={
               isTrimPanelVisible ? "Hide Trim Audio panel" : "Show Trim Audio panel"
@@ -1845,7 +1852,7 @@ export default function EditorScreen() {
               styles.previewInfoToggleButton,
               styles.previewInfoToggleButtonTopLeft,
               showTemplateInfo && styles.previewInfoToggleButtonActive,
-              pressed && styles.previewTemplateButtonPressed,
+              pressScaleStyle(pressed, PRESS_SCALE_SUBTLE),
             ]}
             accessibilityLabel={
               showTemplateInfo
@@ -1865,7 +1872,7 @@ export default function EditorScreen() {
             onPress={handleToggleAspectRatio}
             style={({ pressed }) => [
               styles.previewAspectRatioBadge,
-              pressed && styles.previewAspectRatioBadgePressed,
+              pressScaleStyle(pressed, PRESS_SCALE_SUBTLE),
             ]}
             accessibilityLabel={`Switch aspect ratio (currently ${aspectRatio})`}
             accessibilityRole="button"
@@ -2019,10 +2026,6 @@ const styles = StyleSheet.create({
   },
   exportButtonDisabled: {
     opacity: 0.45,
-  },
-  exportButtonPressed: {
-    opacity: 0.8,
-    transform: [{ scale: 0.97 }],
   },
   exportText: {
     ...typography.caption,
@@ -2184,10 +2187,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.dark.text,
     borderColor: "rgba(255,255,255,0.72)",
   },
-  previewTemplateButtonPressed: {
-    opacity: 0.82,
-    transform: [{ scale: 0.96 }],
-  },
   previewTrimToggleButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -2207,9 +2206,6 @@ const styles = StyleSheet.create({
   previewTrimToggleButtonActive: {
     backgroundColor: colors.dark.text,
     borderColor: "rgba(255,255,255,0.85)",
-  },
-  previewTrimToggleButtonPressed: {
-    opacity: 0.82,
   },
   previewTrimToggleText: {
     ...typography.caption,
@@ -2239,10 +2235,6 @@ const styles = StyleSheet.create({
     color: colors.dark.text,
     fontWeight: "700",
     letterSpacing: 0.3,
-  },
-  previewAspectRatioBadgePressed: {
-    opacity: 0.82,
-    transform: [{ scale: 0.96 }],
   },
   previewTemplateInfoBadge: {
     position: "absolute",

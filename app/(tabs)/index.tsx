@@ -44,7 +44,9 @@ import {
   parseTemplateTweaksParam,
   resolveTemplateId,
 } from "@/lib/templates";
+import { ProjectGridSkeleton } from "@/components/ProjectGridSkeleton";
 import { ProjectThumbnail } from "@/components/ProjectThumbnail";
+import { pressScaleStyle, PRESS_SCALE_SUBTLE } from "@/lib/pressFeedback";
 
 type Project = Doc<"projects"> | LocalProject;
 type ProjectAction = "duplicate" | "delete";
@@ -178,6 +180,9 @@ const longPressProjectIdRef = useRef<string | null>(null);
   const isDarkMode = colorScheme === "dark";
   const homeBackgroundColor = isDarkMode ? colors.dark.background : colors.light.background;
   const homeSurfaceColor = isDarkMode ? colors.dark.surface : colors.light.surface;
+  const homeShimmerColor = isDarkMode
+    ? colors.dark.surfaceMuted
+    : colors.light.surfaceMuted;
   const homeTextColor = isDarkMode ? colors.dark.text : colors.light.text;
   const homeTextSecondaryColor = isDarkMode
     ? colors.dark.textSecondary
@@ -659,7 +664,7 @@ const longPressProjectIdRef = useRef<string | null>(null);
           <Pressable
             style={({ pressed }) => [
               styles.cardPressable,
-              isRNCardGestureOwner && pressed && styles.cardPressed,
+              isRNCardGestureOwner && pressScaleStyle(pressed),
             ]}
             onPress={isRNCardGestureOwner ? () => openProject(item) : undefined}
             onLongPress={isRNCardGestureOwner ? () => handleProjectLongPress(item) : undefined}
@@ -755,7 +760,11 @@ const longPressProjectIdRef = useRef<string | null>(null);
         </Text>
         <View style={styles.headerActions}>
           <Pressable
-            style={[styles.selectModeButton, { backgroundColor: homeSurfaceColor }]}
+            style={({ pressed }) => [
+              styles.selectModeButton,
+              { backgroundColor: homeSurfaceColor },
+              pressScaleStyle(pressed, PRESS_SCALE_SUBTLE),
+            ]}
             onPress={isSelectionMode ? clearSelectionMode : toggleSelectionMode}
             accessibilityLabel={
               isSelectionMode ? "Exit multi-select mode" : "Enter multi-select mode"
@@ -769,7 +778,10 @@ const longPressProjectIdRef = useRef<string | null>(null);
             />
           </Pressable>
           <Pressable
-            style={styles.avatarButton}
+            style={({ pressed }) => [
+              styles.avatarButton,
+              pressScaleStyle(pressed, PRESS_SCALE_SUBTLE),
+            ]}
             onPress={() => router.push("/profile")}
             accessibilityLabel="Open profile"
             accessibilityRole="button"
@@ -802,7 +814,13 @@ const longPressProjectIdRef = useRef<string | null>(null);
           />
         }
         ListEmptyComponent={
-          isLoading ? null : (
+          isLoading ? (
+            <ProjectGridSkeleton
+              surfaceColor={homeSurfaceColor}
+              shimmerColor={homeShimmerColor}
+              shimmerHighlightColor={homeBorderColor}
+            />
+          ) : (
             canUseNativeEmptyState && expoSwiftUI ? (
               <expoSwiftUI.Host
                 style={styles.nativeEmptyStateHost}
@@ -834,12 +852,6 @@ const longPressProjectIdRef = useRef<string | null>(null);
           )
         }
       />
-
-      {isLoading && (
-        <View style={[styles.loadingOverlay, { backgroundColor: homeOverlayColor }]}>
-          <ActivityIndicator size="large" color={colors.accent.primary} />
-        </View>
-      )}
 
       <Modal
         visible={!!actionProject}
@@ -956,7 +968,7 @@ const longPressProjectIdRef = useRef<string | null>(null);
           style={({ pressed }) => [
             styles.fab,
             { backgroundColor: fabBackgroundColor },
-            pressed && styles.fabPressed,
+            pressScaleStyle(pressed),
           ]}
           onPress={() => router.push("/create/picker" as const)}
           accessibilityLabel="Create new project"
@@ -1070,10 +1082,6 @@ const styles = StyleSheet.create({
   cardContent: {
     flex: 1,
   },
-  cardPressed: {
-    opacity: 0.88,
-    transform: [{ scale: 0.98 }],
-  },
   nativeCardContextMenuOverlay: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 4,
@@ -1118,12 +1126,6 @@ const styles = StyleSheet.create({
   cardDate: {
     ...typography.caption,
     color: colors.light.textSecondary,
-  },
-  loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.overlay.light,
   },
   actionsBackdrop: {
     ...StyleSheet.absoluteFillObject,
@@ -1179,10 +1181,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 8,
     elevation: 6,
-  },
-  fabPressed: {
-    transform: [{ scale: 0.92 }],
-    opacity: 0.9,
   },
   bulkDeleteButton: {
     position: "absolute",

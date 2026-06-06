@@ -22,6 +22,7 @@ import { isRunningInExpoGo } from "@/lib/runtimeEnvironment";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
+import { pressScaleStyle, PRESS_SCALE_SUBTLE } from "@/lib/pressFeedback";
 import { TemplateInfoBadge } from "@/components/create/TemplateInfoBadge";
 import type { EventName } from "@/lib/analytics";
 import {
@@ -487,7 +488,10 @@ export default function RenderingScreen() {
       <View style={[styles.header, { paddingTop: stableTopInset + spacing.xs }]}>
         <Pressable
           onPress={handleCancel}
-          style={styles.headerButton}
+          style={({ pressed }) => [
+            styles.headerButton,
+            pressScaleStyle(pressed, PRESS_SCALE_SUBTLE),
+          ]}
           accessibilityLabel="Cancel export"
           accessibilityRole="button"
         >
@@ -513,7 +517,7 @@ export default function RenderingScreen() {
               onPress={handleRetry}
               style={({ pressed }) => [
                 styles.retryButton,
-                pressed && styles.retryButtonPressed,
+                pressScaleStyle(pressed),
               ]}
               accessibilityLabel="Retry export"
               accessibilityRole="button"
@@ -624,10 +628,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     borderRadius: radius.full,
     backgroundColor: colors.accent.primary,
-  },
-  retryButtonPressed: {
-    opacity: 0.8,
-    transform: [{ scale: 0.97 }],
   },
   retryText: {
     ...typography.button,

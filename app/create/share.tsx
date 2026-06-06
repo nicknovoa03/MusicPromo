@@ -16,6 +16,7 @@ import { usePostHog } from "posthog-react-native";
 import * as Sharing from "expo-sharing";
 import * as MediaLibrary from "expo-media-library";
 import { colors, typography, spacing, radius } from "@/constants/tokens";
+import { pressScaleStyle, PRESS_SCALE_SUBTLE } from "@/lib/pressFeedback";
 import { TemplateInfoBadge } from "@/components/create/TemplateInfoBadge";
 import type { EventName } from "@/lib/analytics";
 import { decodeUriParam } from "@/lib/uri";
@@ -149,7 +150,10 @@ export default function ShareScreen() {
       <View style={styles.header}>
         <Pressable
           onPress={handleDone}
-          style={styles.headerButton}
+          style={({ pressed }) => [
+            styles.headerButton,
+            pressScaleStyle(pressed, PRESS_SCALE_SUBTLE),
+          ]}
           accessibilityLabel="Close and return home"
           accessibilityRole="button"
         >
@@ -254,7 +258,7 @@ export default function ShareScreen() {
             onPress={handleShareInstagram}
             style={({ pressed }) => [
               styles.shareButton,
-              pressed && styles.buttonPressed,
+              pressScaleStyle(pressed),
             ]}
             accessibilityLabel="Share video"
             accessibilityRole="button"
@@ -268,7 +272,7 @@ export default function ShareScreen() {
           onPress={handleDone}
           style={({ pressed }) => [
             styles.doneButton,
-            pressed && styles.buttonPressed,
+            pressScaleStyle(pressed),
           ]}
           accessibilityLabel="Done, return to home"
           accessibilityRole="button"
@@ -374,10 +378,6 @@ const styles = StyleSheet.create({
   shareText: {
     ...typography.button,
     color: colors.dark.background,
-  },
-  buttonPressed: {
-    opacity: 0.8,
-    transform: [{ scale: 0.97 }],
   },
   doneButton: {
     width: "100%",

@@ -1,4 +1,8 @@
 import { Image, StyleSheet, View } from "react-native";
+import {
+  resolveWatermarkInsetPx,
+  resolveWatermarkLogoWidthPx,
+} from "@/lib/betaWatermark";
 
 const LOGO = require("../../../assets/branding/MusicPromo-Logo.png");
 
@@ -15,8 +19,10 @@ export function BetaWatermark({
   visible = true,
   aspectRatio,
 }: BetaWatermarkProps) {
-  const resolvedInset = inset ?? Math.max(4, Math.round(containerWidth * 0.015));
-  const size = Math.max(28, Math.min(48, Math.round(containerWidth * 0.13)));
+  const resolvedInset = inset ?? resolveWatermarkInsetPx(containerWidth);
+  const size = resolveWatermarkLogoWidthPx(containerWidth, {
+    clampForSmallPreview: true,
+  });
 
   return (
     <View
