@@ -594,7 +594,7 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
                   accessibilityLabel="Change audio"
                   accessibilityRole="button"
                 >
-                  <Text style={styles.selectionActionText}>Change</Text>
+                  <Text style={[styles.selectionActionText, { color: pickerTextColor }]}>Change</Text>
                 </Pressable>
               </View>
             </View>
@@ -679,7 +679,7 @@ export default function PickerScreen({ tabEmbedded = false }: PickerScreenProps)
                   accessibilityLabel="Change photo"
                   accessibilityRole="button"
                 >
-                  <Text style={styles.selectionActionText}>Change</Text>
+                  <Text style={[styles.selectionActionText, { color: pickerTextColor }]}>Change</Text>
                 </Pressable>
               </View>
             </View>
@@ -965,7 +965,6 @@ const styles = StyleSheet.create({
   },
   selectionActionText: {
     ...typography.caption,
-    color: colors.light.text,
     fontWeight: "700",
   },
   quickFillCard: {
