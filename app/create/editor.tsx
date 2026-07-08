@@ -240,7 +240,10 @@ function clampTrimRange(
     nextStart = Math.max(0, nextEnd - safeMax);
   }
 
-  return [nextStart, nextEnd];
+  return [
+    Math.round(nextStart * 100) / 100,
+    Math.round(nextEnd * 100) / 100,
+  ];
 }
 
 function formatClock(seconds: number): string {
@@ -802,21 +805,23 @@ export default function EditorScreen() {
 
   useEffect(() => {
     const [nextStart, nextEnd] = clampTrimRange(
-      trimStart,
-      trimEnd,
+      trimStartRef.current,
+      trimEndRef.current,
       audioDurationSec,
       minTrimDuration,
       maxTrimDuration,
     );
-    if (nextStart !== trimStart) { trimStartRef.current = nextStart; setTrimStart(nextStart); }
-    if (nextEnd !== trimEnd) { trimEndRef.current = nextEnd; setTrimEnd(nextEnd); }
-  }, [
-    audioDurationSec,
-    minTrimDuration,
-    maxTrimDuration,
-    trimStart,
-    trimEnd,
-  ]);
+    if (
+      nextStart === trimStartRef.current &&
+      nextEnd === trimEndRef.current
+    ) {
+      return;
+    }
+    trimStartRef.current = nextStart;
+    trimEndRef.current = nextEnd;
+    setTrimStart(nextStart);
+    setTrimEnd(nextEnd);
+  }, [audioDurationSec, minTrimDuration, maxTrimDuration]);
 
   const stageWidthRatio = aspectRatio === "9:16" ? 9 / 16 : aspectRatio === "4:5" ? 4 / 5 : 1;
   const fallbackMaxStageWidth = Math.min(SCREEN_WIDTH - STAGE_HORIZONTAL_PADDING, 520);
@@ -863,6 +868,12 @@ export default function EditorScreen() {
       minTrimDuration,
       maxTrimDuration,
     );
+    if (
+      nextStart === trimStartRef.current &&
+      nextEnd === trimEndRef.current
+    ) {
+      return;
+    }
     trimStartRef.current = nextStart;
     trimEndRef.current = nextEnd;
     setTrimStart(nextStart);
@@ -890,7 +901,7 @@ export default function EditorScreen() {
 
   const stopAndResetPreview = useCallback(async () => {
     const sound = previewSoundRef.current;
-    const startMillis = Math.round(Math.max(trimStart, 0) * 1000);
+    const startMillis = Math.round(Math.max(trimStartRef.current, 0) * 1000);
     if (!sound) {
       setIsPlaying(false);
       setPreviewPositionSec(0);
@@ -908,7 +919,7 @@ export default function EditorScreen() {
     }
     setIsPlaying(false);
     setPreviewPositionSec(0);
-  }, [trimStart]);
+  }, []);
 
   const handlePlaybackStatusUpdate = useCallback(
     (status: AVPlaybackStatus) => {

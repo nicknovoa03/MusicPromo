@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback, useEffect, useMemo, memo } from "react";
+import { useRef, useState, useCallback, useEffect, useMemo, memo, useReducer } from "react";
 import {
   View,
   StyleSheet,
@@ -99,6 +99,10 @@ function toWholeSecondLabel(seconds: number): string {
   return `${Math.round(seconds)}`;
 }
 
+function roundTrimSec(sec: number): number {
+  return Math.round(sec * 100) / 100;
+}
+
 export function AudioTrimmer({
   durationSec,
   startSec,
@@ -129,10 +133,14 @@ export function AudioTrimmer({
   const [isDurationPickerVisible, setIsDurationPickerVisible] = useState(false);
   const [durationDraftSec, setDurationDraftSec] = useState(Math.round(currentDuration));
   const [trimProgressSec, setTrimProgressSec] = useState(0);
+  const [, bumpGestureView] = useReducer((tick: number) => tick + 1, 0);
   const [trackWidth, setTrackWidth] = useState(0);
   const [railWidth, setRailWidth] = useState(0);
   const trackWidthRef = useRef(0);
   const railWidthRef = useRef(0);
+  const gestureStartSecRef = useRef<number | null>(null);
+  const gestureRafRef = useRef<number | null>(null);
+  const pendingGestureApplyRef = useRef<{ start: number; duration: number } | null>(null);
   const lastProgressTickRef = useRef<number | null>(null);
   const didAutoPauseRef = useRef(false);
   const shouldAutoPauseRef = useRef(false);
@@ -145,7 +153,7 @@ export function AudioTrimmer({
   const selectionGestureStartRef = useRef(safeStart);
   const latestValuesRef = useRef({
     safeDuration,
-    safeStart,
+    committedStart: safeStart,
     currentDuration,
     maxStart,
     trackWidth,
@@ -158,8 +166,23 @@ export function AudioTrimmer({
   }, [onTrimChange]);
 
   useEffect(() => {
-    lastAppliedTrimRef.current = { start: safeStart, end: safeEnd };
+    return () => {
+      if (gestureRafRef.current != null) {
+        cancelAnimationFrame(gestureRafRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isTrimGestureActiveRef.current) return;
+    lastAppliedTrimRef.current = {
+      start: roundTrimSec(safeStart),
+      end: roundTrimSec(safeEnd),
+    };
   }, [safeStart, safeEnd]);
+
+  const displayStartSec = gestureStartSecRef.current ?? safeStart;
+  const displayEndSec = displayStartSec + currentDuration;
 
   const onTrackLayout = useCallback((e: LayoutChangeEvent) => {
     const width = e.nativeEvent.layout.width;
@@ -187,25 +210,66 @@ export function AudioTrimmer({
         0,
         Math.max(safeDuration - fixedDurationSec, 0),
       );
-      const clampedEnd = clampedStart + fixedDurationSec;
+      const outStart = roundTrimSec(clampedStart);
+      const outEnd = roundTrimSec(clampedStart + fixedDurationSec);
       const last = lastAppliedTrimRef.current;
-      if (
-        Math.abs(clampedStart - last.start) < 0.02 &&
-        Math.abs(clampedEnd - last.end) < 0.02
-      ) {
+      if (outStart === last.start && outEnd === last.end) {
         return;
       }
-      lastAppliedTrimRef.current = { start: clampedStart, end: clampedEnd };
-      onTrimChangeRef.current(clampedStart, clampedEnd);
+      lastAppliedTrimRef.current = { start: outStart, end: outEnd };
+      onTrimChangeRef.current(outStart, outEnd);
     },
     [safeDuration],
   );
 
+  const flushGestureFrame = useCallback(() => {
+    gestureRafRef.current = null;
+    const pending = pendingGestureApplyRef.current;
+    pendingGestureApplyRef.current = null;
+    if (pending) {
+      applyStart(pending.start, pending.duration);
+    }
+    bumpGestureView();
+  }, [applyStart]);
+
+  const scheduleGestureUpdate = useCallback(
+    (startSec: number, fixedDurationSec: number) => {
+      const clampedStart = clamp(
+        startSec,
+        0,
+        Math.max(safeDuration - fixedDurationSec, 0),
+      );
+      gestureStartSecRef.current = clampedStart;
+      pendingGestureApplyRef.current = { start: clampedStart, duration: fixedDurationSec };
+      if (gestureRafRef.current != null) return;
+      gestureRafRef.current = requestAnimationFrame(flushGestureFrame);
+    },
+    [flushGestureFrame, safeDuration],
+  );
+
+  const beginTrimGesture = useCallback((startSec: number) => {
+    isTrimGestureActiveRef.current = true;
+    gestureStartSecRef.current = startSec;
+    bumpGestureView();
+  }, []);
+
   const endTrimGesture = useCallback(() => {
     isTrimGestureActiveRef.current = false;
+    if (gestureRafRef.current != null) {
+      cancelAnimationFrame(gestureRafRef.current);
+      gestureRafRef.current = null;
+    }
+    const finalStart = gestureStartSecRef.current;
+    const finalDuration = latestValuesRef.current.currentDuration;
+    gestureStartSecRef.current = null;
+    pendingGestureApplyRef.current = null;
+    if (finalStart != null) {
+      applyStart(finalStart, finalDuration);
+    }
+    bumpGestureView();
     setTrimProgressSec((previous) => (previous === 0 ? previous : 0));
     lastProgressTickRef.current = null;
-  }, []);
+  }, [applyStart]);
 
   const durationPickerOptions = useMemo(() => {
     const lower = Math.max(1, Math.round(Math.min(minDuration, safeDuration)));
@@ -267,8 +331,8 @@ export function AudioTrimmer({
         onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponder: () => true,
         onPanResponderGrant: () => {
-          isTrimGestureActiveRef.current = true;
-          railGestureStartRef.current = latestValuesRef.current.safeStart;
+          railGestureStartRef.current = latestValuesRef.current.committedStart;
+          beginTrimGesture(latestValuesRef.current.committedStart);
         },
         onPanResponderMove: (
           _: GestureResponderEvent,
@@ -287,19 +351,19 @@ export function AudioTrimmer({
             latestMaxStart *
             START_DRAG_SENSITIVITY;
           const nextStart = clamp(railGestureStartRef.current + deltaSec, 0, latestMaxStart);
-          applyStart(nextStart, latestCurrentDuration);
+          scheduleGestureUpdate(nextStart, latestCurrentDuration);
         },
         onPanResponderRelease: endTrimGesture,
         onPanResponderTerminate: endTrimGesture,
       }),
-    [applyStart, endTrimGesture],
+    [scheduleGestureUpdate, beginTrimGesture, endTrimGesture],
   );
 
   const selectionWidth = trackWidth > 0 ? trackWidth : Math.max(secToX(safeEnd) - secToX(safeStart), 96);
 
   latestValuesRef.current = {
     safeDuration,
-    safeStart,
+    committedStart: safeStart,
     currentDuration,
     maxStart,
     trackWidth,
@@ -307,7 +371,7 @@ export function AudioTrimmer({
     selectionWidth,
   };
 
-  const railProgress = maxStart > 0 ? safeStart / maxStart : 0;
+  const railProgress = maxStart > 0 ? displayStartSec / maxStart : 0;
   const railThumbLeft = railWidth > 0 ? railProgress * railWidth : 0;
   const effectiveProgressRatio =
     currentDuration > 0 ? clamp(trimProgressSec / currentDuration, 0, 1) : 0;
@@ -318,8 +382,8 @@ export function AudioTrimmer({
         onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponder: () => true,
         onPanResponderGrant: () => {
-          isTrimGestureActiveRef.current = true;
-          selectionGestureStartRef.current = latestValuesRef.current.safeStart;
+          selectionGestureStartRef.current = latestValuesRef.current.committedStart;
+          beginTrimGesture(latestValuesRef.current.committedStart);
         },
         onPanResponderMove: (
           _: GestureResponderEvent,
@@ -341,18 +405,18 @@ export function AudioTrimmer({
             0,
             latestMaxStart,
           );
-          applyStart(nextStart, latestCurrentDuration);
+          scheduleGestureUpdate(nextStart, latestCurrentDuration);
         },
         onPanResponderRelease: endTrimGesture,
         onPanResponderTerminate: endTrimGesture,
       }),
-    [applyStart, endTrimGesture],
+    [scheduleGestureUpdate, beginTrimGesture, endTrimGesture],
   );
 
   const waveformBars = useMemo(() => {
     if (waveformData && waveformData.length > 0) {
       return Array.from({ length: WAVEFORM_BAR_COUNT }, (_, i) => {
-        const windowSec = safeStart + (i / WAVEFORM_BAR_COUNT) * currentDuration;
+        const windowSec = displayStartSec + (i / WAVEFORM_BAR_COUNT) * currentDuration;
         const t = clamp(windowSec / safeDuration, 0, 1);
         const srcIdx = t * (waveformData.length - 1);
         const lo = Math.floor(srcIdx);
@@ -363,13 +427,13 @@ export function AudioTrimmer({
       });
     }
     return Array.from({ length: WAVEFORM_BAR_COUNT }, (_, i) => {
-      const phase = safeStart * 0.13 + i * 0.34;
+      const phase = displayStartSec * 0.13 + i * 0.34;
       const envelope = (Math.sin(phase) + 1) / 2;
       const texture = (Math.sin(i * 1.18 + 0.9) + 1) / 2;
       const amp = envelope * 0.8 + texture * 0.2;
       return barHeightFromAmp(amp);
     });
-  }, [waveformData, safeStart, safeDuration, currentDuration]);
+  }, [waveformData, displayStartSec, safeDuration, currentDuration]);
 
   useEffect(() => {
     if (isTrimGestureActiveRef.current) return;
@@ -557,13 +621,13 @@ export function AudioTrimmer({
 
       <View style={styles.timeRow}>
         <Text style={[styles.timeText, styles.timeTextStart]}>
-          {formatTime(safeStart)}
+          {formatTime(displayStartSec)}
         </Text>
         <Text style={styles.centerTimeText}>
           {centerTimeLabel ?? formatTime(currentDuration)}
         </Text>
         <Text style={[styles.timeText, styles.timeTextEnd]}>
-          {formatTime(safeEnd)}
+          {formatTime(displayEndSec)}
         </Text>
       </View>
 
